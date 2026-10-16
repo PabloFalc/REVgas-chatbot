@@ -16,7 +16,7 @@ Chatbot de WhatsApp que atende clientes de uma revenda de gás (GLP) e cria a ve
 | Banco | PostgreSQL + Drizzle | Histórico, vendas criadas, métricas |
 | Validação | Zod | Webhooks, respostas da API RevGás e saída da IA |
 | Testes | `bun test` | Máquina de estados pura, testável sem WhatsApp e sem IA |
-| Canal | WhatsApp Cloud API (oficial) | Evolution API / Z-API para protótipo; Telegram para demo |
+| Canal | WhatsApp Cloud API (oficial) | Evolution API / Z-API para protótipo |
 | IA | Modelo pequeno e barato | Só duas funções (ver abaixo) |
 | CEP | ViaCEP | — |
 
@@ -26,7 +26,7 @@ Três camadas:
 
 - **`modules/`**: os domínios da aplicação. Cada domínio tem seus controllers, services e repositórios.
 - **`infra/`**: conexão com cache e banco de dados.
-- **`lib/`**: clientes de serviços de terceiros que a aplicação consome (API RevGás, WhatsApp/Telegram e LLM).
+- **`lib/`**: clientes de serviços de terceiros que a aplicação consome (API RevGás, WhatsApp e LLM).
 
 ```
 src/
@@ -53,7 +53,6 @@ src/
   lib/
     revgas/                 # cliente HTTP da API RevGás: API Key, retry com backoff, logs mascarados
     whatsapp/               # provedores (Cloud API, Evolution/Z-API) com interface única: texto, lista, botões
-    telegram/               # mesma interface do whatsapp, para a demo
     llm/                    # cliente do modelo de IA
 ```
 
@@ -142,4 +141,4 @@ Montado pelo backend; os nomes dos campos são ilustrativos.
 - Lista interativa: até 10 opções.
 - Botões de resposta: até 3 por mensagem.
 - Mensagens iniciadas pelo bot fora da janela de 24h (lembrete de recompra, recuperação de carrinho) exigem template aprovado, o que afeta o roadmap.
-- No Telegram (demo) os componentes são outros (inline keyboard); a camada de mensageria deve expor uma interface única (enviar texto, lista e botões) e abstrair essa diferença.
+- A camada de mensageria deve expor uma interface única (enviar texto, lista e botões) e abstrair as diferenças entre os provedores (Cloud API, Evolution/Z-API).

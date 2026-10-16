@@ -8,7 +8,7 @@
 
 | ID | Requisito | Critério de aceite | Origem |
 | --- | --- | --- | --- |
-| RF01 | Receber pedidos pelo WhatsApp | Webhook recebe e responde mensagens (Cloud API, Evolution, Z-API ou Telegram na demo) | Slide "Como funciona?" |
+| RF01 | Receber pedidos pelo WhatsApp | Webhook recebe e responde mensagens (Cloud API, Evolution ou Z-API) | Slide "Como funciona?" |
 | RF02 | Identificar o cliente pelo telefone e recuperar cadastro | Telefone normalizado (só dígitos, DDI 55) consultado na API RevGás | Slide do chatbot |
 | RF03 | Cadastrar cliente novo | Coleta nome, CPF (se exigido) e endereço; cadastra via API | Inferido de RF02 |
 | RF04 | Coletar e confirmar produto e quantidade | Produto ativo e com estoque; quantidade inteira entre 1 e o limite | Slide do chatbot |

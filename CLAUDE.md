@@ -2,7 +2,9 @@
 
 Chatbot de WhatsApp para uma revenda de gás (GLP) que identifica o cliente, confirma produto, quantidade, endereço e pagamento e **cria a venda no ERP RevGás** pela API pública. Projeto de Extensão 2026.2 (ICEV) para a Flow.
 
-Responda e escreva documentação e mensagens de commit em **português**. Nomes de código seguem os docs (`interpretar`, `responderFaq`, estados como `PRODUTO`, `RESUMO`).
+Responda e escreva documentação e mensagens de commit em **português**.
+
+Todo o código é em **inglês**: nomes de variáveis, funções, tipos, arquivos, estados e mensagens internas (erros, logs). A única exceção é o texto que o cliente vê, que fica em português. Exemplo: a função se chama `goodMorning`, mas retorna `"Bom dia!"`. Os termos dos docs também viram inglês no código (`interpretar` → `interpret`, `responderFaq` → `answerFaq`, estados `PRODUTO` → `PRODUCT`, `RESUMO` → `SUMMARY`).
 
 **Não escreva comentários** em código nem em arquivos de configuração (Dockerfile, compose, tsconfig, `.env.example`). O código deve se explicar por nomes claros, funções pequenas e tipos. Se algo parecer exigir comentário, renomeie ou extraia uma função. O porquê de uma decisão vai na mensagem de commit ou em `docs/`.
 
@@ -53,7 +55,7 @@ Bun (runtime, test runner, `Bun.redis`) · TypeScript estrito · Hono · Zod · 
 src/
   modules/<dominio>/   # conversation, customer, catalog, order, assistant, handoff, metrics
   infra/               # cache (Redis), database (Postgres + Drizzle)
-  lib/                 # clientes externos: revgas, whatsapp, telegram, llm
+  lib/                 # clientes externos: revgas, whatsapp, llm
 ```
 
 Arquivos por módulo: `<dominio>.controller.ts`, `.service.ts`, `.repository.ts`, `.schema.ts` (Zod), `.states.ts`.
@@ -65,7 +67,7 @@ Regras de dependência (não quebrar):
 - Services não importam SDKs (Redis, Drizzle, `lib/`) direto; o acesso passa pelos repositórios.
 - `conversation.service` é **puro** (sem I/O): recebe estado + mensagem, devolve novo estado + respostas. O fluxo inteiro deve ser testável sem WhatsApp e sem IA (RNF08).
 - Schemas Zod ficam no módulo que os usa; tabelas Drizzle em `infra/database/schema`.
-- WhatsApp e Telegram expõem a mesma interface (enviar texto, lista, botões). Limites do WhatsApp: lista até 10 opções, até 3 botões por mensagem.
+- O canal é só WhatsApp (Telegram não é usado). Os provedores (Cloud API, Evolution/Z-API) expõem a mesma interface (enviar texto, lista, botões). Limites do WhatsApp: lista até 10 opções, até 3 botões por mensagem.
 
 ## Regras inegociáveis
 

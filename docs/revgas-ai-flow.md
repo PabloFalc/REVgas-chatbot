@@ -68,7 +68,7 @@ A recomendação é: **a IA entra só onde há texto livre para interpretar; o r
 - **Banco:** PostgreSQL com Drizzle (suporta Bun) para histórico, vendas criadas e métricas.
 - **Validação:** Zod nos webhooks, nas respostas da API RevGás e na saída da IA.
 - **Testes:** `bun test`. A máquina de estados é pura, então dá para testar o fluxo inteiro sem WhatsApp e sem IA.
-- **Canal:** WhatsApp Cloud API (oficial) ou Evolution API / Z-API para protótipo. Para a demo, Telegram também serve.
+- **Canal:** WhatsApp Cloud API (oficial) ou Evolution API / Z-API para protótipo.
 
 ### Onde usar IA e onde usar texto fixo
 
