@@ -1,8 +1,23 @@
 {
   "name": "revgas-chatbot",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build src/index.ts --compile --minify --sourcemap --outfile dist/revgas-chatbot",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:restart": "docker compose up -d --build --force-recreate app",
+    "docker:logs": "docker compose logs -f app",
+    "docker:ps": "docker compose ps",
+    "docker:infra": "docker compose up -d postgres redis",
+    "docker:reset": "docker compose down -v"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
