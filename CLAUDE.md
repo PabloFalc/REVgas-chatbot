@@ -34,6 +34,10 @@ bun run lint:fix       # biome check --write
 bun run typecheck      # tsc --noEmit
 bun run build          # binário único em dist/
 
+bun run db:generate    # gera migration SQL a partir de src/infra/database/schema
+bun run db:migrate     # aplica as migrations no DATABASE_URL
+bun run db:check       # valida consistência das migrations
+
 bun run docker:infra   # só Postgres (5432) e Redis (6379), para rodar o app fora do Docker
 bun run docker:up      # app + infra
 bun run docker:logs

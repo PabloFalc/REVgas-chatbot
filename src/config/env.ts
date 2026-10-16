@@ -18,6 +18,8 @@ const envSchema = z.object({
   PUBLIC_URL: optional(z.url()),
 
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  DB_SSL_MODE: optional(z.enum(["disable", "require", "verify-full"])),
+  DB_SSL_CA_PATH: optional(z.string()),
   CACHE_URL: z.url({ protocol: /^rediss?$/ }),
   CONVERSATION_TTL_SECONDS: positiveInt(3600),
 

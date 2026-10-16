@@ -9,6 +9,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DATABASE_URL: postgres://${DB_USER:-revgas}:${DB_PASSWORD:-revgas}@postgres:5432/${DB_NAME:-revgas}
+      DB_SSL_MODE: disable
       CACHE_HOST: redis
       CACHE_PORT: 6379
       CACHE_URL: redis://redis:6379
