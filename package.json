@@ -3,13 +3,17 @@
   "module": "src/index.ts",
   "type": "module",
   "private": true,
+  "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "build": "bun build src/index.ts --compile --minify --sourcemap --outfile dist/revgas-chatbot",
     "test": "bun test",
+    "test:unit": "bun test --pass-with-no-tests ./src",
+    "test:e2e": "bun test --pass-with-no-tests ./tests/e2e",
     "typecheck": "tsc --noEmit",
-
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:restart": "docker compose up -d --build --force-recreate app",
@@ -19,6 +23,7 @@
     "docker:reset": "docker compose down -v"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@types/bun": "latest"
   },
   "peerDependencies": {

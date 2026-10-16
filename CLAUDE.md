@@ -25,6 +25,10 @@ bun install
 bun run dev            # bun --watch src/index.ts
 bun test               # testes (bun:test)
 bun test caminho/arquivo.test.ts
+bun run test:unit      # só testes em src/
+bun run test:e2e       # só testes em tests/e2e/ (usa Postgres e Redis)
+bun run lint           # biome check
+bun run lint:fix       # biome check --write
 bun run typecheck      # tsc --noEmit
 bun run build          # binário único em dist/
 
@@ -33,7 +37,9 @@ bun run docker:up      # app + infra
 bun run docker:logs
 ```
 
-Para rodar fora do Docker, copie `.env.example` para `.env`; `DATABASE_URL` e `CACHE_URL` já apontam para `localhost`. Antes de dar uma tarefa como concluída, rode `bun run typecheck` e `bun test`.
+Para rodar fora do Docker, copie `.env.example` para `.env`; `DATABASE_URL` e `CACHE_URL` já apontam para `localhost`. Antes de dar uma tarefa como concluída, rode `bun run lint`, `bun run typecheck` e `bun test`.
+
+CI (`.github/workflows/ci.yml`) roda em push e pull request para `main` e `develop`, com três jobs em paralelo: lint (Biome + typecheck), testes unitários e testes e2e (com Postgres e Redis como services).
 
 ## Stack
 
@@ -74,4 +80,4 @@ Regras de dependência (não quebrar):
 
 ## Testes
 
-`bun:test`, arquivos `*.test.ts` ao lado do código. Priorize testes da máquina de estados e das regras de negócio usando os mocks de `lib/`. Nenhum teste chama API real, WhatsApp ou LLM.
+`bun:test`. Unitários: `*.test.ts` ao lado do código em `src/`. E2E: `tests/e2e/*.test.ts`, sobem o app contra Postgres e Redis reais, mas com os mocks de `lib/`. Priorize testes da máquina de estados e das regras de negócio usando os mocks de `lib/`. Nenhum teste chama API real, WhatsApp ou LLM.
