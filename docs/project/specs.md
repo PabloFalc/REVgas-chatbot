@@ -96,37 +96,46 @@ Responde a partir de um FAQ curto (poucas dezenas de perguntas) embutido no prom
 
 **Autenticação (confirmada):** API Key solicitada ao suporte da RevGás, guardada em variável de ambiente e usada só no backend. Ref.: [Autenticação e Permissão](https://revgas.stoplight.io/docs/revgas-api/en39g0vb0qwsb-autenticacao-e-permissao).
 
-**Operações necessárias** (rotas e campos reais na spec privada, `docs/project/private/revgas-openapi.yaml`, fora do git):
+**Ambiente:** só produção. A homologação existe na doc, mas está marcada como "Não utilizar". Toda venda criada com a chave real é uma venda de verdade; desenvolvimento e testes usam o mock de `lib/revgas`.
 
-| # | Operação | Quando | O que conferir |
+**Operações necessárias** (conferidas na spec em 2026-10-19; rotas e campos detalhados na spec privada, `docs/project/private/`, fora do git):
+
+| # | Operação | Quando | Observação |
 | --- | --- | --- | --- |
-| 1 | Buscar cliente por telefone (ou CPF) | Primeira mensagem | Formato do telefone (DDI? só dígitos?) |
-| 2 | Cadastrar cliente | Cliente não encontrado | Campos obrigatórios |
-| 3 | Listar / atualizar endereços | Confirmação de endereço | Endereço embutido na venda ou por ID |
-| 4 | Listar produtos com preço e estoque | Escolha do produto | IDs P13/P45/água; preço por tabela ou por cliente |
-| 5 | Listar formas de pagamento | Escolha do pagamento | IDs de dinheiro, Pix, cartão; campo de troco |
-| 6 | **Criar venda** | Após "confirmo" | Corpo, campo de origem/canal, retorno (ID, status) |
-| 7 | Consultar venda / entrega | "Meu gás chegou?" | Status disponíveis; existe webhook? |
+| 0 | Listar estabelecimentos | Setup (uma vez) | Dá o `establishment_id` da revenda, exigido em produtos, acordos, formas de pagamento e venda |
+| 1 | Buscar cliente por telefone | Primeira mensagem | Busca aceita 10–11 dígitos com DDI 55 opcional |
+| 2 | Cadastrar cliente | Cliente não encontrado | Telefone no cadastro vai **com** 55; a spec não marca campos obrigatórios |
+| 3 | Atualizar cliente (opcional) | Endereço novo | O endereço da entrega vai no corpo da venda; atualizar o cadastro é opcional |
+| 4 | Listar produtos | Escolha do produto | Traz estoque, **não traz preço** |
+| 5 | Listar acordos | Cálculo do preço | **Fonte do preço**: valor sugerido e valor mínimo por produto, com escopo de cliente, categoria do cliente, forma de pagamento ou padrão da loja |
+| 6 | Listar formas de pagamento | Escolha do pagamento | Enum fixo (dinheiro, Pix, cartões, vale-gás…); **não há campo de troco** → vai na observação |
+| 7 | **Criar venda** | Após "confirmo" | Endereço, itens com valor unitário, pagamentos, canal `WHATSAPP`; retorna ID, total e status |
+| 8 | Listar vendas | Repetir pedido / anti-duplicata | Filtro por cliente, canal e período (máx. 366 dias; sem datas = mês corrente) |
+| 9 | Detalhar venda | "Meu gás chegou?" | Status e entregador; **não há webhook de status nem tempo estimado** |
 
-### Rascunho do corpo de "criar venda"
+### Preço
 
-Montado pelo backend; os nomes dos campos são ilustrativos.
+O preço vem dos **acordos** da RevGás, não do produto. Um acordo liga um produto a um valor sugerido e um valor mínimo e vale para um cliente, uma categoria de cliente, uma forma de pagamento ou como padrão da loja. O backend resolve o acordo aplicável e usa esse valor na venda; o cliente e a IA nunca definem preço (RN06).
 
-```json
-{
-  "clienteId": "<id do passo 1 ou 2>",
-  "enderecoEntrega": { "logradouro": "", "numero": "", "bairro": "", "cidade": "", "referencia": "" },
-  "itens": [ { "produtoId": "<id do passo 4>", "quantidade": 1, "valorUnitario": 0 } ],
-  "pagamentos": [ { "formaPagamentoId": "<id do passo 5>", "valor": 0, "trocoPara": null } ],
-  "observacao": "Pedido via chatbot WhatsApp",
-  "origem": "chatbot"
-}
-```
+Confirmado com dados reais (2026-10-19): **todo acordo é ligado a uma forma de pagamento**. Há três tipos: preço base por produto × forma de pagamento, preço por categoria de cliente e preço por cliente. O mesmo botijão pode custar diferente no Pix e no cartão, então o total definitivo só é mostrado depois do passo de pagamento. Prioridade suposta (a confirmar): cliente > categoria > base.
+
+A lista de formas de pagamento aceitas pode ser derivada dos acordos. Os dados reais trazem valores fora do enum da spec (ex.: `GAS_DO_POVO`), então o schema é tolerante a valores novos.
+
+O catálogo da RevGás mistura gás, água, vasilhames (casco vendido à parte), acessórios e itens de teste: o bot oferece só uma lista curada de produtos.
+
+**Permissões da chave:** a chave atual é **só de leitura**: lê estabelecimentos, produtos, acordos e vendas, recebe 403 em clientes e formas de pagamento e não tem permissão para criar venda. Não há outra chave disponível. Até a RevGás liberar, identificação, cadastro e criação de venda (RF02, RF03, RF08) são desenvolvidos e demonstrados contra o mock de `lib/revgas`, seguindo a spec; só as leituras são conferidas na API real.
+
+### Restrições da API
+
+- **Rate limit global de 1 req/s** (429): o cliente HTTP serializa as chamadas e guarda no Redis o que muda pouco (estabelecimento, produtos, acordos, formas de pagamento).
+- **Sem idempotência:** antes de repetir uma criação de venda após timeout, consultar as vendas do cliente no canal WhatsApp.
+- **Schemas sem campos obrigatórios declarados:** os schemas Zod de resposta são tolerantes (campos opcionais, extras ignorados); os obrigatórios reais só aparecem nos 422.
+- **Erros específicos:** 402 (chave bloqueada por falta de pagamento), 409 por lock (pode repetir) ou por duplicidade (traz o ID existente, útil no cadastro de cliente).
 
 ## Confiabilidade
 
-- **Idempotência:** chave por conversa enviada na criação da venda, mais checagem local de venda igual nos últimos minutos (necessária se a API não aceitar chave de idempotência).
-- **Retry:** backoff só em 5xx/timeout. Atenção: retry sem idempotência no servidor pode duplicar a venda.
+- **Idempotência:** a API RevGás não aceita chave de idempotência. A garantia é local: trava por conversa no Redis na confirmação, mais checagem de venda do mesmo cliente no canal WhatsApp antes de qualquer nova tentativa.
+- **Retry:** backoff em 5xx, 429, 409 por lock e timeout. A criação de venda nunca é repetida às cegas: primeiro confere se a venda já existe.
 - **Persistência:** ID da venda salvo no Postgres e enviado ao cliente; falha → alerta no log.
 - **Logs:** toda chamada à API RevGás e todo handoff, com CPF e telefone mascarados.
 
