@@ -1,0 +1,67 @@
+{
+  "workbench.iconTheme": "symbols",
+  "symbols.files.associations": {
+    "*.module.ts": "nest",
+    "*.error.ts": "nest",
+    "*.errors.ts": "nest",
+    "*.filter.ts": "nest",
+    "*.controller.ts": "nest-controller",
+    "*.interceptor.ts": "nest-controller",
+    "*.service.ts": "nest-service",
+    "*.health.ts": "nest-service",
+    "*.repository.ts": "nest-decorator",
+    "*.decorator.ts": "nest-decorator",
+    "*.doc.ts": "nest-decorator",
+    "*.docs.ts": "nest-decorator",
+    "*.middleware.ts,": "nest-middleware",
+    "*.dtos.ts": "nest-middleware",
+    "*.dto.ts": "nest-middleware",
+    "*.pipe.ts": "nest-guard",
+    "*.guard.ts": "nest-guard"
+  },
+
+  "symbols.folders.associations": {
+    "infra": "folder-app",
+    "cache": "folder-layout",
+    "plugins": "folder-blue",
+    "erros": "folder-red",
+    "controller": "folder-sky-outline",
+    "controllers": "folder-sky-outline",
+    "service": "folder-yellow-outline",
+    "services": "folder-yellow-outline",
+    "repository": "folder-purple-outline",
+    "repositories": "folder-purple-outline",
+    "guards": "folder-green-outline",
+    "decorators": "folder-context",
+    "filters": "folder-red-outline",
+
+    "redis": "folder-redis",
+    "redis-providers": "folder-redis",
+
+    "drizzle": "folder-drizzle",
+    "drizzle-providers": "folder-drizzle"
+  },
+
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "*.controller.ts": "$(capture).controller.spec.ts",
+    "*.service.ts": "$(capture).service.spec.ts",
+    "*.repository.ts": "($capture).repository.spec.ts",
+    "*.guard.ts": "$(capture).guard.spec.ts",
+    "*.error.ts": "$(capture).error.spec.ts",
+    "*.execption.ts": "$(capture).execption.spec.ts",
+    "*.interceptor.ts": "$(capture).interceptor.spec.ts",
+    "*.pipe.ts": "$(capture).pipe.spec.ts",
+    "*.middleware.ts": "$(capture).middleware.spec.ts",
+    "*.ts": "$(capture).spec.ts",
+    "package.json": "tsconfig*.json, vitest.config*.ts, pnpm-lock.yaml"
+  },
+
+  "editor.defaultFormatter": "biomejs.biome",
+  "[typescript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true
+}

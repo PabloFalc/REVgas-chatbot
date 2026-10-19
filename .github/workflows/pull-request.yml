@@ -1,0 +1,20 @@
+name: Pull request pipeline
+
+run-name: ${{ github.actor }} triggered ${{ github.workflow }} on ${{ github.ref }}
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop, staging, main]
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
