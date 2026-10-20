@@ -66,9 +66,9 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 
 Dependem das respostas da Flow/RevGás (lista completa no documento original):
 
-- CPF é obrigatório no cadastro? (RF03, RN03)
-- Preço varia por cliente, bairro ou forma de pagamento? (RF07, RN06)
-- De onde vem o "tempo estimado" e há webhook de status? (RF09)
-- A API aceita chave de idempotência? Se não, a deduplicação é só local. (RN11)
+- CPF é obrigatório no cadastro? A spec não marca nenhum campo como obrigatório. (RF03, RN03)
+- Preço: vem dos **acordos** da RevGás (por cliente, categoria do cliente, forma de pagamento ou padrão). Falta saber a prioridade entre acordos sobrepostos e se o preço muda com a forma de pagamento. (RF07, RN06)
+- "Tempo estimado": a API não tem esse dado nem webhook de status; só a consulta da venda (status e entregador). (RF09)
+- Idempotência: a API **não** aceita chave de idempotência; a deduplicação é local. (RN11)
 - Quem recebe o handoff — o atendente na plataforma da Flow? (RF11)
 - RN05: acima do limite, bloqueia ou só pede confirmação? O texto original é ambíguo.

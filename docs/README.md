@@ -19,6 +19,12 @@ correspondente.
 - [auth.md](./guides/modules/auth.md) — autenticação do painel (Better Auth, só token Bearer):
   status standby e como ligar, `AuthGuard`, `@AllowUnverified`, fluxos de email e rotas
 
+### Integrações (`guides/integrations/`)
+
+- [revgas.md](./guides/integrations/revgas.md) — cliente da API RevGás (`src/integrations/revgas`), organizado por módulo da API: modos
+  `live`/`hybrid`/`fake`, roteamento do híbrido, permissões da chave, erros, regra de não repetir
+  POST e o check manual `pnpm revgas:check`
+
 ### Serviços (`guides/services/`)
 
 - [email-service.md](./guides/services/email-service.md) — `EmailService` (Resend), standby

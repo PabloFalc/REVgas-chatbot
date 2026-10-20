@@ -44,8 +44,21 @@ export const envConfigSchema = z
     PRESSURE_MAX_RSS_BYTES: z.coerce.number().default(800_000_000),
 
     // REVGAS
-    REVGAS_API_URL: z.preprocess(emptyAsUndefined, z.url().optional()),
+    REVGAS_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'hybrid', 'fake']).optional()),
+    REVGAS_API_URL: z.preprocess(emptyAsUndefined, z.url().default('https://api.revgas.com/v1')),
     REVGAS_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
+    REVGAS_ESTABLISHMENT_ID: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().optional(),
+    ),
+    REVGAS_TIMEOUT_MS: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().default(10_000),
+    ),
+    REVGAS_MIN_INTERVAL_MS: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().min(0).default(1_100),
+    ),
 
     // RESEND (standby)
     RESEND_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),

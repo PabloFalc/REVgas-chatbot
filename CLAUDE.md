@@ -32,11 +32,12 @@ Current:
 
 ```
 src/
-  config/      env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
-  core/        cross-cutting — guards, filters, interceptors, pipes, decorators, errors,
-               services/email (EmailService + Resend)
-  infra/       database (Drizzle + schemas), cache (Redis), health
-  modules/     domain — auth/ (on standby, not wired in routes.module.ts)
+  config/       env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
+  core/         cross-cutting — guards, filters, interceptors, pipes, decorators, errors,
+                services/email (EmailService + Resend)
+  infra/        database (Drizzle + schemas), cache (Redis), health
+  integrations/ revgas/ — RevGás ERP client by API module (live/hybrid/fake modes, mock included)
+  modules/      domain — auth/ (on standby, not wired in routes.module.ts)
 ```
 
 - **App is assembled in `AppModule`**: `CoreModule`, `RoutesModule`, `InfraModule`. Config comes from `src/config/env.ts` (dotenv + Zod), imported directly — there is no ConfigModule/ConfigService.
@@ -60,15 +61,15 @@ Planned (from `docs/project/specs.md`, names still to be validated with the grou
 src/
   modules/     conversation, customer, catalog, order, assistant, handoff, metrics
   infra/       cache (conversation state with TTL), database (Postgres + Drizzle)
-  lib/         revgas, whatsapp, llm — clients for external services
+  integrations/ revgas, whatsapp, llm — clients for external services
 ```
 
 Dependency rules:
 
-- `modules/` depends on `infra/` and `lib/`, never the reverse.
-- `lib/` knows nothing about the domain: it talks to the external service and validates responses with Zod.
-- Module services don't import SDKs (Redis, Drizzle, `lib/`) directly — that goes through repositories.
-- Every `lib/` client has a mock for tests.
+- `modules/` depends on `infra/` and `integrations/`, never the reverse.
+- `integrations/` knows nothing about the domain: it talks to the external service and validates responses with Zod.
+- Module services don't import SDKs (Redis, Drizzle, `integrations/`) directly — that goes through repositories.
+- Every `integrations/` client has a mock for tests.
 - `conversation.service` does no I/O: (state, message) → (new state, replies), testable without WhatsApp or AI.
 - Zod schemas live in the module that uses them (`*.schema.ts`); Drizzle tables live in `infra/database/schemas`.
 
@@ -99,6 +100,7 @@ Index: `docs/README.md`. Area guides (read before touching the matching area):
 
 - `docs/project/specs.md` — technical spec (stack, planned structure, AI contracts, RevGás API integration)
 - `docs/guides/modules/auth.md` — auth (standby + how to turn on), bearer-only, `AuthGuard`, email flows, routes
+- `docs/guides/integrations/revgas.md` — RevGás client (`src/integrations/revgas`): modes, hybrid routing, key permissions, errors, never retry POST, `pnpm revgas:check`
 - `docs/guides/services/email-service.md` — `EmailService` (Resend), standby, log-only in dev/test
 - `docs/guides/conventions/api-doc.md` — the `@ApiDoc` decorator
 - `docs/guides/conventions/environment.md` — env vars (purpose, requiredness, defaults, consequences)

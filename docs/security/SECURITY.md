@@ -94,7 +94,7 @@ Itens que entram junto com os módulos do chatbot (ver [specs.md](../project/spe
 
 - **LGPD — mascaramento nos logs:** CPF, telefone e endereço dos clientes mascarados em todo log
   (chamadas à API RevGás, handoffs, erros). Hoje a redaction do Pino cobre só segredos e `email`.
-- **Cliente `lib/revgas`:** API Key injetada só no header da chamada server-side; retry com
+- **Cliente `integrations/revgas`:** API Key injetada só no header da chamada server-side; retry com
   backoff apenas em 5xx/timeout e com idempotência para não duplicar vendas.
 - **Webhook do WhatsApp:** validar a origem/assinatura do provedor escolhido antes de processar.
 - **IA:** o prompt nunca recebe a API Key nem dados de outros clientes; saída validada com Zod.

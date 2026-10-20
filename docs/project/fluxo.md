@@ -55,4 +55,5 @@ flowchart TD
 
 - O diagrama não mostra o handoff "em qualquer etapa" nem o atalho "repetir último pedido"; os dois só aparecem no texto.
 - "Corrigir" sempre volta ao passo 3. Vale perguntar *o que* corrigir (produto, endereço ou pagamento) e voltar só àquele passo.
-- O passo 8 promete "tempo estimado", mas nenhuma operação da API confirmada fornece esse dado.
+- O passo 8 promete "tempo estimado", mas a API não fornece esse dado nem webhook de status: dá para informar só o status e o entregador, consultando a venda.
+- O preço vem dos acordos da RevGás e pode depender da forma de pagamento. Se depender, o passo 3 mostra no máximo um preço de referência e o total definitivo só sai no passo 6, depois do pagamento.
