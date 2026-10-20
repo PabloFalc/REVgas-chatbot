@@ -1,4 +1,4 @@
-import { FAKE_ID_START } from '../shared/fake-id';
+import { FAKE_ID_START } from '../shared/fake';
 import type { RevgasEstablishment } from './establishments.schemas';
 
 export const FAKE_ESTABLISHMENT: RevgasEstablishment = {

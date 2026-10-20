@@ -1,4 +1,4 @@
-import { FAKE_ID_START } from '../shared/fake-id';
+import { FAKE_ID_START } from '../shared/fake';
 import type { RevgasCustomer } from './customers.schemas';
 
 export const FAKE_CUSTOMERS: RevgasCustomer[] = [

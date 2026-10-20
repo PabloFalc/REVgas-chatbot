@@ -1,7 +1,7 @@
 import { FAKE_PAYMENT_TYPES } from '../payment-types/payment-types.fixtures';
 import { FAKE_PRODUCTS } from '../products/products.fixtures';
 import type { RevgasProduct } from '../products/products.schemas';
-import { FAKE_ID_START } from '../shared/fake-id';
+import { FAKE_ID_START } from '../shared/fake';
 import type { RevgasDeal } from './deals.schemas';
 
 const paymentTypeId = (type: string): number =>

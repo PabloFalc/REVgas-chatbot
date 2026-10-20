@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { clone } from './clone';
+import { clone } from './fake';
 
 export const RevgasPaginationSchema = z.object({
   page: z.number(),

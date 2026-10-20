@@ -1,4 +1,4 @@
-import { clone } from '../shared/clone';
+import { clone } from '../shared/fake';
 import { type Page, paginate } from '../shared/pagination';
 import type { DealsApi, ListAllDealsQuery, ListDealsQuery } from './deals.api';
 import { FAKE_DEALS } from './deals.fixtures';

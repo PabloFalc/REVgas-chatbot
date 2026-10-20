@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RevgasValidationError } from '../shared/revgas.errors';
-import { pagination, setupHttp } from '../shared/revgas-http.testing';
+import { pagination, setupHttp } from '../testing/http.testing';
 import { SalesHttp } from './sales.http';
 
 const validSale = {

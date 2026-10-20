@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pagination, setupHttp } from '../shared/revgas-http.testing';
+import { pagination, setupHttp } from '../testing/http.testing';
 import { PaymentTypesHttp } from './payment-types.http';
 
 describe('PaymentTypesHttp', () => {

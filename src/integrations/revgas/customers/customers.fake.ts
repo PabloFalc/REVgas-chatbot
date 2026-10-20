@@ -1,5 +1,4 @@
-import { clone } from '../shared/clone';
-import { FAKE_ID_START } from '../shared/fake-id';
+import { clone, FAKE_ID_START } from '../shared/fake';
 import {
   RevgasDuplicateError,
   RevgasNotFoundError,

@@ -4,7 +4,7 @@ import { FakeRevgasClient } from './fake-revgas.client';
 import { HybridRevgasClient } from './hybrid-revgas.client';
 import { FAKE_PRODUCTS } from './products/products.fixtures';
 import type { RevgasClient } from './revgas.client';
-import { FAKE_ID_START } from './shared/fake-id';
+import { FAKE_ID_START } from './shared/fake';
 
 const stubModule = (names: string[]) =>
   Object.fromEntries(names.map(name => [name, vi.fn().mockResolvedValue('live')]));

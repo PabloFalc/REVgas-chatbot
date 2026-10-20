@@ -1,5 +1,5 @@
 import type { RevgasDeal } from '../deals/deals.schemas';
-import { clone } from '../shared/clone';
+import { clone } from '../shared/fake';
 import type { PaymentTypesApi } from './payment-types.api';
 import { FAKE_PAYMENT_TYPES } from './payment-types.fixtures';
 import type { RevgasPaymentType } from './payment-types.schemas';

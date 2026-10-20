@@ -1,4 +1,4 @@
-import { FAKE_ID_START } from '../shared/fake-id';
+import { FAKE_ID_START } from '../shared/fake';
 import type { RevgasPaymentType } from './payment-types.schemas';
 
 export const FAKE_PAYMENT_TYPES: RevgasPaymentType[] = [

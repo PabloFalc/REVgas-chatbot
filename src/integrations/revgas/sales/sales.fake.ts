@@ -1,7 +1,6 @@
 import type { CustomersFake } from '../customers/customers.fake';
 import { FAKE_ESTABLISHMENT } from '../establishments/establishments.fixtures';
-import { clone } from '../shared/clone';
-import { FAKE_ID_START } from '../shared/fake-id';
+import { clone, FAKE_ID_START } from '../shared/fake';
 import { type Page, paginate } from '../shared/pagination';
 import { RevgasNotFoundError } from '../shared/revgas.errors';
 import type { ListSalesQuery, SalesApi } from './sales.api';

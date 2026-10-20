@@ -1,5 +1,5 @@
 import { FAKE_ESTABLISHMENT } from '../establishments/establishments.fixtures';
-import { FAKE_ID_START } from '../shared/fake-id';
+import { FAKE_ID_START } from '../shared/fake';
 import type { RevgasProduct } from './products.schemas';
 
 export const FAKE_PRODUCTS: RevgasProduct[] = [

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FAKE_CUSTOMERS } from './customers/customers.fixtures';
 import { FakeRevgasClient } from './fake-revgas.client';
 import { FAKE_PRODUCTS } from './products/products.fixtures';
-import { FAKE_ID_START } from './shared/fake-id';
+import { FAKE_ID_START } from './shared/fake';
 
 describe('FakeRevgasClient', () => {
   it('ownsSale/ownsCustomer verdadeiros só para ids >= FAKE_ID_START criados ou semeados', async () => {

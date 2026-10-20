@@ -17,8 +17,9 @@ Um diretório por módulo da API RevGás, mais `shared/` com o que é comum. Cad
 ```
 src/integrations/revgas/
   shared/            revgas-http (transporte), mask, revgas.errors, revgas.config,
-                     pagination, open-enum, validation, clone, fake-id
+                     pagination, open-enum, validation, fake (FAKE_ID_START + clone, apoio ao simulador)
   establishments/    products/    deals/    payment-types/    customers/    sales/
+  testing/           helpers só de teste (http.testing.ts: transporte com fetch falso); fora do build
   revgas.client.ts          interface RevgasClient (composição dos módulos) e token REVGAS_CLIENT
   http-revgas.client.ts     createHttpRevgasClient(http, establishmentId)
   fake-revgas.client.ts     FakeRevgasClient (compõe os fakes; ownsSale/ownsCustomer)

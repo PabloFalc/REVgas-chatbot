@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FAKE_ID_START } from '../shared/fake-id';
+import { FAKE_ID_START } from '../shared/fake';
 import {
   RevgasDuplicateError,
   RevgasNotFoundError,

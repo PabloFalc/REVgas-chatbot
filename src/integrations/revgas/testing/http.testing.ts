@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { RevgasHttp } from './revgas-http';
+import { RevgasHttp } from '../shared/revgas-http';
 
 const silentLogger = { info: () => undefined, warn: () => undefined };
 

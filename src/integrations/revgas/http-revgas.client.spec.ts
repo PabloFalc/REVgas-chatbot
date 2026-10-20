@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHttpRevgasClient } from './http-revgas.client';
-import { pagination, setupHttp } from './shared/revgas-http.testing';
+import { pagination, setupHttp } from './testing/http.testing';
 
 describe('createHttpRevgasClient', () => {
   it('liga cada módulo ao establishment_id configurado', async () => {

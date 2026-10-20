@@ -8,7 +8,7 @@ import { ProductsFake } from './products/products.fake';
 import type { RevgasClient } from './revgas.client';
 import { SalesFake } from './sales/sales.fake';
 
-export { FAKE_ID_START } from './shared/fake-id';
+export { FAKE_ID_START } from './shared/fake';
 
 export type FakeRevgasOptions = {
   now?: () => number;
