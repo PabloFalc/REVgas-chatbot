@@ -27,7 +27,8 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --reporter=verbose",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
-    "revgas:check": "vitest run --config vitest.config.live.ts"
+    "revgas:check": "vitest run --config vitest.config.live.ts scripts/revgas.live-check.spec.ts",
+    "llm:check": "vitest run --config vitest.config.live.ts scripts/llm.live-check.spec.ts"
   },
   "dependencies": {
     "@fastify/compress": "^8.3.1",
