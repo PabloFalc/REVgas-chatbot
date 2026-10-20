@@ -85,10 +85,14 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
-| `REVGAS_API_URL` | Não (por enquanto) | vazio = não definida | URL base da API pública do ERP RevGás. Validada como URL quando preenchida. |
-| `REVGAS_API_KEY` | Não (por enquanto) | vazio = não definida | API Key solicitada ao suporte da RevGás. **Fica só no servidor** (RNF02): nunca vai para o front, para o prompt da IA nem para logs. Vazar = qualquer um cria/consulta vendas no ERP da revenda. |
+| `REVGAS_MODE` | Não | vazio = automático | `live`, `hybrid` ou `fake`. Vazio: `hybrid` se houver `REVGAS_API_KEY`, senão `fake`. Valor fora da lista derruba o boot. `fake` em produção = demo (dados simulados, nada vai ao ERP) e gera aviso. |
+| `REVGAS_API_URL` | Não | `https://api.revgas.com/v1` | URL base da API pública do ERP RevGás. Vazio usa o default; validada como URL. |
+| `REVGAS_API_KEY` | Obrigatória em `live`/`hybrid` | vazio = não definida | API Key solicitada ao suporte da RevGás. **Fica só no servidor** (RNF02): nunca vai para o front, para o prompt da IA nem para logs. Vazar = qualquer um cria/consulta vendas no ERP da revenda. Sem ela nesses modos, `resolveRevgasConfig` lança erro. |
+| `REVGAS_ESTABLISHMENT_ID` | Obrigatória em `live`/`hybrid` | vazio = não definida | ID do estabelecimento (revenda) no ERP, numérico inteiro positivo. Sem ele nesses modos, `resolveRevgasConfig` lança erro; valor não numérico derruba o boot. |
+| `REVGAS_TIMEOUT_MS` | Não | `10000` | Timeout de cada chamada à API. Muito baixo = falsos erros; muito alto = cliente espera no WhatsApp. |
+| `REVGAS_MIN_INTERVAL_MS` | Não | `1100` | Intervalo mínimo entre chamadas à API, para respeitar o limite de requisições do ERP. Menor que o limite = respostas 429. |
 
-> Ambas viram obrigatórias quando o cliente `lib/revgas` for implementado.
+> A chave e o estabelecimento só são exigidos em `live`/`hybrid` (checagem em `resolveRevgasConfig`, não no schema global), então o app sobe em `fake` sem nada configurado.
 
 ## WhatsApp e LLM
 
@@ -147,7 +151,7 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 - [ ] `TRUSTED_PROXY` conforme a topologia (IP/CIDR do proxy/LB; contagem de hops não é aceita)
 - [ ] `DATABASE_URL` do banco gerenciado
 - [ ] `REDIS_PASSWORD` definido e `REDIS_TLS=true` (se gerenciado)
-- [ ] `REVGAS_API_URL` e `REVGAS_API_KEY` via secrets (nunca no repo nem no front)
+- [ ] `REVGAS_API_KEY` (e `REVGAS_ESTABLISHMENT_ID`) via secrets (nunca no repo nem no front)
 - [ ] `DOC_TOKEN` definido (ou doc desativada)
 - [ ] `PRESSURE_MAX_*` calibrados ao limite de memória do container
 
