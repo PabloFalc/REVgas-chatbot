@@ -20,4 +20,13 @@ describe('maskQuery', () => {
   it('mantém os demais campos intactos', () => {
     expect(maskQuery({ page: 2, inactive: false })).toEqual({ page: 2, inactive: false });
   });
+
+  it('omite chaves com valor undefined', () => {
+    expect(maskQuery({ phone: undefined, page: 1 })).toEqual({ page: 1 });
+  });
+
+  it('telefone com menos de 4 dígitos vira ***', () => {
+    expect(maskQuery({ phone: '88' })).toEqual({ phone: '***' });
+    expect(maskQuery({ phone: '' })).toEqual({ phone: '***' });
+  });
 });

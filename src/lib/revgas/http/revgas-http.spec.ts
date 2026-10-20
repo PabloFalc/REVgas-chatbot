@@ -71,6 +71,17 @@ describe('RevgasHttp', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.test/v1/x?page=2&inactive=false');
   });
 
+  it('ignora valores de query vazios', async () => {
+    const { http, fetchMock } = setup([json({ id: 1 })]);
+    await http.request({
+      method: 'GET',
+      path: '/x',
+      query: { phone: '', page: 1 },
+      schema,
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.test/v1/x?page=1');
+  });
+
   it('envia o corpo JSON em POST', async () => {
     const { http, fetchMock } = setup([json({ id: 1 })]);
     await http.request({ method: 'POST', path: '/x', body: { a: 1 }, schema });
@@ -144,7 +155,7 @@ describe('RevgasHttp', () => {
     const { http, fetchMock } = setup([json({}, 503), json({ id: 1 })]);
     await expect(
       http.request({ method: 'POST', path: '/x', body: {}, schema }),
-    ).rejects.toBeInstanceOf(RevgasUnavailableError);
+    ).rejects.toBeInstanceOf(RevgasUnknownOutcomeError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -159,9 +170,57 @@ describe('RevgasHttp', () => {
   it('POST com erro de rede lança RevgasUnknownOutcomeError', async () => {
     const { http, fetchMock } = setup([new TypeError('fetch failed'), json({ id: 1 })]);
     await expect(
+      http.request({ method: 'POST', path: '/x', body: {}, schema }),
+    ).rejects.toBeInstanceOf(RevgasUnknownOutcomeError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('PUT com erro de rede lança RevgasUnknownOutcomeError', async () => {
+    const { http, fetchMock } = setup([new TypeError('fetch failed'), json({ id: 1 })]);
+    await expect(
       http.request({ method: 'PUT', path: '/x', body: {}, schema }),
     ).rejects.toBeInstanceOf(RevgasUnknownOutcomeError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST com 500 ou 504 lança RevgasUnknownOutcomeError sem repetir', async () => {
+    for (const status of [500, 504]) {
+      const { http, fetchMock } = setup([
+        json({ message: 'segredo-do-corpo' }, status),
+        json({ id: 1 }),
+      ]);
+      const error = await http
+        .request({ method: 'POST', path: '/x', body: {}, schema })
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(RevgasUnknownOutcomeError);
+      expect((error as Error).message).not.toContain('segredo-do-corpo');
+      expect((error as Error).message).not.toContain(API_KEY);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('PUT com 502 lança RevgasUnknownOutcomeError', async () => {
+    const { http, fetchMock } = setup([json({}, 502)]);
+    await expect(
+      http.request({ method: 'PUT', path: '/x', body: {}, schema }),
+    ).rejects.toBeInstanceOf(RevgasUnknownOutcomeError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST com 429 lança RevgasUnavailableError sem repetir', async () => {
+    const { http, fetchMock } = setup([json({ message: 'slow' }, 429), json({ id: 1 })]);
+    await expect(
+      http.request({ method: 'POST', path: '/x', body: {}, schema }),
+    ).rejects.toBeInstanceOf(RevgasUnavailableError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('corpo não serializável lança o erro original sem chamar fetch', async () => {
+    const { http, fetchMock } = setup([json({ id: 1 })]);
+    await expect(
+      http.request({ method: 'POST', path: '/x', body: { n: BigInt(1) }, schema }),
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('GET com erro de rede repete', async () => {

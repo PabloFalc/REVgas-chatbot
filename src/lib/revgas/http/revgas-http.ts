@@ -81,12 +81,19 @@ export class RevgasHttp {
     const retryable = req.method === 'GET';
     const maxAttempts = retryable ? this.maxRetries + 1 : 1;
 
+    const body = req.body === undefined ? undefined : JSON.stringify(req.body);
+
     for (let attempt = 1; ; attempt++) {
-      const outcome = await this.attempt(req, attempt);
+      const outcome = await this.attempt(req, attempt, body);
 
       if (outcome.kind === 'response') {
         if (outcome.ok) {
           return this.parse(req.schema, outcome.body, outcome.status);
+        }
+        if (!retryable && outcome.status >= 500) {
+          throw new RevgasUnknownOutcomeError(
+            'RevGás server error on a write; the operation outcome is unknown',
+          );
         }
         const error = mapRevgasError(outcome.status, outcome.body);
         if (retryable && attempt < maxAttempts && isRetryableStatus(outcome.status, outcome.body)) {
@@ -132,6 +139,7 @@ export class RevgasHttp {
   private async attempt<S extends z.ZodType>(
     req: RevgasRequest<S>,
     attempt: number,
+    body: string | undefined,
   ): Promise<
     | { kind: 'response'; ok: boolean; status: number; body: unknown }
     | { kind: 'failure'; timedOut: boolean }
@@ -150,10 +158,10 @@ export class RevgasHttp {
       const response = await this.fetchFn(this.buildUrl(req), {
         method: req.method,
         headers: { Authorization: this.apiKey, 'Content-Type': 'application/json' },
-        body: req.body === undefined ? undefined : JSON.stringify(req.body),
+        body,
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-      const body = parseBody(await response.text());
+      const parsed = parseBody(await response.text());
       const durationMs = this.now() - startedAt;
       const log = { ...logBase, status: response.status, durationMs };
       if (response.ok) {
@@ -161,7 +169,7 @@ export class RevgasHttp {
       } else {
         this.logger.warn(log, 'revgas request failed');
       }
-      return { kind: 'response', ok: response.ok, status: response.status, body };
+      return { kind: 'response', ok: response.ok, status: response.status, body: parsed };
     } catch (error) {
       const timedOut = isTimeout(error);
       this.logger.warn(
@@ -175,7 +183,7 @@ export class RevgasHttp {
   private buildUrl<S extends z.ZodType>(req: RevgasRequest<S>): string {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(req.query ?? {})) {
-      if (value !== undefined) {
+      if (value !== undefined && value !== '') {
         params.append(key, String(value));
       }
     }
