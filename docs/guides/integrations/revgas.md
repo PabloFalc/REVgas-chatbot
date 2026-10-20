@@ -1,7 +1,7 @@
-# Biblioteca RevGás (`src/lib/revgas`)
+# Integração RevGás (`src/integrations/revgas`)
 
 Cliente da API pública do ERP RevGás. Isola o chatbot do ERP: o domínio fala com a interface
-`RevgasClient` e não sabe se do outro lado há a API real ou um simulador. A lib não conhece o
+`RevgasClient` e não sabe se do outro lado há a API real ou um simulador. A integração não conhece o
 domínio (só fala com o serviço externo e valida respostas com Zod) e nunca importa `src/modules/`.
 
 Contexto do produto: `docs/project/specs.md` (seção da integração RevGás) e o design em
@@ -9,16 +9,36 @@ Contexto do produto: `docs/project/specs.md` (seção da integração RevGás) e
 
 ## Estrutura
 
-- `revgas.client.ts` — interface `RevgasClient` e token `REVGAS_CLIENT` (injeção)
-- `revgas.schemas.ts` — schemas Zod tolerantes (`z.looseObject`, campos opcionais exceto `id`;
-  `payment_type` e `status` aceitam string desconhecida)
-- `revgas.errors.ts` — hierarquia `RevgasError` e `mapRevgasError`
-- `revgas.config.ts` — `resolveRevgasConfig(env)`
-- `http/` — `RevgasHttp` (transporte), `HttpRevgasClient` (rotas reais), `mask.ts` (logs mascarados)
-- `fake/` — `FakeRevgasClient` em memória, com seeds e fixtures anonimizadas
-- `hybrid-revgas.client.ts` — roteia cada operação para o real ou o simulador
-- `revgas.factory.ts` — `createRevgasClient(config, deps)`
-- `revgas.module.ts` — `RevgasModule`, que provê `REVGAS_CLIENT` conforme o modo
+Um diretório por módulo da API RevGás, mais `shared/` com o que é comum. Cada módulo tem
+`<m>.schemas.ts` (Zod tolerante: `z.looseObject`, campos opcionais exceto `id`; `payment_type` e
+`status` aceitam string desconhecida), `<m>.api.ts` (interface e tipos de query),
+`<m>.http.ts` (rotas reais), `<m>.fake.ts` (simulador) e `<m>.fixtures.ts` quando o simulador tem dados.
+
+```
+src/integrations/revgas/
+  shared/            revgas-http (transporte), mask, revgas.errors, revgas.config,
+                     pagination, open-enum, validation, clone, fake-id
+  establishments/    products/    deals/    payment-types/    customers/    sales/
+  revgas.client.ts          interface RevgasClient (composição dos módulos) e token REVGAS_CLIENT
+  http-revgas.client.ts     createHttpRevgasClient(http, establishmentId)
+  fake-revgas.client.ts     FakeRevgasClient (compõe os fakes; ownsSale/ownsCustomer)
+  hybrid-revgas.client.ts   HybridRevgasClient (roteamento por módulo/operação)
+  revgas.factory.ts         createRevgasClient(config, deps)
+  revgas.module.ts          RevgasModule, que provê REVGAS_CLIENT conforme o modo
+```
+
+## Contrato
+
+As chamadas são agrupadas por módulo da API:
+
+```ts
+revgas.establishments.list()
+revgas.products.list(query?)
+revgas.deals.list(query?) / revgas.deals.listAll(query?)
+revgas.paymentTypes.list()
+revgas.customers.findByPhone(phone) / get(id) / create(input) / update(id, input)
+revgas.sales.create(input) / get(id) / list(query?) / cancel(id, motiveCancelSaleId?)
+```
 
 ## Modos (`REVGAS_MODE`)
 
@@ -36,12 +56,12 @@ modo diferente de `live` gera um aviso no log no boot. Variáveis: ver
 
 | Operação | Destino |
 | --- | --- |
-| `listEstablishments`, `listProducts`, `listDeals`, `listAllDeals` | real |
-| `listPaymentTypes` | simulado (derivado das negociações reais) |
-| `findCustomersByPhone`, `getCustomer`, `createCustomer`, `updateCustomer` | simulado |
-| `createSale`, `cancelSale` | simulado |
-| `getSale` | simulado se o id pertence ao simulador, senão real |
-| `listSales` | simulado se o `customer_id` pertence ao simulador, senão real |
+| `establishments.list`, `products.list`, `deals.list`, `deals.listAll` | real |
+| `paymentTypes.list` | simulado (derivado das negociações reais) |
+| `customers.findByPhone`, `customers.get`, `customers.create`, `customers.update` | simulado |
+| `sales.create`, `sales.cancel` | simulado |
+| `sales.get` | simulado se o id pertence ao simulador, senão real |
+| `sales.list` | simulado se o `customer_id` pertence ao simulador, senão real |
 
 Os ids do simulador ficam numa faixa própria, para não colidir com ids reais.
 
@@ -59,8 +79,8 @@ Existe um único estabelecimento (id 2580). Por isso o modo padrão com chave é
 
 1. Confirmar com `pnpm revgas:check` (ou uma chamada manual) que a operação deixou de dar 403.
 2. Se todas as operações usadas pelo fluxo estiverem liberadas, usar `REVGAS_MODE=live` (troca da API inteira, só configuração).
-3. Se só algumas forem liberadas, trocar uma operação isolada exige mudança de código: editar o roteamento em
-   `HybridRevgasClient` (mover a operação de `fake` para `live`; mudança pequena, com teste) (e ajustar a tabela acima e os testes em `hybrid-revgas.client.spec.ts`).
+3. Se só algumas forem liberadas, passar um módulo ou operação para real exige mudança de código: editar o roteamento em
+   `HybridRevgasClient` (mover o módulo/operação de `fake` para `live`; mudança pequena, com teste), ajustar a tabela acima e os testes em `hybrid-revgas.client.spec.ts`.
 4. Antes de ligar `live` com vendas reais, testar `createSale` em um ambiente controlado.
 
 ## Erros
@@ -85,20 +105,20 @@ Todos estendem `RevgasError` (campos `kind` e `status`).
 - Fila serial com intervalo mínimo entre chamadas (`REVGAS_MIN_INTERVAL_MS`, 1 req/s) e timeout
   por chamada (`REVGAS_TIMEOUT_MS`).
 - GET é repetido com backoff exponencial em 429, 5xx, lock e falhas de rede.
-- `listSales({ status: 'WARNING' })` vai para a API como `WARN` (o filtro usa `WARN`, as respostas trazem `WARNING`).
-- `findCustomersByPhone` devolve `[]` sem chamar a API se o telefone tiver menos de 10 ou mais de 13 dígitos.
+- `sales.list({ status: 'WARNING' })` vai para a API como `WARN` (o filtro usa `WARN`, as respostas trazem `WARNING`).
+- `customers.findByPhone` devolve `[]` sem chamar a API se o telefone tiver menos de 10 ou mais de 13 dígitos.
 - Logs nunca levam corpo de request/response; a query é mascarada (telefone, CPF, nome,
   logradouro). A chave nunca aparece em log, erro ou resposta.
 
 ## POST nunca é repetido
 
 `POST` e `PUT` não têm retry automático: repetir poderia duplicar uma venda. Se a chamada expira
-ou a rede cai, ou o servidor responde 5xx, a lib lança `RevgasUnknownOutcomeError` (a mensagem
+ou a rede cai, ou o servidor responde 5xx, a integração lança `RevgasUnknownOutcomeError` (a mensagem
 não leva chave nem corpo). 429 e lock 409 em POST/PUT viram `RevgasUnavailableError`, também sem
 retry. Quem chama deve:
 
 1. Não reenviar a venda às cegas.
-2. Conferir com `listSales` (filtrando por `customer_id`, `from`/`to`) se a venda foi criada.
+2. Conferir com `sales.list` (filtrando por `customer_id`, `from`/`to`) se a venda foi criada.
 3. Só então reenviar (se não existir) ou seguir com a venda encontrada.
 
 ## Check manual contra a API real

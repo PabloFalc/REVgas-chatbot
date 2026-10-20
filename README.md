@@ -81,7 +81,7 @@ tests/         e2e (Vitest + supertest) e helpers
 ```
 
 Planejado (ver [specs.md](./docs/project/specs.md#estrutura-de-pastas)): `modules/` ganha
-`conversation`, `customer`, `catalog`, `order`, `assistant`, `handoff` e `metrics`; `lib/` reúne
+`conversation`, `customer`, `catalog`, `order`, `assistant`, `handoff` e `metrics`; `integrations/` reúne
 os clientes externos (`revgas`, `whatsapp`, `llm`).
 
 ---

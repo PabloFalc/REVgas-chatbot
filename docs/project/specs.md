@@ -26,7 +26,7 @@ Três camadas:
 
 - **`modules/`**: os domínios da aplicação. Cada domínio tem seus controllers, services e repositórios.
 - **`infra/`**: conexão com cache e banco de dados.
-- **`lib/`**: clientes de serviços de terceiros que a aplicação consome (API RevGás, WhatsApp e LLM).
+- **`integrations/`**: clientes de serviços de terceiros que a aplicação consome (API RevGás, WhatsApp e LLM).
 
 ```
 src/
@@ -40,7 +40,7 @@ src/
       conversation.states.ts
     customer/               # identificar e cadastrar cliente (RF02, RF03)
       customer.service.ts
-      customer.repository.ts        # API RevGás (via lib/revgas)
+      customer.repository.ts        # API RevGás (via integrations/revgas)
     catalog/                # produtos, preço, estoque e formas de pagamento (RF04, RF06)
     order/                  # resumo, total, idempotência e criação da venda (RF07, RF08, RF09)
       order.service.ts
@@ -51,17 +51,17 @@ src/
   infra/
     cache/                  # Redis (ioredis): estado da conversa com TTL
     database/               # Postgres + Drizzle: client, schema, migrations
-  lib/
+  integrations/
     revgas/                 # cliente HTTP da API RevGás: API Key, retry com backoff, logs mascarados
     whatsapp/               # provedores (Cloud API, Evolution/Z-API) com interface única: texto, lista, botões
     llm/                    # cliente do modelo de IA
 ```
 
 **Regras de dependência:**
-- `modules/` depende de `infra/` e de `lib/`, nunca o contrário.
-- `lib/` não conhece o domínio: só fala com o serviço externo e valida as respostas com Zod.
-- Os services de um módulo não importam SDKs direto (Redis, Drizzle, `lib/`). Esse acesso passa pelos repositórios.
-- Cada cliente de `lib/` tem um mock para os testes (API RevGás, provedor de mensagens e LLM).
+- `modules/` depende de `infra/` e de `integrations/`, nunca o contrário.
+- `integrations/` não conhece o domínio: só fala com o serviço externo e valida as respostas com Zod.
+- Os services de um módulo não importam SDKs direto (Redis, Drizzle, `integrations/`). Esse acesso passa pelos repositórios.
+- Cada cliente de `integrations/` tem um mock para os testes (API RevGás, provedor de mensagens e LLM).
 - `conversation.service` não faz I/O: recebe o estado e a mensagem, devolve o novo estado e as respostas. Assim o fluxo inteiro pode ser testado com Vitest, sem WhatsApp e sem IA (RNF08).
 - Os schemas Zod ficam no módulo que os usa (`*.schema.ts`). As tabelas Drizzle ficam em `infra/database/schema`.
 
@@ -96,7 +96,7 @@ Responde a partir de um FAQ curto (poucas dezenas de perguntas) embutido no prom
 
 **Autenticação (confirmada):** API Key solicitada ao suporte da RevGás, guardada em variável de ambiente e usada só no backend. Ref.: [Autenticação e Permissão](https://revgas.stoplight.io/docs/revgas-api/en39g0vb0qwsb-autenticacao-e-permissao).
 
-**Ambiente:** só produção. A homologação existe na doc, mas está marcada como "Não utilizar". Toda venda criada com a chave real é uma venda de verdade; desenvolvimento e testes usam o mock de `lib/revgas`.
+**Ambiente:** só produção. A homologação existe na doc, mas está marcada como "Não utilizar". Toda venda criada com a chave real é uma venda de verdade; desenvolvimento e testes usam o mock de `integrations/revgas`.
 
 **Operações necessárias** (conferidas na spec em 2026-10-19; rotas e campos detalhados na spec privada, `docs/project/private/`, fora do git):
 
@@ -123,7 +123,7 @@ A lista de formas de pagamento aceitas pode ser derivada dos acordos. Os dados r
 
 O catálogo da RevGás mistura gás, água, vasilhames (casco vendido à parte), acessórios e itens de teste: o bot oferece só uma lista curada de produtos.
 
-**Permissões da chave:** a chave atual é **só de leitura**: lê estabelecimentos, produtos, acordos e vendas, recebe 403 em clientes e formas de pagamento e não tem permissão para criar venda. Não há outra chave disponível. Até a RevGás liberar, identificação, cadastro e criação de venda (RF02, RF03, RF08) são desenvolvidos e demonstrados contra o mock de `lib/revgas`, seguindo a spec; só as leituras são conferidas na API real.
+**Permissões da chave:** a chave atual é **só de leitura**: lê estabelecimentos, produtos, acordos e vendas, recebe 403 em clientes e formas de pagamento e não tem permissão para criar venda. Não há outra chave disponível. Até a RevGás liberar, identificação, cadastro e criação de venda (RF02, RF03, RF08) são desenvolvidos e demonstrados contra o mock de `integrations/revgas`, seguindo a spec; só as leituras são conferidas na API real.
 
 ### Restrições da API
 

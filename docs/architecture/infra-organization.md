@@ -10,7 +10,7 @@ com fronteiras explícitas (`imports`/`exports`).
 
 > Pela [especificação](../project/specs.md), `infra/` vai ganhar o estado da conversa (Redis com
 > TTL) e as tabelas do chatbot (histórico, vendas, handoffs, métricas). Clientes de serviços
-> externos (API RevGás, WhatsApp, LLM) **não** ficam aqui — vão para `src/lib/`.
+> externos (API RevGás, WhatsApp, LLM) **não** ficam aqui — vão para `src/integrations/`.
 
 > Referência viva. A seção [Health checks](#health-checks--como-funcionam-e-como-adicionar-um-indicador)
 > é um guia prático; a seção [Recomendações de evolução](#recomendações-de-evolução) lista
