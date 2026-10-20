@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import {
   LlmError,
   LlmRejectedError,
@@ -18,7 +17,7 @@ import {
   type LlmTextResult,
   type LlmUsage,
 } from './llm.schemas';
-import { parseLlmObject } from './shared/llm-output';
+import { parseLlmObject, toResponseJsonSchema } from './shared/llm-output';
 
 export type OpenAiCompatibleOptions = {
   baseUrl: string;
@@ -73,10 +72,16 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
   }
 
   async generateObject<T>(request: LlmObjectRequest<T>): Promise<LlmObjectResult<T>> {
-    const { $schema: _ignored, ...schema } = z.toJSONSchema(request.schema) as Record<
-      string,
-      unknown
-    >;
+    let schema: Record<string, unknown>;
+    try {
+      schema = toResponseJsonSchema(request.schema);
+    } catch (error) {
+      this.logger.warn(
+        { component: 'llm', operation: request.operation, model: this.model, error: 'rejected' },
+        'llm request failed',
+      );
+      throw error;
+    }
     const body = {
       ...this.baseBody(request),
       response_format: {

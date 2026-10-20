@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   LlmInvalidOutputError,
   LlmRateLimitedError,
+  LlmRejectedError,
   LlmUnavailableError,
 } from '../../core/erros/llm/llm.errors';
 import { FakeLlmClient } from './fake-llm.client';
@@ -103,5 +104,15 @@ describe('FakeLlmClient', () => {
     await expect(client.generateText({ operation: 'op', messages })).rejects.toBeInstanceOf(
       LlmUnavailableError,
     );
+  });
+
+  it('generateObject com schema não representável → LlmRejectedError mesmo com objeto na fila', async () => {
+    const client = new FakeLlmClient();
+    client.queueObject({ n: 1 });
+    const transformed = z.object({ n: z.number().transform(value => String(value)) });
+
+    await expect(
+      client.generateObject({ operation: 'op', messages, schema: transformed, schemaName: 'X' }),
+    ).rejects.toBeInstanceOf(LlmRejectedError);
   });
 });

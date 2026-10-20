@@ -6,7 +6,6 @@ import {
   LlmRejectedError,
   LlmUnauthorizedError,
   LlmUnavailableError,
-  llmErrorDetails,
   mapLlmError,
 } from './llm.errors';
 
@@ -60,44 +59,31 @@ describe('mapLlmError', () => {
     }
   });
 
-  it('lê a mensagem no formato objeto { error: { message } }', () => {
-    expect(mapLlmError(400, { error: { message: 'modelo inexistente' } }).message).toBe(
-      'modelo inexistente',
-    );
+  it('mensagem só com status e reason, sem o texto do provedor', () => {
+    const error = mapLlmError(400, {
+      error: { message: 'segredo: Moro na Rua X', status: 'INVALID_ARGUMENT' },
+    });
+    expect(error.message).toBe('LLM respondeu 400 (INVALID_ARGUMENT)');
+    expect(error.message).not.toContain('segredo');
   });
 
-  it('lê a mensagem no formato array [{ error: { message } }]', () => {
-    expect(mapLlmError(400, [{ error: { message: 'modelo inexistente' } }]).message).toBe(
-      'modelo inexistente',
-    );
-  });
-
-  it('sem mensagem no corpo → "LLM respondeu {status}"', () => {
-    expect(mapLlmError(502, null).message).toBe('LLM respondeu 502');
-    expect(mapLlmError(404, { error: {} }).message).toBe('LLM respondeu 404');
-  });
-
-  it('trunca mensagens com mais de 200 caracteres', () => {
-    expect(
-      mapLlmError(400, { error: { message: 'x'.repeat(500) } }).message.length,
-    ).toBeLessThanOrEqual(200);
-  });
-});
-
-describe('llmErrorDetails', () => {
   it('usa error.status como reason quando não há details', () => {
-    expect(llmErrorDetails({ error: { status: 'RESOURCE_EXHAUSTED' } }).reason).toBe(
-      'RESOURCE_EXHAUSTED',
+    expect(mapLlmError(429, { error: { status: 'RESOURCE_EXHAUSTED' } }).message).toBe(
+      'LLM respondeu 429 (RESOURCE_EXHAUSTED)',
     );
   });
 
-  it('prefere details[].reason e ignora corpo inválido', () => {
+  it('lê o reason no formato array [{ error }]', () => {
     expect(
-      llmErrorDetails({ error: { status: 'X', details: [{}, { reason: 'API_KEY_INVALID' }] } })
-        .reason,
-    ).toBe('API_KEY_INVALID');
-    expect(llmErrorDetails('texto')).toEqual({});
-    expect(llmErrorDetails([])).toEqual({});
+      mapLlmError(400, [{ error: { message: 'x', details: [{ reason: 'BAD' }] } }]).message,
+    ).toBe('LLM respondeu 400 (BAD)');
+  });
+
+  it('sem reason → "LLM respondeu {status}"', () => {
+    expect(mapLlmError(502, null).message).toBe('LLM respondeu 502');
+    expect(mapLlmError(404, { error: { message: 'texto do provedor' } }).message).toBe(
+      'LLM respondeu 404',
+    );
   });
 });
 

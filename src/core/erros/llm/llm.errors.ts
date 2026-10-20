@@ -1,5 +1,4 @@
 import { isRecord } from '../../../utils/guards';
-import { truncate } from '../../../utils/text';
 
 export type LlmErrorKind =
   | 'unauthorized'
@@ -65,8 +64,6 @@ export class LlmInvalidOutputError extends LlmError {
   }
 }
 
-const MAX_MESSAGE_LENGTH = 200;
-
 function findReason(error: Record<string, unknown>): string | undefined {
   if (Array.isArray(error.details)) {
     for (const detail of error.details) {
@@ -78,21 +75,17 @@ function findReason(error: Record<string, unknown>): string | undefined {
   return typeof error.status === 'string' && error.status ? error.status : undefined;
 }
 
-export function llmErrorDetails(body: unknown): { message?: string; reason?: string } {
+function llmErrorReason(body: unknown): string | undefined {
   const root = Array.isArray(body) ? body[0] : body;
   if (!isRecord(root) || !isRecord(root.error)) {
-    return {};
+    return undefined;
   }
-  const { message } = root.error;
-  return {
-    message: typeof message === 'string' && message ? message : undefined,
-    reason: findReason(root.error),
-  };
+  return findReason(root.error);
 }
 
 export function mapLlmError(status: number, body: unknown): LlmError {
-  const { message, reason } = llmErrorDetails(body);
-  const text = truncate(message ?? `LLM respondeu ${status}`, MAX_MESSAGE_LENGTH - 1);
+  const reason = llmErrorReason(body);
+  const text = reason ? `LLM respondeu ${status} (${reason})` : `LLM respondeu ${status}`;
 
   if (status === 401 || status === 403 || (status === 400 && reason === 'API_KEY_INVALID')) {
     return new LlmUnauthorizedError(text, status);

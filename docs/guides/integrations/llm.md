@@ -135,8 +135,10 @@ Regra para quem chama:
 - **Qualquer `LlmError`**: o fluxo não pode travar, volta para os botões.
 - **`LlmInvalidOutputError`**: a IA respondeu, mas fora do schema. Não se chuta; **pergunta de novo** ao cliente.
 
-A mensagem do erro vem do provedor, truncada em 200 caracteres, e a camada lê tanto o formato
-OpenAI (`{ error: { message } }`) quanto o array que o Gemini às vezes devolve (`[{ error: ... }]`).
+A mensagem do erro tem só status e reason (`LLM respondeu 429 (RESOURCE_EXHAUSTED)`); o texto livre
+do provedor nunca é guardado, porque provedores podem ecoar o conteúdo enviado. A camada lê o reason
+tanto no formato OpenAI (`{ error: ... }`) quanto no array que o Gemini às vezes devolve (`[{ error: ... }]`).
+Schema que o Zod não converte para JSON Schema (`.transform()`, `z.date()`) vira `LlmRejectedError` sem chamar a API.
 Os filtros HTTP globais não conhecem esses erros: o gateway é quem os captura.
 
 ## Testar com `FakeLlmClient`

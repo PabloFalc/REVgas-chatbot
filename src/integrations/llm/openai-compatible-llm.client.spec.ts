@@ -170,6 +170,20 @@ describe('OpenAiCompatibleLlmClient', () => {
     );
   });
 
+  it('generateObject com schema não representável -> LlmRejectedError sem chamar o fetch', async () => {
+    const { client, fetchMock, logger } = setup([{ body: completion('{}') }]);
+    const schema = z.object({ n: z.string().transform(value => value.length) });
+
+    await expect(
+      client.generateObject({ ...objectRequest, schema, schemaName: 'x' }),
+    ).rejects.toBeInstanceOf(LlmRejectedError);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ component: 'llm', operation: 'extract_order', error: 'rejected' }),
+      'llm request failed',
+    );
+  });
+
   it('timeout -> LlmUnavailableError, uma única chamada ao fetch', async () => {
     const timeoutError = new Error('timeout');
     timeoutError.name = 'TimeoutError';

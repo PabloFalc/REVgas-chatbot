@@ -7,7 +7,7 @@ import type {
   LlmTextRequest,
   LlmTextResult,
 } from './llm.schemas';
-import { parseLlmObject, validateLlmObject } from './shared/llm-output';
+import { parseLlmObject, toResponseJsonSchema, validateLlmObject } from './shared/llm-output';
 
 export type FakeLlmReply = { text: string } | { object: unknown } | LlmError;
 
@@ -59,6 +59,7 @@ export class FakeLlmClient implements LlmClient {
 
   async generateObject<T>(request: LlmObjectRequest<T>): Promise<LlmObjectResult<T>> {
     this.record(request, request.schemaName);
+    toResponseJsonSchema(request.schema);
     const reply = await this.nextReply(request);
     const object =
       'text' in reply

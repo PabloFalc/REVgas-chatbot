@@ -1,5 +1,5 @@
-import type { z } from 'zod';
-import { LlmInvalidOutputError } from '../../../core/erros/llm/llm.errors';
+import { z } from 'zod';
+import { LlmInvalidOutputError, LlmRejectedError } from '../../../core/erros/llm/llm.errors';
 
 const FENCE = /^```(?:json)?\s*([\s\S]*?)\s*```$/i;
 
@@ -26,4 +26,13 @@ export function parseLlmObject<T>(content: string, schema: z.ZodType<T>): T {
     throw new LlmInvalidOutputError([{ path: '', message: 'JSON inválido' }]);
   }
   return validateLlmObject(value, schema);
+}
+
+export function toResponseJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  try {
+    const { $schema: _ignored, ...rest } = z.toJSONSchema(schema) as Record<string, unknown>;
+    return rest;
+  } catch {
+    throw new LlmRejectedError('Schema não representável em JSON Schema');
+  }
 }
