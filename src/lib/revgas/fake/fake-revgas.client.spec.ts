@@ -48,6 +48,21 @@ describe('FakeRevgasClient', () => {
     expect(ids[2]).toEqual(ids[0]);
   });
 
+  it('não casa DDDs diferentes com os mesmos dígitos do assinante', async () => {
+    const client = new FakeRevgasClient();
+    expect(await client.findCustomersByPhone('96900000001')).toEqual([]);
+    expect(await client.findCustomersByPhone('5596900000001')).toEqual([]);
+    const created = await client.createCustomer({ name: 'Outro DDD', phones: ['5596900000001'] });
+    expect(created.id).not.toBe(FAKE_CUSTOMERS[0].id);
+  });
+
+  it('casa número de 10 dígitos com o de 11 dígitos de mesmo DDD e final', async () => {
+    const client = new FakeRevgasClient();
+    const found = await client.findCustomersByPhone('8600000001');
+    expect(found.map(customer => customer.id)).toEqual([FAKE_CUSTOMERS[0].id]);
+    expect(await client.findCustomersByPhone('9600000001')).toEqual([]);
+  });
+
   it('cadastra cliente e acha pelo telefone', async () => {
     const client = new FakeRevgasClient();
     const created = await client.createCustomer({ name: 'Novo', phones: ['5586988887777'] });

@@ -47,13 +47,22 @@ const digits = (value: string): string => value.replace(/\D/g, '');
 
 const nationalNumber = (value: string): string => {
   const only = digits(value);
-  return only.length >= 12 && only.startsWith('55') ? only.slice(2) : only;
+  return (only.length === 12 || only.length === 13) && only.startsWith('55') ? only.slice(2) : only;
 };
 
 const samePhone = (a: string, b: string): boolean => {
   const left = nationalNumber(a);
   const right = nationalNumber(b);
-  return left.length >= 10 && right.length >= 10 && left.slice(-10) === right.slice(-10);
+  if (left.length === right.length) {
+    return left.length >= 10 && left.length <= 11 && left === right;
+  }
+  const lengths = [left.length, right.length].sort();
+  return (
+    lengths[0] === 10 &&
+    lengths[1] === 11 &&
+    left.slice(0, 2) === right.slice(0, 2) &&
+    left.slice(-8) === right.slice(-8)
+  );
 };
 
 function paginate<T>(items: T[], query: PageQuery = {}): Page<T> {
