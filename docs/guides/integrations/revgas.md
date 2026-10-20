@@ -16,7 +16,7 @@ Um diretório por módulo da API RevGás, mais `shared/` com o que é comum. Cad
 
 ```
 src/integrations/revgas/
-  shared/            revgas-http (transporte), mask, revgas.errors, revgas.config,
+  shared/            revgas-http (transporte), mask (maskQuery, usa src/utils/mask), revgas.config,
                      pagination, open-enum, validation, fake (FAKE_ID_START + clone, apoio ao simulador)
   establishments/    products/    deals/    payment-types/    customers/    sales/
   testing/           helpers só de teste (http.testing.ts: transporte com fetch falso); fora do build
@@ -86,6 +86,7 @@ Existe um único estabelecimento (id 2580). Por isso o modo padrão com chave é
 
 ## Erros
 
+Ficam em `src/core/erros/revgas/revgas.errors.ts` (com `mapRevgasError` e `isRetryableStatus`).
 Todos estendem `RevgasError` (campos `kind` e `status`).
 
 | Erro | `kind` | Quando aparece |

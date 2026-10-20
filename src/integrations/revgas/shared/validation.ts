@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { RevgasValidationError } from './revgas.errors';
+import { RevgasValidationError } from '../../../core/erros/revgas/revgas.errors';
 
 export function parseInput<S extends z.ZodType>(
   schema: S,

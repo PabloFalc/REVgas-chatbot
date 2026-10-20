@@ -1,12 +1,14 @@
 import type { z } from 'zod';
-import { maskQuery } from './mask';
 import {
   isRetryableStatus,
   mapRevgasError,
   RevgasResponseError,
   RevgasUnavailableError,
   RevgasUnknownOutcomeError,
-} from './revgas.errors';
+} from '../../../core/erros/revgas/revgas.errors';
+import { isTimeoutError } from '../../../utils/guards';
+import { parseJsonOrText } from '../../../utils/parse-json';
+import { maskQuery } from './mask';
 
 export type RevgasLogger = {
   info(obj: object, msg: string): void;
@@ -38,18 +40,6 @@ const BACKOFF_BASE_MS = 500;
 
 function defaultSleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function parseBody(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function isTimeout(error: unknown): boolean {
-  return error instanceof Error && error.name === 'TimeoutError';
 }
 
 export class RevgasHttp {
@@ -161,7 +151,7 @@ export class RevgasHttp {
         body,
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-      const parsed = parseBody(await response.text());
+      const parsed = parseJsonOrText(await response.text());
       const durationMs = this.now() - startedAt;
       const log = { ...logBase, status: response.status, durationMs };
       if (response.ok) {
@@ -171,7 +161,7 @@ export class RevgasHttp {
       }
       return { kind: 'response', ok: response.ok, status: response.status, body: parsed };
     } catch (error) {
-      const timedOut = isTimeout(error);
+      const timedOut = isTimeoutError(error);
       this.logger.warn(
         { ...logBase, durationMs: this.now() - startedAt, error: timedOut ? 'timeout' : 'network' },
         'revgas request failed',

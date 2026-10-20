@@ -1,3 +1,5 @@
+import { isRecord } from '../../../utils/guards';
+
 export type RevgasErrorKind =
   | 'unauthorized'
   | 'blocked'
@@ -92,10 +94,6 @@ export class RevgasUnknownOutcomeError extends RevgasError {
   constructor(message: string) {
     super('unknown_outcome', message);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function bodyMessage(body: unknown): string | undefined {

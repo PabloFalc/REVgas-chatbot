@@ -1,8 +1,8 @@
+import { RevgasNotFoundError } from '../../../core/erros/revgas/revgas.errors';
 import type { CustomersFake } from '../customers/customers.fake';
 import { FAKE_ESTABLISHMENT } from '../establishments/establishments.fixtures';
 import { clone, FAKE_ID_START } from '../shared/fake';
 import { type Page, paginate } from '../shared/pagination';
-import { RevgasNotFoundError } from '../shared/revgas.errors';
 import type { ListSalesQuery, SalesApi } from './sales.api';
 import { parseSaleInput, type RevgasSale, type RevgasSaleInput } from './sales.schemas';
 

@@ -6,7 +6,7 @@ import {
   RevgasUnavailableError,
   RevgasUnknownOutcomeError,
   RevgasValidationError,
-} from './revgas.errors';
+} from '../../../core/erros/revgas/revgas.errors';
 import { RevgasHttp } from './revgas-http';
 
 const API_KEY = 'secret-key-123';

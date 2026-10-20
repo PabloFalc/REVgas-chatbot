@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { FAKE_ID_START } from '../shared/fake';
 import {
   RevgasDuplicateError,
   RevgasNotFoundError,
   RevgasValidationError,
-} from '../shared/revgas.errors';
+} from '../../../core/erros/revgas/revgas.errors';
+import { FAKE_ID_START } from '../shared/fake';
 import { CustomersFake } from './customers.fake';
 import { FAKE_CUSTOMERS } from './customers.fixtures';
 
