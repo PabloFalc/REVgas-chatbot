@@ -36,6 +36,7 @@ src/
   core/        cross-cutting — guards, filters, interceptors, pipes, decorators, errors,
                services/email (EmailService + Resend)
   infra/       database (Drizzle + schemas), cache (Redis), health
+  lib/         revgas/ — RevGás ERP client (live/hybrid/fake modes, mock included)
   modules/     domain — auth/ (on standby, not wired in routes.module.ts)
 ```
 
@@ -99,6 +100,7 @@ Index: `docs/README.md`. Area guides (read before touching the matching area):
 
 - `docs/project/specs.md` — technical spec (stack, planned structure, AI contracts, RevGás API integration)
 - `docs/guides/modules/auth.md` — auth (standby + how to turn on), bearer-only, `AuthGuard`, email flows, routes
+- `docs/guides/lib/revgas.md` — RevGás client (`src/lib/revgas`): modes, hybrid routing, key permissions, errors, never retry POST, `pnpm revgas:check`
 - `docs/guides/services/email-service.md` — `EmailService` (Resend), standby, log-only in dev/test
 - `docs/guides/conventions/api-doc.md` — the `@ApiDoc` decorator
 - `docs/guides/conventions/environment.md` — env vars (purpose, requiredness, defaults, consequences)
