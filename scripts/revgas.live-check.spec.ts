@@ -1,14 +1,19 @@
+import { beforeAll, describe, expect, it } from 'vitest';
 import { env } from '../src/config/env';
-import { HttpRevgasClient } from '../src/lib/revgas/http/http-revgas.client';
-import { RevgasHttp } from '../src/lib/revgas/http/revgas-http';
-import { type RevgasConfig, resolveRevgasConfig } from '../src/lib/revgas/revgas.config';
-import { RevgasForbiddenError } from '../src/lib/revgas/revgas.errors';
+import { createHttpRevgasClient } from '../src/integrations/revgas/http-revgas.client';
+import type { RevgasClient } from '../src/integrations/revgas/revgas.client';
+import {
+  type RevgasConfig,
+  resolveRevgasConfig,
+} from '../src/integrations/revgas/shared/revgas.config';
+import { RevgasForbiddenError } from '../src/integrations/revgas/shared/revgas.errors';
+import { RevgasHttp } from '../src/integrations/revgas/shared/revgas-http';
 
 const DEFAULT_ESTABLISHMENT_ID = 2580;
 
 describe.skipIf(!env.REVGAS_API_KEY)('RevGás API real (somente leitura)', () => {
   let config: RevgasConfig;
-  let client: HttpRevgasClient;
+  let revgas: RevgasClient;
 
   beforeAll(() => {
     config = resolveRevgasConfig({
@@ -23,21 +28,21 @@ describe.skipIf(!env.REVGAS_API_KEY)('RevGás API real (somente leitura)', () =>
       minIntervalMs: config.minIntervalMs,
       logger: { info: () => undefined, warn: () => undefined },
     });
-    client = new HttpRevgasClient(http, config.establishmentId ?? DEFAULT_ESTABLISHMENT_ID);
+    revgas = createHttpRevgasClient(http, config.establishmentId ?? DEFAULT_ESTABLISHMENT_ID);
   });
 
   it('lista estabelecimentos incluindo o configurado', async () => {
-    const page = await client.listEstablishments();
+    const page = await revgas.establishments.list();
     expect(page.data.map(item => item.id)).toContain(config.establishmentId);
   });
 
   it('lista produtos', async () => {
-    const page = await client.listProducts();
+    const page = await revgas.products.list();
     expect(page.data.length).toBeGreaterThan(0);
   });
 
   it('lista negociações com forma de pagamento', async () => {
-    const page = await client.listDeals({ page_size: 100 });
+    const page = await revgas.deals.list({ page_size: 100 });
     expect(page.data.length).toBeGreaterThan(0);
     for (const deal of page.data) {
       expect(deal.payment_type).toBeDefined();
@@ -48,17 +53,17 @@ describe.skipIf(!env.REVGAS_API_KEY)('RevGás API real (somente leitura)', () =>
   });
 
   it('lista vendas', async () => {
-    const page = await client.listSales({ page_size: 5 });
+    const page = await revgas.sales.list({ page_size: 5 });
     expect(Array.isArray(page.data)).toBe(true);
   });
 
   it('clientes exigem permissão que a chave atual não tem', async () => {
-    await expect(client.findCustomersByPhone('11999999999')).rejects.toBeInstanceOf(
+    await expect(revgas.customers.findByPhone('11999999999')).rejects.toBeInstanceOf(
       RevgasForbiddenError,
     );
   });
 
   it('formas de pagamento exigem permissão que a chave atual não tem', async () => {
-    await expect(client.listPaymentTypes()).rejects.toBeInstanceOf(RevgasForbiddenError);
+    await expect(revgas.paymentTypes.list()).rejects.toBeInstanceOf(RevgasForbiddenError);
   });
 });
