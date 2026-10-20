@@ -1,26 +1,30 @@
 import { env } from '../src/config/env';
 import { HttpRevgasClient } from '../src/lib/revgas/http/http-revgas.client';
 import { RevgasHttp } from '../src/lib/revgas/http/revgas-http';
-import { resolveRevgasConfig } from '../src/lib/revgas/revgas.config';
+import { type RevgasConfig, resolveRevgasConfig } from '../src/lib/revgas/revgas.config';
 import { RevgasForbiddenError } from '../src/lib/revgas/revgas.errors';
 
 const DEFAULT_ESTABLISHMENT_ID = 2580;
 
 describe.skipIf(!env.REVGAS_API_KEY)('RevGás API real (somente leitura)', () => {
-  const config = resolveRevgasConfig({
-    ...env,
-    REVGAS_MODE: 'live',
-    REVGAS_ESTABLISHMENT_ID: env.REVGAS_ESTABLISHMENT_ID ?? DEFAULT_ESTABLISHMENT_ID,
+  let config: RevgasConfig;
+  let client: HttpRevgasClient;
+
+  beforeAll(() => {
+    config = resolveRevgasConfig({
+      ...env,
+      REVGAS_MODE: 'live',
+      REVGAS_ESTABLISHMENT_ID: env.REVGAS_ESTABLISHMENT_ID ?? DEFAULT_ESTABLISHMENT_ID,
+    });
+    const http = new RevgasHttp({
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey ?? '',
+      timeoutMs: config.timeoutMs,
+      minIntervalMs: config.minIntervalMs,
+      logger: { info: () => undefined, warn: () => undefined },
+    });
+    client = new HttpRevgasClient(http, config.establishmentId ?? DEFAULT_ESTABLISHMENT_ID);
   });
-  const silent = { info: () => undefined, warn: () => undefined };
-  const http = new RevgasHttp({
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey as string,
-    timeoutMs: config.timeoutMs,
-    minIntervalMs: config.minIntervalMs,
-    logger: silent,
-  });
-  const client = new HttpRevgasClient(http, config.establishmentId as number);
 
   it('lista estabelecimentos incluindo o configurado', async () => {
     const page = await client.listEstablishments();
