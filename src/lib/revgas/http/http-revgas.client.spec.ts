@@ -137,6 +137,14 @@ describe('HttpRevgasClient', () => {
     expect(url.searchParams.get('phone')).toBe('5586999998888');
   });
 
+  it('findCustomersByPhone com telefone curto ou vazio não chama a API', async () => {
+    const { client, fetchMock } = setup([]);
+    for (const phone of ['', 'abc', '+', '88', '123456789', '12345678901234']) {
+      expect(await client.findCustomersByPhone(phone)).toEqual([]);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('getCustomer: GET /customers/{id}', async () => {
     const { client, call } = setup([{ body: { id: 5 } }]);
     await client.getCustomer(5);
@@ -193,6 +201,12 @@ describe('HttpRevgasClient', () => {
     expect(url.pathname).toBe('/v1/sales');
     expect(url.searchParams.get('establishment_id')).toBe('7');
     expect(url.searchParams.get('customer_id')).toBe('5');
+  });
+
+  it('listSales traduz status WARNING para WARN na query', async () => {
+    const { client, call } = setup([{ body: { data: [], pagination: pagination() } }]);
+    await client.listSales({ status: 'WARNING' });
+    expect(call().url.searchParams.get('status')).toBe('WARN');
   });
 
   it('cancelSale: PUT /sales/{id}/cancel com motivo', async () => {

@@ -85,10 +85,14 @@ export class HttpRevgasClient implements RevgasClient {
   }
 
   async findCustomersByPhone(phone: string): Promise<RevgasCustomer[]> {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 13) {
+      return [];
+    }
     const result = await this.http.request({
       method: 'GET',
       path: '/customers',
-      query: { phone: phone.replace(/\D/g, '') },
+      query: { phone: digits },
       schema: pageSchema(RevgasCustomerSchema),
     });
     return result.data;
@@ -143,7 +147,11 @@ export class HttpRevgasClient implements RevgasClient {
     return this.http.request({
       method: 'GET',
       path: '/sales',
-      query: { ...query, establishment_id: this.establishmentId },
+      query: {
+        ...query,
+        status: query.status === 'WARNING' ? 'WARN' : query.status,
+        establishment_id: this.establishmentId,
+      },
       schema: pageSchema(RevgasSaleSchema),
     });
   }

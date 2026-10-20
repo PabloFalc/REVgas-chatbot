@@ -48,6 +48,13 @@ describe('FakeRevgasClient', () => {
     expect(ids[2]).toEqual(ids[0]);
   });
 
+  it('telefone vazio ou curto não casa ninguém', async () => {
+    const client = new FakeRevgasClient();
+    for (const phone of ['', 'abc', '+', '88']) {
+      expect(await client.findCustomersByPhone(phone)).toEqual([]);
+    }
+  });
+
   it('não casa DDDs diferentes com os mesmos dígitos do assinante', async () => {
     const client = new FakeRevgasClient();
     expect(await client.findCustomersByPhone('96900000001')).toEqual([]);

@@ -149,6 +149,10 @@ export class FakeRevgasClient implements RevgasClient {
   }
 
   async findCustomersByPhone(phone: string): Promise<RevgasCustomer[]> {
+    const length = digits(phone).length;
+    if (length < 10 || length > 13) {
+      return [];
+    }
     return clone(
       [...this.customers.values()].filter(customer =>
         (customer.phones ?? []).some(candidate => samePhone(candidate, phone)),
