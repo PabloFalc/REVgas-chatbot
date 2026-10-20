@@ -59,6 +59,15 @@ describe('mapRevgasError', () => {
     expect((error as RevgasDuplicateError).existingId).toBeUndefined();
   });
 
+  it.each([null, 'abc', '0'])('ignores invalid value_id %s', valueId => {
+    const error = mapRevgasError(409, {
+      message: 'An object with requested data already exists',
+      data: [{ filters: [], value_id: valueId }],
+    });
+    expect(error).toBeInstanceOf(RevgasDuplicateError);
+    expect((error as RevgasDuplicateError).existingId).toBeUndefined();
+  });
+
   it('maps 409 lock to unavailable and retryable', () => {
     const body = { message: 'cannot modify object due to lock, try again' };
     expect(mapRevgasError(409, body)).toBeInstanceOf(RevgasUnavailableError);
@@ -78,7 +87,9 @@ describe('mapRevgasError', () => {
     expect(html.status).toBe(500);
     expect(mapRevgasError(500, undefined)).toBeInstanceOf(RevgasUnavailableError);
     expect(mapRevgasError(422, 'oops')).toBeInstanceOf(RevgasValidationError);
-    expect(mapRevgasError(409, null)).toBeInstanceOf(RevgasDuplicateError);
+    const nullBody = mapRevgasError(409, null);
+    expect(nullBody).toBeInstanceOf(RevgasDuplicateError);
+    expect((nullBody as RevgasDuplicateError).existingId).toBeUndefined();
   });
 
   it('maps unexpected status to generic error', () => {

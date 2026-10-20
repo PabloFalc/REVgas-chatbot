@@ -126,10 +126,14 @@ function extractExistingId(body: unknown): number | undefined {
   if (!isRecord(first)) {
     return undefined;
   }
-  const id = Number(first.value_id);
-  return first.value_id !== undefined && first.value_id !== '' && Number.isFinite(id)
-    ? id
-    : undefined;
+  const raw = first.value_id;
+  const id =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && /^\d+$/.test(raw)
+        ? Number(raw)
+        : Number.NaN;
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
 
 function isLock(status: number, body: unknown): boolean {
