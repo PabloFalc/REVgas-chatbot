@@ -27,6 +27,9 @@ correspondente.
 - [whatsapp.md](./guides/integrations/whatsapp.md) — Cloud API da Meta (`src/integrations/whatsapp`)
   e o webhook (`src/modules/conversation`): modos `live`/`fake`, configuração no painel da Meta,
   teste local com túnel, assinatura, limites de botões/lista e erros
+- [llm.md](./guides/integrations/llm.md) — cliente da LLM (`src/integrations/llm`, Gemini pelo endpoint
+  compatível com OpenAI): modos `live`/`fake`, chave, como um módulo consome, erros, `FakeLlmClient`,
+  trocar de provedor e o check manual `pnpm llm:check`
 
 ### Serviços (`guides/services/`)
 

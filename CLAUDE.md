@@ -39,6 +39,7 @@ src/
   infra/        database (Drizzle + schemas), cache (Redis), health
   integrations/ revgas/ — RevGás ERP client by API module (live/hybrid/fake modes, mock included)
                 whatsapp/ — Meta Cloud API client (live/fake) + webhook (signature, parser)
+                llm/ — OpenAI-compatible LLM client (Gemini; live/fake)
   utils/        pure reusable helpers, no Nest/domain — mask (maskPhone, maskDocument, MASK),
                 text (normalizeText, truncate), safe-equal, parse-json, guards (isRecord,
                 isTimeoutError), iso-datetime. Check here before writing a new helper.
@@ -110,7 +111,7 @@ Dependency rules:
   `docs/guides/conventions/api-doc.md`.
 - **DTOs** are Zod schemas via `nestjs-zod` (`createZodDto`), validated by the global `zodValidationPipe`.
 - **Auth split:** global at `/auth/*` (session) and `/auth/me/*` (user); method at `/auth/email/*`.
-- **Secrets:** `REVGAS_API_KEY` and `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_APP_SECRET` stay server-side only (RNF02) — never in responses, logs or AI
+- **Secrets:** `REVGAS_API_KEY`, `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_APP_SECRET` and `LLM_API_KEY` stay server-side only (RNF02) — never in responses, logs or AI
   prompts. Customer CPF/phone/address must be masked in logs (LGPD) — use `src/utils/mask`.
 
 ## Documentation
@@ -121,6 +122,7 @@ Index: `docs/README.md`. Area guides (read before touching the matching area):
 - `docs/guides/modules/auth.md` — auth (standby + how to turn on), bearer-only, `AuthGuard`, email flows, routes
 - `docs/guides/integrations/revgas.md` — RevGás client (`src/integrations/revgas`): modes, hybrid routing, key permissions, errors, never retry POST, `pnpm revgas:check`
 - `docs/guides/integrations/whatsapp.md` — WhatsApp Cloud API (`src/integrations/whatsapp`) + webhook (`src/modules/conversation`): modes, Meta setup step by step, local tunnel, signature, dedup, message limits, errors
+- `docs/guides/integrations/llm.md` — LLM client (`src/integrations/llm`): modes, getting the key, how a module consumes it, errors, `FakeLlmClient`, switching provider, `pnpm llm:check`
 - `docs/guides/services/email-service.md` — `EmailService` (Resend), standby, log-only in dev/test
 - `docs/guides/conventions/api-doc.md` — the `@ApiDoc` decorator
 - `docs/guides/conventions/environment.md` — env vars (purpose, requiredness, defaults, consequences)

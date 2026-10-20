@@ -17,7 +17,7 @@ Chatbot de WhatsApp que atende clientes de uma revenda de gás (GLP) e cria a ve
 | Validação | Zod | Webhooks, respostas da API RevGás e saída da IA |
 | Testes | Vitest | Unit + e2e; máquina de estados pura, testável sem WhatsApp e sem IA |
 | Canal | WhatsApp Cloud API (oficial, da Meta) | Decidido; Evolution/Z-API descartados |
-| IA | Modelo pequeno e barato | Só duas funções (ver abaixo) |
+| IA | Gemini Flash (plano gratuito) via endpoint compatível com OpenAI | Só duas funções (ver abaixo); cliente em `integrations/llm` |
 | CEP | ViaCEP | — |
 
 ## Estrutura de pastas

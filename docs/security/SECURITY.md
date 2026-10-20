@@ -67,6 +67,11 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - **WhatsApp:** `WHATSAPP_ACCESS_TOKEN` só no header da chamada server-side (nunca em log);
   `WHATSAPP_APP_SECRET` confere a assinatura do webhook; `WHATSAPP_VERIFY_TOKEN` comparado em tempo
   constante.
+- **LLM:** `LLM_API_KEY` só no header da chamada server-side; nunca em log, erro, resposta HTTP nem
+  prompt. Os logs da integração não levam prompt, resposta nem a mensagem de erro do provedor.
+  **No plano gratuito do Gemini as mensagens vão ao Google e podem ser usadas para treino**
+  (decisão aceita em 2026-10-20): mande à IA só o texto necessário e nunca CPF. Ver
+  [llm.md](../guides/integrations/llm.md).
 - **Redis:** `REDIS_PASSWORD` e `REDIS_TLS` (opcionais em dev, obrigatórios na prática em prod) —
   sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
 - **Swagger** protegido por `DOC_TOKEN` (header `x-doc-token`) e não montado em produção.
