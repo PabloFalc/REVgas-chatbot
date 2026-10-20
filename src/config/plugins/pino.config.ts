@@ -38,6 +38,12 @@ const REDACT_PATHS = isProd ? [...SECRET_REDACT_PATHS, ...PII_REDACT_PATHS] : SE
 
 const SILENCED_ROUTES = new Set(['/health']);
 
+const SECRET_QUERY_PARAMS = /([?&]hub\.verify_token=)[^&]*/g;
+
+export function redactUrl(url = ''): string {
+  return url.replace(SECRET_QUERY_PARAMS, '$1[REDACTED]');
+}
+
 const DEV_COLORS = 'message:white,trace:gray,debug:blue,info:green,warn:yellow,error:red,fatal:red';
 
 export const pino: AppSetup = app => {
@@ -71,7 +77,7 @@ const baseOptions: LoggerOptions = {
   redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
   serializers: {
     err: stdSerializers.err,
-    req: (req: PinoRequest) => ({ id: req.id, method: req.method, url: req.url }),
+    req: (req: PinoRequest) => ({ id: req.id, method: req.method, url: redactUrl(req.url) }),
     res: (res: ServerResponse) => ({ statusCode: res.statusCode }),
   },
 };
@@ -88,11 +94,11 @@ const httpOptions = {
   },
   customSuccessMessage: (req: IncomingMessage, res: ServerResponse, responseTime: number) => {
     const pinoReq = req as PinoRequest;
-    return `(${pinoReq.id}) ${pinoReq.method} ${pinoReq.url} ${res.statusCode} ${Math.round(responseTime)}ms`;
+    return `(${pinoReq.id}) ${pinoReq.method} ${redactUrl(pinoReq.url)} ${res.statusCode} ${Math.round(responseTime)}ms`;
   },
   customErrorMessage: (req: IncomingMessage, res: ServerResponse, err: Error) => {
     const pinoReq = req as PinoRequest;
-    return `(${pinoReq.id}) ${pinoReq.method} ${pinoReq.url} ${res.statusCode} - ${err?.message ?? 'error'}`;
+    return `(${pinoReq.id}) ${pinoReq.method} ${redactUrl(pinoReq.url)} ${res.statusCode} - ${err?.message ?? 'error'}`;
   },
 };
 

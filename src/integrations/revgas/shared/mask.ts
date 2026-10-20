@@ -1,8 +1,4 @@
-const MASK = '***';
-
-function tail(value: unknown, size: number): string {
-  return String(value).slice(-size);
-}
+import { MASK, maskDocument, maskPhone } from '../../../utils/mask';
 
 export function maskQuery(query: Record<string, unknown>): Record<string, unknown> {
   const masked: Record<string, unknown> = {};
@@ -11,9 +7,9 @@ export function maskQuery(query: Record<string, unknown>): Record<string, unknow
       continue;
     }
     if (key === 'phone') {
-      masked[key] = String(value).length < 4 ? MASK : `*******${tail(value, 4)}`;
+      masked[key] = maskPhone(value);
     } else if (key === 'cpf_or_cnpj') {
-      masked[key] = `${MASK}${tail(value, 2)}`;
+      masked[key] = maskDocument(value);
     } else if (key === 'name' || key === 'location') {
       masked[key] = MASK;
     } else {

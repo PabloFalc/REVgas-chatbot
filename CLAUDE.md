@@ -33,20 +33,27 @@ Current:
 ```
 src/
   config/       env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
-  core/         cross-cutting — guards, filters, interceptors, pipes, decorators, errors,
-                services/email (EmailService + Resend)
+  core/         cross-cutting — guards, filters, interceptors, pipes, decorators,
+                erros/ (app HTTP errors at the root; revgas/ and whatsapp/ hold each integration's
+                error classes and mappers, kept separate), services/email (EmailService + Resend)
   infra/        database (Drizzle + schemas), cache (Redis), health
   integrations/ revgas/ — RevGás ERP client by API module (live/hybrid/fake modes, mock included)
-  modules/      domain — auth/ (on standby, not wired in routes.module.ts)
+                whatsapp/ — Meta Cloud API client (live/fake) + webhook (signature, parser)
+  utils/        pure reusable helpers, no Nest/domain — mask (maskPhone, maskDocument, MASK),
+                text (normalizeText, truncate), safe-equal, parse-json, guards (isRecord,
+                isTimeoutError), iso-datetime. Check here before writing a new helper.
+  modules/      domain — conversation/ (WhatsApp webhook at /webhooks/whatsapp; for now a test
+                reply: echo, "lista", "botões"), auth/ (on standby, not wired in routes.module.ts)
 ```
 
 - **App is assembled in `AppModule`**: `CoreModule`, `RoutesModule`, `InfraModule`. Config comes from `src/config/env.ts` (dotenv + Zod), imported directly — there is no ConfigModule/ConfigService.
 - **`CoreModule`** registers the globals (`APP_*`): guard `rateLimit`, filters
   (`unexpected` → `betterAuth` → `drizzle` → `http`; Nest checks the last registered first, so the catch-all `unexpected` stays first), `zodValidationPipe`. Global behavior changes go here.
   It does **not** register `authGuard`.
-- **Auth/email are on standby** (code present, switched off): `RoutesModule` has `imports: []`,
-  so no `/auth/*` routes exist (404) and there is **no global auth guard** — routes are public by
-  default (the future WhatsApp webhook is validated by the provider's signature). `AuthModule`
+- **Auth/email are on standby** (code present, switched off): `RoutesModule` imports only
+  `ConversationModule`, so no `/auth/*` routes exist (404) and there is **no global auth guard** —
+  routes are public by default (the WhatsApp webhook is validated by the Meta signature,
+  `X-Hub-Signature-256`, which needs `rawBody: true` in `main.ts`). `AuthModule`
   itself provides the `AuthGuard` (`APP_GUARD`) and imports `EmailModule`; `AppModule` does not
   import `EmailModule`. **To turn it on:** add `...authModule` (from `./auth/auth.module`) to
   `RoutesModule.imports` and set `BETTER_AUTH_SECRET`. Then every route requires a session by
@@ -68,10 +75,22 @@ Dependency rules:
 
 - `modules/` depends on `infra/` and `integrations/`, never the reverse.
 - `integrations/` knows nothing about the domain: it talks to the external service and validates responses with Zod.
-- Module services don't import SDKs (Redis, Drizzle, `integrations/`) directly — that goes through repositories.
+- Module services don't import SDKs (Redis, Drizzle, `integrations/`) directly. Access goes through:
+  - **repositories** (`*.repository.ts`) — read/write data: Redis, Postgres, or records in an external
+    API (e.g. RevGás customers/sales). Example: `conversation.repository` (message dedup, later the
+    conversation state).
+  - **gateways** (`*.gateway.ts`) — outbound actions that store nothing (send a message, notify).
+    Example: `messaging.gateway` (sends replies via `WHATSAPP_CLIENT`).
+  - Known exception: `ConversationService` imports the WhatsApp webhook event **types**
+    (`integrations/whatsapp/webhook/webhook.schemas`) — types only, never clients.
 - Every `integrations/` client has a mock for tests.
-- `conversation.service` does no I/O: (state, message) → (new state, replies), testable without WhatsApp or AI.
-- Zod schemas live in the module that uses them (`*.schema.ts`); Drizzle tables live in `infra/database/schemas`.
+- `ConversationService` handles each WhatsApp event (dedup via repository, mark as read, send via
+  gateway, logging). The decision of what to reply stays a **pure function** in the same file
+  (`replyTo`, later the state machine): (state, message) → (new state, replies), no I/O, testable
+  without WhatsApp or AI (RNF08). Keep new flow logic inside the pure part.
+- Zod schemas live in the module that uses them (`*.schemas.ts`); in `modules/`, input/output shapes
+  (DTOs and domain types) go in the module's `contracts/` folder. Drizzle tables live in
+  `infra/database/schemas`.
 
 ## Conventions (important)
 
@@ -91,8 +110,8 @@ Dependency rules:
   `docs/guides/conventions/api-doc.md`.
 - **DTOs** are Zod schemas via `nestjs-zod` (`createZodDto`), validated by the global `zodValidationPipe`.
 - **Auth split:** global at `/auth/*` (session) and `/auth/me/*` (user); method at `/auth/email/*`.
-- **Secrets:** `REVGAS_API_KEY` stays server-side only (RNF02) — never in responses, logs or AI
-  prompts. Customer CPF/phone/address must be masked in logs (LGPD).
+- **Secrets:** `REVGAS_API_KEY` and `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_APP_SECRET` stay server-side only (RNF02) — never in responses, logs or AI
+  prompts. Customer CPF/phone/address must be masked in logs (LGPD) — use `src/utils/mask`.
 
 ## Documentation
 
@@ -101,6 +120,7 @@ Index: `docs/README.md`. Area guides (read before touching the matching area):
 - `docs/project/specs.md` — technical spec (stack, planned structure, AI contracts, RevGás API integration)
 - `docs/guides/modules/auth.md` — auth (standby + how to turn on), bearer-only, `AuthGuard`, email flows, routes
 - `docs/guides/integrations/revgas.md` — RevGás client (`src/integrations/revgas`): modes, hybrid routing, key permissions, errors, never retry POST, `pnpm revgas:check`
+- `docs/guides/integrations/whatsapp.md` — WhatsApp Cloud API (`src/integrations/whatsapp`) + webhook (`src/modules/conversation`): modes, Meta setup step by step, local tunnel, signature, dedup, message limits, errors
 - `docs/guides/services/email-service.md` — `EmailService` (Resend), standby, log-only in dev/test
 - `docs/guides/conventions/api-doc.md` — the `@ApiDoc` decorator
 - `docs/guides/conventions/environment.md` — env vars (purpose, requiredness, defaults, consequences)

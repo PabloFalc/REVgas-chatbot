@@ -16,7 +16,7 @@ Chatbot de WhatsApp que atende clientes de uma revenda de gás (GLP) e cria a ve
 | Banco | PostgreSQL + Drizzle | Histórico, vendas criadas, métricas |
 | Validação | Zod | Webhooks, respostas da API RevGás e saída da IA |
 | Testes | Vitest | Unit + e2e; máquina de estados pura, testável sem WhatsApp e sem IA |
-| Canal | WhatsApp Cloud API (oficial) | Evolution API / Z-API para protótipo |
+| Canal | WhatsApp Cloud API (oficial, da Meta) | Decidido; Evolution/Z-API descartados |
 | IA | Modelo pequeno e barato | Só duas funções (ver abaixo) |
 | CEP | ViaCEP | — |
 
@@ -35,8 +35,10 @@ src/
   modules/
     conversation/           # máquina de estados do pedido (puro) + controller do webhook
       conversation.controller.ts
-      conversation.service.ts       # transições, mensagens fixas, decide quando chamar IA
-      conversation.repository.ts    # estado da conversa (via infra/cache)
+      conversation.service.ts       # recebe os eventos (dedup, envio) + função pura com transições e mensagens fixas
+      conversation.repository.ts    # dedup de mensagens e estado da conversa (via infra/cache)
+      messaging.gateway.ts          # envia as respostas (via integrations/whatsapp)
+      contracts/                    # DTOs e tipos de entrada/saída do módulo
       conversation.states.ts
     customer/               # identificar e cadastrar cliente (RF02, RF03)
       customer.service.ts
@@ -53,17 +55,17 @@ src/
     database/               # Postgres + Drizzle: client, schema, migrations
   integrations/
     revgas/                 # cliente HTTP da API RevGás: API Key, retry com backoff, logs mascarados
-    whatsapp/               # provedores (Cloud API, Evolution/Z-API) com interface única: texto, lista, botões
+    whatsapp/               # Cloud API da Meta: envio de texto, lista e botões + webhook
     llm/                    # cliente do modelo de IA
 ```
 
 **Regras de dependência:**
 - `modules/` depende de `infra/` e de `integrations/`, nunca o contrário.
 - `integrations/` não conhece o domínio: só fala com o serviço externo e valida as respostas com Zod.
-- Os services de um módulo não importam SDKs direto (Redis, Drizzle, `integrations/`). Esse acesso passa pelos repositórios.
+- Os services de um módulo não importam SDKs direto (Redis, Drizzle, `integrations/`). Esse acesso passa por **repositórios** (`*.repository.ts`: ler e gravar dados, seja no Redis, no Postgres ou em registros da API RevGás) ou por **gateways** (`*.gateway.ts`: ações de saída que não guardam nada, como enviar mensagem no WhatsApp).
 - Cada cliente de `integrations/` tem um mock para os testes (API RevGás, provedor de mensagens e LLM).
-- `conversation.service` não faz I/O: recebe o estado e a mensagem, devolve o novo estado e as respostas. Assim o fluxo inteiro pode ser testado com Vitest, sem WhatsApp e sem IA (RNF08).
-- Os schemas Zod ficam no módulo que os usa (`*.schema.ts`). As tabelas Drizzle ficam em `infra/database/schema`.
+- O `conversation.service` cuida dos eventos (dedup, envio, logs), mas a decisão do que responder fica numa função pura no mesmo arquivo: recebe o estado e a mensagem, devolve o novo estado e as respostas. Assim o fluxo inteiro pode ser testado com Vitest, sem WhatsApp e sem IA (RNF08).
+- Os schemas Zod ficam no módulo que os usa (`*.schemas.ts`); nos módulos de domínio, DTOs e tipos de entrada/saída ficam em `contracts/`. As tabelas Drizzle ficam em `infra/database/schemas`.
 
 > Os nomes dos domínios e dos arquivos são uma proposta para validar com o grupo.
 
@@ -151,4 +153,4 @@ O catálogo da RevGás mistura gás, água, vasilhames (casco vendido à parte),
 - Lista interativa: até 10 opções.
 - Botões de resposta: até 3 por mensagem.
 - Mensagens iniciadas pelo bot fora da janela de 24h (lembrete de recompra, recuperação de carrinho) exigem template aprovado, o que afeta o roadmap.
-- A camada de mensageria deve expor uma interface única (enviar texto, lista e botões) e abstrair as diferenças entre os provedores (Cloud API, Evolution/Z-API).
+- A camada de mensageria expõe uma interface única (enviar texto, lista e botões, marcar como lida). Provedor: Cloud API oficial da Meta. Detalhes em `docs/guides/integrations/whatsapp.md`.

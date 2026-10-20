@@ -229,6 +229,16 @@ guard global. Esqueceu o `authModule` numa suíte de auth? É isso.
 `sign-in` e `sign-up` respondem `409` quando a request já traz um token válido. Não reaproveite o
 header `bearer(token)` nessas chamadas, a menos que seja exatamente isso que o teste verifica.
 
+### WhatsApp sempre simulado
+
+`vitest.config.e2e.ts` define `WHATSAPP_MODE=fake` (e um app secret/verify token de teste), então
+o e2e nunca envia mensagem real, mesmo com token no `.env`. Para ver o que o bot respondeu, pegue o
+simulador com `app.get(WHATSAPP_CLIENT)` (é um `FakeWhatsappClient`: `sent`, `read`, `clear()`) e
+assine o corpo com `signPayload` (`src/integrations/whatsapp/webhook/signature.ts`). Use ids de
+mensagem únicos: ids repetidos são ignorados por 24h no Redis. O webhook responde 200 antes de
+processar, então espere o envio com `vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1))`. Exemplo:
+`tests/conversation/whatsapp-webhook.e2e.spec.ts`.
+
 ## Checklist para uma suíte e2e nova
 
 1. Crie `tests/<área>/<algo>.e2e.spec.ts`.

@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env } from '../src/config/env';
+import { RevgasForbiddenError } from '../src/core/erros/revgas/revgas.errors';
 import { createHttpRevgasClient } from '../src/integrations/revgas/http-revgas.client';
 import type { RevgasClient } from '../src/integrations/revgas/revgas.client';
 import {
   type RevgasConfig,
   resolveRevgasConfig,
 } from '../src/integrations/revgas/shared/revgas.config';
-import { RevgasForbiddenError } from '../src/integrations/revgas/shared/revgas.errors';
 import { RevgasHttp } from '../src/integrations/revgas/shared/revgas-http';
 
 const DEFAULT_ESTABLISHMENT_ID = 2580;

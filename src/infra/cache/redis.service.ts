@@ -40,6 +40,16 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
     }
   }
 
+  async setIfAbsent(params: CacheSetParams): Promise<boolean> {
+    const { key, value, ttl, prefix } = params;
+    const keyWithPrefix = this._makePrefix(key, prefix);
+    const serialized = JSON.stringify(value);
+    const result = ttl
+      ? await this.redis.set(keyWithPrefix, serialized, 'EX', ttl, 'NX')
+      : await this.redis.set(keyWithPrefix, serialized, 'NX');
+    return result === 'OK';
+  }
+
   async exists(params: CacheGetParams): Promise<boolean> {
     const { key, prefix } = params;
     try {
@@ -71,6 +81,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
     return {
       get: params => this.get({ ...params, prefix }),
       set: params => this.set({ ...params, prefix }),
+      setIfAbsent: params => this.setIfAbsent({ ...params, prefix }),
       exists: params => this.exists({ ...params, prefix }),
       clear: () => this.clear(prefix),
     };

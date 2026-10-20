@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import {
+  RevgasNotFoundError,
+  RevgasValidationError,
+} from '../../../core/erros/revgas/revgas.errors';
 import { CustomersFake } from '../customers/customers.fake';
 import { FAKE_CUSTOMERS } from '../customers/customers.fixtures';
 import { FAKE_PRODUCTS } from '../products/products.fixtures';
 import { FAKE_ID_START } from '../shared/fake';
-import { RevgasNotFoundError, RevgasValidationError } from '../shared/revgas.errors';
 import { SalesFake } from './sales.fake';
 import type { RevgasSaleInput } from './sales.schemas';
 

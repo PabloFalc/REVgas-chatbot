@@ -60,6 +60,25 @@ export const envConfigSchema = z
       z.coerce.number().int().min(0).default(1_100),
     ),
 
+    // WHATSAPP (Cloud API da Meta)
+    WHATSAPP_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'fake']).optional()),
+    WHATSAPP_API_URL: z.preprocess(emptyAsUndefined, z.url().default('https://graph.facebook.com')),
+    WHATSAPP_API_VERSION: z.preprocess(
+      emptyAsUndefined,
+      z
+        .string()
+        .regex(/^v\d+\.\d+$/)
+        .default('v23.0'),
+    ),
+    WHATSAPP_ACCESS_TOKEN: z.preprocess(emptyAsUndefined, z.string().min(32).optional()),
+    WHATSAPP_PHONE_NUMBER_ID: z.preprocess(emptyAsUndefined, z.string().regex(/^\d+$/).optional()),
+    WHATSAPP_APP_SECRET: z.preprocess(emptyAsUndefined, z.string().min(32).optional()),
+    WHATSAPP_VERIFY_TOKEN: z.preprocess(emptyAsUndefined, z.string().min(16).optional()),
+    WHATSAPP_TIMEOUT_MS: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().default(10_000),
+    ),
+
     // RESEND (standby)
     RESEND_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
     EMAIL_FROM: z.string().default('onboarding@resend.dev'),

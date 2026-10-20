@@ -13,7 +13,7 @@ async function bootstrap() {
       trustProxy: parseTrustProxy(env.TRUSTED_PROXY),
       bodyLimit: 2 * 1024 * 1024,
     }),
-    { bufferLogs: true },
+    { bufferLogs: true, rawBody: true },
   );
 
   await setupPlugins(app);

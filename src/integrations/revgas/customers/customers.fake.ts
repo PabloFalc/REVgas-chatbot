@@ -1,9 +1,9 @@
-import { clone, FAKE_ID_START } from '../shared/fake';
 import {
   RevgasDuplicateError,
   RevgasNotFoundError,
   RevgasValidationError,
-} from '../shared/revgas.errors';
+} from '../../../core/erros/revgas/revgas.errors';
+import { clone, FAKE_ID_START } from '../shared/fake';
 import type { CustomersApi } from './customers.api';
 import { FAKE_CUSTOMERS } from './customers.fixtures';
 import type { RevgasCustomer, RevgasCustomerInput } from './customers.schemas';
