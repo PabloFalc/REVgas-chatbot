@@ -49,7 +49,8 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   `X-Forwarded-For` de qualquer peer permitiria **spoof de IP** e **bypass do rate limit** (a
   chave do throttler é `req.ip`). Atrás de proxy/LB, configure o IP/CIDR do proxy (contagem de hops é recusada no boot).
 - Rate limit global (`@nestjs/throttler` + Redis): `default` 50/min; `sign-in`/`sign-up` com
-  `STRICT_AUTH_THROTTLE` (10/min, bloqueio 5min); `/health` com `HEALTH_THROTTLE` (120/min).
+  `STRICT_AUTH_THROTTLE` (10/min, bloqueio 5min); `/health` com `HEALTH_THROTTLE` (120/min); `/webhooks/whatsapp` com `WEBHOOK_THROTTLE`
+  (1000/min, porque todo o tráfego vem dos IPs da Meta).
 
 ## Gestão de segredos
 
@@ -63,6 +64,9 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - **API Key da RevGás (`REVGAS_API_KEY`) fica só no servidor** (RNF02): nunca vai para o front,
   para o prompt da IA, para respostas da API nem para logs. Vazada, permite criar/consultar vendas
   no ERP da revenda.
+- **WhatsApp:** `WHATSAPP_ACCESS_TOKEN` só no header da chamada server-side (nunca em log);
+  `WHATSAPP_APP_SECRET` confere a assinatura do webhook; `WHATSAPP_VERIFY_TOKEN` comparado em tempo
+  constante.
 - **Redis:** `REDIS_PASSWORD` e `REDIS_TLS` (opcionais em dev, obrigatórios na prática em prod) —
   sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
 - **Swagger** protegido por `DOC_TOKEN` (header `x-doc-token`) e não montado em produção.
@@ -87,6 +91,22 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   / exaustão de conexões.
 - `@fastify/under-pressure` responde `503` acima dos limites de memória (`PRESSURE_MAX_*`).
 
+## Webhook do WhatsApp
+
+- Todo `POST /webhooks/whatsapp` tem o `X-Hub-Signature-256` conferido (HMAC-SHA256 do corpo cru
+  com `WHATSAPP_APP_SECRET`, comparação em tempo constante) antes de qualquer processamento;
+  inválido → 401. O segredo é obrigatório em `live` e em produção (o boot falha sem ele); só em
+  `fake` fora de produção a checagem pode ser pulada. Corpo que não é JSON não tem corpo cru e
+  recebe 401.
+- Eventos de outro `phone_number_id`, ou sem ele, são descartados.
+- Query da verificação validada (strings de até 256 caracteres; repetida → 400).
+- Responde 200 assim que a assinatura confere e processa em segundo plano, então envios lentos à
+  Graph API não prendem a conexão da Meta.
+- Reenvios da Meta são deduplicados pelo id da mensagem no Redis (24h), para não responder duas
+  vezes.
+- Logs do webhook e dos envios: telefone mascarado (`*******1234`), sem corpo das mensagens nem
+  token (o conteúdo só aparece no log do modo `fake` fora de produção).
+
 ## Planejado (chatbot)
 
 Itens que entram junto com os módulos do chatbot (ver [specs.md](../project/specs.md) e
@@ -96,7 +116,6 @@ Itens que entram junto com os módulos do chatbot (ver [specs.md](../project/spe
   (chamadas à API RevGás, handoffs, erros). Hoje a redaction do Pino cobre só segredos e `email`.
 - **Cliente `integrations/revgas`:** API Key injetada só no header da chamada server-side; retry com
   backoff apenas em 5xx/timeout e com idempotência para não duplicar vendas.
-- **Webhook do WhatsApp:** validar a origem/assinatura do provedor escolhido antes de processar.
 - **IA:** o prompt nunca recebe a API Key nem dados de outros clientes; saída validada com Zod.
 
 ## Extensões com impacto de segurança

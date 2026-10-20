@@ -94,10 +94,26 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 
 > A chave e o estabelecimento só são exigidos em `live`/`hybrid` (checagem em `resolveRevgasConfig`, não no schema global), então o app sobe em `fake` sem nada configurado.
 
-## WhatsApp e LLM
+## WhatsApp (Cloud API da Meta)
 
-A definir — o provedor de WhatsApp (Cloud API, Evolution ou Z-API) e o modelo de IA ainda não
-foram escolhidos. As variáveis entram aqui quando forem.
+Onde achar cada valor no painel da Meta: [whatsapp.md](../integrations/whatsapp.md).
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `WHATSAPP_MODE` | Não | vazio = automático | `live` ou `fake`. Vazio: `live` se houver `WHATSAPP_ACCESS_TOKEN`, senão `fake`. Em `fake` nada sai para o WhatsApp (as respostas vão para o log em dev); em produção gera aviso. |
+| `WHATSAPP_API_URL` | Não | `https://graph.facebook.com` | URL base da Graph API. Validada como URL. |
+| `WHATSAPP_API_VERSION` | Não | `v23.0` | Versão da Graph API (`vNN.N`). Versões antigas são desativadas pela Meta (~2 anos); atualize quando a Meta avisar. |
+| `WHATSAPP_PHONE_NUMBER_ID` | Obrigatória em `live` | vazio | ID do número que envia as mensagens (não é o telefone). Só dígitos. Também filtra o webhook: eventos de outros números da conta são ignorados. |
+| `WHATSAPP_ACCESS_TOKEN` | Obrigatória em `live` | vazio | Token da Graph API. **Fica só no servidor**: vazado, permite mandar mensagens em nome da revenda. O token temporário do painel expira em 24h; em produção use token de usuário do sistema. Mínimo de 32 caracteres. Expirado → envios falham com `unauthorized` (código 190) no log. |
+| `WHATSAPP_APP_SECRET` | Obrigatória em `live` e em produção | vazio | Chave secreta do app (≥ 32 caracteres); confere o `X-Hub-Signature-256` de cada POST no webhook. Sem ela (só possível em `fake` fora de produção), o webhook aceita qualquer requisição. |
+| `WHATSAPP_VERIFY_TOKEN` | Obrigatória em `live` e em produção | vazio | Texto escolhido por você (≥ 16 caracteres), repetido na configuração do webhook na Meta. Sem ele, a verificação (`GET /webhooks/whatsapp`) sempre responde 403. |
+| `WHATSAPP_TIMEOUT_MS` | Não | `10000` | Timeout de cada envio. Timeout vira resultado desconhecido (a mensagem pode ter saído) e não é repetido. |
+
+> As quatro obrigatórias só são exigidas em `live` (checagem em `resolveWhatsappConfig`), então o app sobe em `fake` sem nada configurado. **Em produção**, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` são exigidos em qualquer modo: sem eles a rota pública do webhook ficaria sem autenticação, e o boot falha. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
+
+## LLM
+
+A definir quando o modelo de IA for escolhido.
 
 ## E-mail — Resend (standby)
 
@@ -137,7 +153,7 @@ app (que usa só a `DATABASE_URL`); existem para conveniência de dev e têm def
 Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violados:
 
 - `BETTER_AUTH_SECRET` preenchida com < 32 chars → erro.
-- `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
+- `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `WHATSAPP_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
 - **Em produção**, `CORS_ORIGIN` ausente → erro (`CORS_ORIGIN é obrigatório em produção`).
 - **Em produção**, `CORS_ORIGIN` contendo `*` → erro (`CORS_ORIGIN não pode conter "*"`).
 
@@ -152,6 +168,7 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 - [ ] `DATABASE_URL` do banco gerenciado
 - [ ] `REDIS_PASSWORD` definido e `REDIS_TLS=true` (se gerenciado)
 - [ ] `REVGAS_API_KEY` (e `REVGAS_ESTABLISHMENT_ID`) via secrets (nunca no repo nem no front)
+- [ ] `WHATSAPP_MODE=live` com token permanente, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` via secrets
 - [ ] `DOC_TOKEN` definido (ou doc desativada)
 - [ ] `PRESSURE_MAX_*` calibrados ao limite de memória do container
 

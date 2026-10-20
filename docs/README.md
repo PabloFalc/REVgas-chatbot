@@ -24,6 +24,9 @@ correspondente.
 - [revgas.md](./guides/integrations/revgas.md) — cliente da API RevGás (`src/integrations/revgas`), organizado por módulo da API: modos
   `live`/`hybrid`/`fake`, roteamento do híbrido, permissões da chave, erros, regra de não repetir
   POST e o check manual `pnpm revgas:check`
+- [whatsapp.md](./guides/integrations/whatsapp.md) — Cloud API da Meta (`src/integrations/whatsapp`)
+  e o webhook (`src/modules/conversation`): modos `live`/`fake`, configuração no painel da Meta,
+  teste local com túnel, assinatura, limites de botões/lista e erros
 
 ### Serviços (`guides/services/`)
 
