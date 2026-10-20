@@ -32,12 +32,12 @@ Current:
 
 ```
 src/
-  config/      env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
-  core/        cross-cutting — guards, filters, interceptors, pipes, decorators, errors,
-               services/email (EmailService + Resend)
-  infra/       database (Drizzle + schemas), cache (Redis), health
+  config/       env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
+  core/         cross-cutting — guards, filters, interceptors, pipes, decorators, errors,
+                services/email (EmailService + Resend)
+  infra/        database (Drizzle + schemas), cache (Redis), health
   integrations/ revgas/ — RevGás ERP client by API module (live/hybrid/fake modes, mock included)
-  modules/     domain — auth/ (on standby, not wired in routes.module.ts)
+  modules/      domain — auth/ (on standby, not wired in routes.module.ts)
 ```
 
 - **App is assembled in `AppModule`**: `CoreModule`, `RoutesModule`, `InfraModule`. Config comes from `src/config/env.ts` (dotenv + Zod), imported directly — there is no ConfigModule/ConfigService.

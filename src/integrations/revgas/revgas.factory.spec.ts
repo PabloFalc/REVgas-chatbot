@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CustomersFake } from './customers/customers.fake';
+import { CustomersHttp } from './customers/customers.http';
 import { FakeRevgasClient } from './fake-revgas.client';
 import { HybridRevgasClient } from './hybrid-revgas.client';
+import { ProductsHttp } from './products/products.http';
 import { createRevgasClient } from './revgas.factory';
+import { SalesHttp } from './sales/sales.http';
 import type { RevgasConfig } from './shared/revgas.config';
 
 const config = (overrides: Partial<RevgasConfig> = {}): RevgasConfig => ({
@@ -25,12 +29,16 @@ describe('createRevgasClient', () => {
   it('mode hybrid → HybridRevgasClient', () => {
     const client = createRevgasClient(config({ mode: 'hybrid' }), { fetch: stubFetch });
     expect(client).toBeInstanceOf(HybridRevgasClient);
+    expect(client.products).toBeInstanceOf(ProductsHttp);
+    expect(client.customers).toBeInstanceOf(CustomersFake);
   });
 
   it('mode live → cliente HTTP agrupado por módulo', () => {
     const client = createRevgasClient(config({ mode: 'live' }), { fetch: stubFetch });
     expect(client).not.toBeInstanceOf(FakeRevgasClient);
     expect(client).not.toBeInstanceOf(HybridRevgasClient);
+    expect(client.sales).toBeInstanceOf(SalesHttp);
+    expect(client.customers).toBeInstanceOf(CustomersHttp);
     expect(Object.keys(client).sort()).toEqual([
       'customers',
       'deals',

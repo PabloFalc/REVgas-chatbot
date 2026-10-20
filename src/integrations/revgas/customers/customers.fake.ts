@@ -49,7 +49,8 @@ export class CustomersFake implements CustomersApi {
   }
 
   peek(id: number): RevgasCustomer | undefined {
-    return this.customers.get(id);
+    const customer = this.customers.get(id);
+    return customer && clone(customer);
   }
 
   async findByPhone(phone: string): Promise<RevgasCustomer[]> {

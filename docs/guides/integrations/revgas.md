@@ -81,7 +81,7 @@ Existe um único estabelecimento (id 2580). Por isso o modo padrão com chave é
 2. Se todas as operações usadas pelo fluxo estiverem liberadas, usar `REVGAS_MODE=live` (troca da API inteira, só configuração).
 3. Se só algumas forem liberadas, passar um módulo ou operação para real exige mudança de código: editar o roteamento em
    `HybridRevgasClient` (mover o módulo/operação de `fake` para `live`; mudança pequena, com teste), ajustar a tabela acima e os testes em `hybrid-revgas.client.spec.ts`.
-4. Antes de ligar `live` com vendas reais, testar `createSale` em um ambiente controlado.
+4. Antes de ligar `live` com vendas reais, testar `sales.create` em um ambiente controlado.
 
 ## Erros
 
