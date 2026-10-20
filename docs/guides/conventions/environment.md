@@ -125,8 +125,6 @@ Chave gratuita em [aistudio.google.com](https://aistudio.google.com) (plano grat
 
 > `live` exige a chave (checagem em `resolveLlmConfig`), então o app sobe em `fake` sem nada configurado. `fake` em produção só loga um aviso e o bot fica só com botões. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
 
-A definir quando o modelo de IA for escolhido.
-
 ## E-mail — Resend (standby)
 
 Usadas só pelo `EmailService`, cujo único consumidor é a auth (standby). Ver
