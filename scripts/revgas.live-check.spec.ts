@@ -42,6 +42,9 @@ describe.skipIf(!env.REVGAS_API_KEY)('RevGás API real (somente leitura)', () =>
     for (const deal of page.data) {
       expect(deal.payment_type).toBeDefined();
     }
+    expect(page.data.some(deal => typeof deal.payment_type_establishment_id === 'number')).toBe(
+      true,
+    );
   });
 
   it('lista vendas', async () => {

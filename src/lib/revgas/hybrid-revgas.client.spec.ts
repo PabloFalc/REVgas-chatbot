@@ -57,8 +57,11 @@ describe('HybridRevgasClient', () => {
     await client.listPaymentTypes();
     await client.findCustomersByPhone('86999990000');
     await client.getCustomer(customerId);
-    const created = await client.createCustomer({ name: 'Cliente Teste', phone: '86988887777' });
-    await client.updateCustomer(created.id, { name: 'Outro Nome', phone: '86988887777' });
+    const created = await client.createCustomer({
+      name: 'Cliente Teste',
+      phones: ['5586988887777'],
+    });
+    await client.updateCustomer(created.id, { name: 'Outro Nome', phones: ['5586988887777'] });
     const sale = await client.createSale(saleInput);
     await client.cancelSale(sale.id);
     for (const name of methods) {
@@ -98,7 +101,10 @@ describe('HybridRevgasClient', () => {
     const live = stubLive();
     const fake = new FakeRevgasClient();
     const client = new HybridRevgasClient(live, fake);
-    const customer = await client.createCustomer({ name: 'Cliente Teste', phone: '86988887777' });
+    const customer = await client.createCustomer({
+      name: 'Cliente Teste',
+      phones: ['5586988887777'],
+    });
     expect(customer.id).toBeGreaterThanOrEqual(FAKE_ID_START);
     await client.listSales({ customer_id: customer.id });
     expect(live.listSales).not.toHaveBeenCalled();
