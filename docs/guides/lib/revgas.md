@@ -58,9 +58,9 @@ Existe um único estabelecimento (id 2580). Por isso o modo padrão com chave é
 ## Quando a RevGás liberar uma operação
 
 1. Confirmar com `pnpm revgas:check` (ou uma chamada manual) que a operação deixou de dar 403.
-2. Se todas as operações usadas pelo fluxo estiverem liberadas, usar `REVGAS_MODE=live`.
-3. Se só algumas forem liberadas, mover a operação de `fake` para `live` em
-   `HybridRevgasClient` (e ajustar a tabela acima e os testes em `hybrid-revgas.client.spec.ts`).
+2. Se todas as operações usadas pelo fluxo estiverem liberadas, usar `REVGAS_MODE=live` (troca da API inteira, só configuração).
+3. Se só algumas forem liberadas, trocar uma operação isolada exige mudança de código: editar o roteamento em
+   `HybridRevgasClient` (mover a operação de `fake` para `live`; mudança pequena, com teste) (e ajustar a tabela acima e os testes em `hybrid-revgas.client.spec.ts`).
 4. Antes de ligar `live` com vendas reais, testar `createSale` em um ambiente controlado.
 
 ## Erros
@@ -75,9 +75,9 @@ Todos estendem `RevgasError` (campos `kind` e `status`).
 | `RevgasNotFoundError` | `not_found` | 404 |
 | `RevgasValidationError` | `validation` | entrada inválida (antes de qualquer chamada, `fields` vem do Zod) ou 400/422 da API |
 | `RevgasDuplicateError` | `duplicate` | 409 de objeto duplicado (`existingId` quando a API informa) |
-| `RevgasUnavailableError` | `unavailable` | 429, 5xx, lock 409, timeout ou falha de rede em GET após esgotar as tentativas |
+| `RevgasUnavailableError` | `unavailable` | 429, 5xx, lock 409, timeout ou falha de rede em GET após esgotar as tentativas; em POST/PUT, 429 e lock 409 (sem retry) |
 | `RevgasResponseError` | `response` | resposta fora do schema (`issues`) ou status inesperado |
-| `RevgasUnknownOutcomeError` | `unknown_outcome` | POST/PUT com timeout ou falha de rede: não se sabe se o ERP executou |
+| `RevgasUnknownOutcomeError` | `unknown_outcome` | POST/PUT com timeout, falha de rede ou resposta 5xx: não se sabe se o ERP executou |
 
 ## Transporte
 
@@ -85,13 +85,17 @@ Todos estendem `RevgasError` (campos `kind` e `status`).
 - Fila serial com intervalo mínimo entre chamadas (`REVGAS_MIN_INTERVAL_MS`, 1 req/s) e timeout
   por chamada (`REVGAS_TIMEOUT_MS`).
 - GET é repetido com backoff exponencial em 429, 5xx, lock e falhas de rede.
+- `listSales({ status: 'WARNING' })` vai para a API como `WARN` (o filtro usa `WARN`, as respostas trazem `WARNING`).
+- `findCustomersByPhone` devolve `[]` sem chamar a API se o telefone tiver menos de 10 ou mais de 13 dígitos.
 - Logs nunca levam corpo de request/response; a query é mascarada (telefone, CPF, nome,
   logradouro). A chave nunca aparece em log, erro ou resposta.
 
 ## POST nunca é repetido
 
 `POST` e `PUT` não têm retry automático: repetir poderia duplicar uma venda. Se a chamada expira
-ou a rede cai, a lib lança `RevgasUnknownOutcomeError`. Quem chama deve:
+ou a rede cai, ou o servidor responde 5xx, a lib lança `RevgasUnknownOutcomeError` (a mensagem
+não leva chave nem corpo). 429 e lock 409 em POST/PUT viram `RevgasUnavailableError`, também sem
+retry. Quem chama deve:
 
 1. Não reenviar a venda às cegas.
 2. Conferir com `listSales` (filtrando por `customer_id`, `from`/`to`) se a venda foi criada.

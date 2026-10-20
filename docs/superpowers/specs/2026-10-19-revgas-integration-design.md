@@ -12,7 +12,7 @@ O que torna este trabalho particular é a **chave disponível ser só de leitura
 
 - Contratos tipados (TypeScript + Zod) para todas as operações RevGás que o fluxo usa.
 - Conexão real e confiável para as leituras que a chave permite.
-- Simulador (fake) com estado para as operações sem permissão, no mesmo contrato, de modo que trocar para a API real depois seja só configuração.
+- Simulador (fake) com estado para as operações sem permissão, no mesmo contrato, de modo que trocar para a API real depois seja simples: a API inteira muda com `REVGAS_MODE=live`; uma operação isolada exige editar o roteamento em `HybridRevgasClient` (mudança pequena, com teste).
 - Erros da RevGás traduzidos para tipos próprios que o domínio consiga tratar (ex.: decidir handoff).
 - Respeitar o rate limit global de 1 req/s sem que o domínio precise pensar nisso.
 
@@ -122,7 +122,8 @@ Hierarquia própria (`RevgasError` com `status` e `kind`), não os `AppError` HT
 | 404 | `RevgasNotFoundError` |
 | 400 / 422 | `RevgasValidationError` (com `fields[]`) |
 | 409 duplicado | `RevgasDuplicateError` (com `existingId` de `value_id`) |
-| 409 lock (após retries) / 429 / 5xx / timeout / rede | `RevgasUnavailableError` |
+| 409 lock (após retries) / 429 / 5xx / timeout / rede (GET); 429 e lock 409 em POST/PUT | `RevgasUnavailableError` |
+| POST/PUT com 5xx, timeout ou rede | `RevgasUnknownOutcomeError` (resultado desconhecido) |
 | resposta fora do schema | `RevgasResponseError` |
 
 `createSale` com timeout lança um erro que deixa explícito que **o resultado é desconhecido** (a venda pode ter sido criada), para o domínio fazer a checagem anti-duplicata via `listSales`.
@@ -140,7 +141,7 @@ Hierarquia própria (`RevgasError` com `status` e `kind`), não os `AppError` HT
 
 Para cada operação, a tabela de permissões acima decide: real ou fake. Detalhe das vendas: `getSale(id)` e `listSales` respondem pelo fake quando o ID ou o cliente pertence ao simulador; caso contrário, vão à API real. Assim vendas criadas pelo bot aparecem nas consultas, e o histórico real continua acessível.
 
-Quando a RevGás liberar uma permissão, a operação passa a real mudando só a configuração.
+Quando a RevGás liberar uma permissão, trocar uma operação isolada para a real exige editar o roteamento em `HybridRevgasClient` (mudança pequena e teste); trocar a API inteira é só `REVGAS_MODE=live`.
 
 ### Configuração (env)
 
@@ -178,5 +179,5 @@ Em `NODE_ENV=production`, `REVGAS_MODE=fake` é permitido (é a demo), mas deve 
 - Campos em snake_case na fronteira da lib.
 - Avanço de status por tempo no fake.
 - Pelo menos um cliente simulado com `tag_id` de uma categoria que existe nos acordos reais, para a demo exercitar preço por categoria.
-- `GET /sales/{id}` tratado como liberado (mesma permissão de listar); se der 403, passa para o fake pela configuração.
+- `GET /sales/{id}` tratado como liberado (mesma permissão de listar); se der 403, passa para o fake editando o roteamento em `HybridRevgasClient`.
 - `REVGAS_MODE` com três modos e padrão automático pela presença da chave.
