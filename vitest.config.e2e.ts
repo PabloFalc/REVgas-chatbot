@@ -8,6 +8,7 @@ export default defineConfig({
     include: ['tests/**/*.e2e.spec.ts'],
     fileParallelism: false,
     env: {
+      LLM_MODE: 'fake',
       WHATSAPP_MODE: 'fake',
       WHATSAPP_PHONE_NUMBER_ID: '1122334455',
       WHATSAPP_APP_SECRET: 'e2e-whatsapp-app-secret-0123456789',
