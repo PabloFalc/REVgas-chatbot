@@ -5,7 +5,6 @@ import type {
   Page,
   RevgasClient,
 } from '../revgas.client';
-import { RevgasValidationError } from '../revgas.errors';
 import {
   pageSchema,
   type RevgasCustomer,
@@ -21,9 +20,9 @@ import {
   RevgasProductSchema,
   type RevgasSale,
   type RevgasSaleInput,
-  RevgasSaleInputSchema,
   RevgasSaleSchema,
 } from '../revgas.schemas';
+import { parseSaleInput } from '../revgas.validation';
 import type { RevgasHttp } from './revgas-http';
 
 const PAGE_SIZE = 100;
@@ -122,22 +121,16 @@ export class HttpRevgasClient implements RevgasClient {
   }
 
   createSale(input: RevgasSaleInput): Promise<RevgasSale> {
-    const parsed = RevgasSaleInputSchema.safeParse(input);
-    if (!parsed.success) {
-      return Promise.reject(
-        new RevgasValidationError(
-          'invalid sale input',
-          parsed.error.issues.map(issue => ({
-            field: issue.path.join('.'),
-            message: issue.message,
-          })),
-        ),
-      );
+    let parsed: ReturnType<typeof parseSaleInput>;
+    try {
+      parsed = parseSaleInput(input);
+    } catch (error) {
+      return Promise.reject(error);
     }
     return this.http.request({
       method: 'POST',
       path: '/sales',
-      body: { ...parsed.data, establishment_id: this.establishmentId },
+      body: { ...parsed, establishment_id: this.establishmentId },
       schema: RevgasSaleSchema,
     });
   }
