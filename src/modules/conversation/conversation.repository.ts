@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { RedisService } from 'src/infra/cache/redis.service';
+import { maskPhone } from 'src/utils/mask';
 import type { OrderState } from './flow/flow.types';
 
 export const INBOUND_PREFIX = 'whatsapp:inbound';
@@ -8,9 +10,9 @@ export const ORDER_PREFIX = 'conversation:order';
 export const LOCK_PREFIX = 'conversation:lock';
 const INBOUND_TTL_SECONDS = 24 * 60 * 60;
 const ORDER_TTL_SECONDS = 900;
-const LOCK_TTL_SECONDS = 30;
+const LOCK_TTL_SECONDS = 120;
 const LOCK_RETRY_MS = 250;
-const LOCK_MAX_WAIT_MS = 30_000;
+const LOCK_MAX_WAIT_MS = 120_000;
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -58,30 +60,33 @@ export class ConversationRepository {
   }
 
   async withPhoneLock<T>(phone: string, work: () => Promise<T>): Promise<T> {
-    await this.acquireLock(phone);
+    const token = randomUUID();
+    const acquired = await this.acquireLock(phone, token);
     try {
       return await work();
     } finally {
-      await this.cache.delete({ prefix: LOCK_PREFIX, key: phone });
+      if (acquired) {
+        await this.cache.deleteIfEquals({ prefix: LOCK_PREFIX, key: phone, value: token });
+      }
     }
   }
 
-  private async acquireLock(phone: string): Promise<void> {
+  private async acquireLock(phone: string, token: string): Promise<boolean> {
     const deadline = Date.now() + LOCK_MAX_WAIT_MS;
     while (true) {
       const acquired = await this.cache.setIfAbsent({
         prefix: LOCK_PREFIX,
         key: phone,
-        value: 1,
+        value: token,
         ttl: LOCK_TTL_SECONDS,
       });
-      if (acquired) return;
+      if (acquired) return true;
       if (Date.now() >= deadline) {
         this.logger.warn(
-          { component: 'conversation' },
+          { component: 'conversation', from: maskPhone(phone) },
           'Lock do telefone não liberou a tempo; seguindo sem ele',
         );
-        return;
+        return false;
       }
       await sleep(LOCK_RETRY_MS);
     }

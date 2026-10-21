@@ -231,6 +231,8 @@ header `bearer(token)` nessas chamadas, a menos que seja exatamente isso que o t
 
 ### WhatsApp sempre simulado
 
+`vitest.config.e2e.ts` força `REVGAS_MODE`, `VIACEP_MODE`, `LLM_MODE` e `WHATSAPP_MODE` para `fake`, independentemente do `.env` local.
+
 `vitest.config.e2e.ts` define `WHATSAPP_MODE=fake` (e um app secret/verify token de teste), então
 o e2e nunca envia mensagem real, mesmo com token no `.env`. Para ver o que o bot respondeu, pegue o
 simulador com `app.get(WHATSAPP_CLIENT)` (é um `FakeWhatsappClient`: `sent`, `read`, `clear()`) e

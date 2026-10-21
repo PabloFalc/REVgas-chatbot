@@ -62,13 +62,18 @@ function setupStore() {
       store.set(idOf(params), params.value);
       return true;
     }),
+    deleteIfEquals: vi.fn(async (params: { prefix?: string; key: string; value: unknown }) => {
+      if (store.get(idOf(params)) !== params.value) return false;
+      store.delete(idOf(params));
+      return true;
+    }),
   };
   const logger = { setContext: vi.fn(), error: vi.fn(), warn: vi.fn() };
   const repository = new ConversationRepository(
     cache as unknown as RedisService,
     logger as unknown as PinoLogger,
   );
-  return { repository, cache, logger };
+  return { repository, cache, logger, store };
 }
 
 describe('ConversationRepository (pedido em andamento)', () => {
@@ -106,8 +111,8 @@ describe('ConversationRepository (pedido em andamento)', () => {
     expect(events).toEqual(['a:start', 'a:end', 'b:start', 'b:end']);
   });
 
-  it('withPhoneLock usa TTL de 30 s e libera mesmo quando o trabalho falha', async () => {
-    const { repository, cache } = setupStore();
+  it('withPhoneLock grava um token com TTL de 120 s e libera só o próprio token', async () => {
+    const { repository, cache, store } = setupStore();
 
     await expect(
       repository.withPhoneLock('55', async () => {
@@ -115,26 +120,34 @@ describe('ConversationRepository (pedido em andamento)', () => {
       }),
     ).rejects.toThrow('falhou');
 
-    expect(cache.setIfAbsent).toHaveBeenCalledWith({
+    const [call] = cache.setIfAbsent.mock.calls[0];
+    expect(call).toMatchObject({ prefix: LOCK_PREFIX, key: '55', ttl: 120 });
+    expect(typeof call.value).toBe('string');
+    expect(cache.deleteIfEquals).toHaveBeenCalledWith({
       prefix: LOCK_PREFIX,
       key: '55',
-      value: 1,
-      ttl: 30,
+      value: call.value,
     });
-    expect(cache.delete).toHaveBeenCalledWith({ prefix: LOCK_PREFIX, key: '55' });
+    expect(store.has(`${LOCK_PREFIX}:55`)).toBe(false);
   });
 
-  it('depois de 30 s esperando, segue sem o lock e avisa no log', async () => {
+  it('quem desistiu de esperar segue sem apagar o lock do outro dono', async () => {
     vi.useFakeTimers();
     try {
-      const { repository, cache, logger } = setupStore();
-      await cache.setIfAbsent({ prefix: LOCK_PREFIX, key: '55', value: 1 });
+      const { repository, cache, logger, store } = setupStore();
+      await cache.setIfAbsent({ prefix: LOCK_PREFIX, key: '5586999991234', value: 'dono' });
 
-      const pending = repository.withPhoneLock('55', async () => 'ok');
-      await vi.advanceTimersByTimeAsync(31_000);
+      const pending = repository.withPhoneLock('5586999991234', async () => 'ok');
+      await vi.advanceTimersByTimeAsync(121_000);
 
       await expect(pending).resolves.toBe('ok');
+      expect(store.get(`${LOCK_PREFIX}:5586999991234`)).toBe('dono');
+      expect(cache.deleteIfEquals).not.toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalledOnce();
+      expect(logger.warn.mock.calls[0][0]).toEqual({
+        component: 'conversation',
+        from: '*******1234',
+      });
     } finally {
       vi.useRealTimers();
     }

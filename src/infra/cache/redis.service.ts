@@ -4,6 +4,9 @@ import { PinoLogger } from 'nestjs-pino';
 import type { CacheGetParams, CacheSetParams, ICacheClient } from './cache-client.interface';
 import { REDIS } from './redis.client';
 
+const DELETE_IF_EQUALS =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
 @Injectable()
 export class RedisService implements ICacheClient, OnApplicationShutdown {
   constructor(
@@ -69,6 +72,22 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
     }
   }
 
+  async deleteIfEquals(params: CacheGetParams & { value: unknown }): Promise<boolean> {
+    const { key, prefix, value } = params;
+    try {
+      const result = await this.redis.eval(
+        DELETE_IF_EQUALS,
+        1,
+        this._makePrefix(key, prefix),
+        JSON.stringify(value),
+      );
+      return result === 1;
+    } catch (error) {
+      this.logger.error({ component: 'cache', err: error, key }, 'Cache deleteIfEquals error');
+      return false;
+    }
+  }
+
   async clear(prefix: string): Promise<void> {
     try {
       let cursor = '0';
@@ -92,6 +111,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       set: params => this.set({ ...params, prefix }),
       setIfAbsent: params => this.setIfAbsent({ ...params, prefix }),
       exists: params => this.exists({ ...params, prefix }),
+      deleteIfEquals: params => this.deleteIfEquals({ ...params, prefix }),
       delete: params => this.delete({ ...params, prefix }),
       clear: () => this.clear(prefix),
     };
