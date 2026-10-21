@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Bash(cat .env)",
+      "Bash(cat ./.env)",
+      "Bash(head * .env)",
+      "Bash(tail * .env)",
+      "Bash(less .env)",
+      "Bash(more .env)",
+      "Bash(type .env)",
+      "PowerShell(Get-Content .env)",
+      "PowerShell(Get-Content ./.env)",
+      "PowerShell(cat .env)",
+      "PowerShell(type .env)"
+    ],
+    "ask": [
+      "Read(./.env.example)",
+      "Bash(gh pr create*)",
+      "PowerShell(gh pr create*)"
+    ]
+  }
+}
