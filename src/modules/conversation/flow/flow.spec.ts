@@ -58,4 +58,14 @@ describe('runFlow', () => {
       runFlow({ step: 'askName', customer: {} }, hello, createFakeTools()),
     ).rejects.toThrow('bug');
   });
+
+  it('now() continua síncrono nas ferramentas do fluxo', async () => {
+    let seen: unknown;
+    handlers.askName = async (state, _input, tools) => {
+      seen = tools.now();
+      return { state, replies: [] };
+    };
+    await runFlow({ step: 'askName', customer: {} }, hello, createFakeTools());
+    expect(seen).toBeInstanceOf(Date);
+  });
 });

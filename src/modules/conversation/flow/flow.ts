@@ -14,7 +14,7 @@ export class ToolError extends Error {
 function wrapTools(tools: FlowTools): FlowTools {
   const wrapped: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(tools)) {
-    if (typeof value !== 'function') {
+    if (key === 'now' || typeof value !== 'function') {
       wrapped[key] = value;
       continue;
     }
