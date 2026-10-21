@@ -1,10 +1,14 @@
+import {
+  CpfTakenError,
+  CustomerRejectedError,
+} from 'src/modules/customer/contracts/customer.types';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runFlow } from './flow';
 import type { FlowInput, OrderState, Step, StepResult } from './flow.types';
 import { msg } from './messages';
 import { text } from './replies';
 import { asks, handlers } from './steps';
-import { createFakeTools, FAKE_PHONE, type FakeTools } from './testing/fake-tools';
+import { createFakeTools, FAKE_NOW, FAKE_PHONE, type FakeTools } from './testing/fake-tools';
 
 const hello: FlowInput = { phone: FAKE_PHONE, content: { type: 'text', text: 'oi' } };
 
@@ -241,11 +245,17 @@ describe('conversas completas', () => {
   });
 
   it('falha ao criar a venda e tentar de novo encontra a venda já criada', async () => {
+    let createAttempts = 0;
+    const sinceSeen: Date[] = [];
     const tools = createFakeTools({
       createSale: async () => {
+        createAttempts += 1;
         throw new Error('timeout');
       },
-      findRecentSale: async () => 9001,
+      findRecentSale: async (_order, since) => {
+        sinceSeen.push(since);
+        return 9001;
+      },
     });
     const chat = new Conversation(tools);
     await chat.send(say('oi'));
@@ -258,6 +268,8 @@ describe('conversas completas', () => {
     expect(failed.replies[0].type).toBe('buttons');
     const retried = await chat.send(pick('retry:sale'));
     expect(retried).toEqual({ state: null, replies: [text(msg.saleCreated(9001))] });
+    expect(createAttempts).toBe(1);
+    expect(sinceSeen).toEqual([FAKE_NOW]);
   });
 
   it('cancelar no meio encerra o pedido', async () => {
@@ -266,5 +278,40 @@ describe('conversas completas', () => {
     await chat.send(pick('address:0'));
     const cancelled = await chat.send(say('cancelar'));
     expect(cancelled).toEqual({ state: null, replies: [text(msg.cancelled)] });
+  });
+});
+
+describe('cadastro sob runFlow', () => {
+  const confirming = (): OrderState => ({
+    step: 'confirmAddress',
+    customer: { name: 'Maria da Silva', cpf: '12345678909' },
+    draftAddress: {
+      street: 'Rua das Flores',
+      number: '120',
+      neighborhood: 'Centro',
+      city: 'Teresina',
+      state: 'PI',
+    },
+  });
+
+  it('CpfTakenError do createCustomer encerra com a mensagem de CPF já cadastrado', async () => {
+    const tools = createFakeTools({
+      createCustomer: async () => {
+        throw new CpfTakenError();
+      },
+    });
+    const result = await runFlow(confirming(), pick('address:ok'), tools);
+    expect(result).toEqual({ state: null, replies: [text(msg.cpfTaken(tools.storePhone))] });
+  });
+
+  it('CustomerRejectedError do createCustomer volta para o nome', async () => {
+    const tools = createFakeTools({
+      createCustomer: async () => {
+        throw new CustomerRejectedError();
+      },
+    });
+    const result = await runFlow(confirming(), pick('address:ok'), tools);
+    expect(result.state?.step).toBe('askName');
+    expect(result.replies).toEqual([text(msg.registerFailed)]);
   });
 });

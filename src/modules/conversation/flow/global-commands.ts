@@ -34,7 +34,10 @@ export async function globalCommand(
   if (raw === null) return null;
   const text = normalizeText(raw);
 
-  if (CANCEL.includes(text)) return { state: null, replies: [textReply(msg.cancelled)] };
+  if (CANCEL.includes(text)) {
+    if (state?.step === 'creatingSale') return { state, replies: [textReply(msg.saleInProgress)] };
+    return { state: null, replies: [textReply(msg.cancelled)] };
+  }
 
   if (STORE.some(word => text.includes(word))) {
     return { state, replies: [textReply(msg.talkToStore(tools.storePhone))] };

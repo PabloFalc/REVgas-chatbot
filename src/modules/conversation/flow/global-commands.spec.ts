@@ -20,6 +20,12 @@ afterEach(() => {
 });
 
 describe('globalCommand', () => {
+  it('cancelar durante creatingSale mantém o pedido e avisa que está em andamento', async () => {
+    const creating: OrderState = { step: 'creatingSale', customer: {} };
+    const result = await globalCommand(creating, say('cancelar'), createFakeTools());
+    expect(result).toEqual({ state: creating, replies: [text(msg.saleInProgress)] });
+  });
+
   it.each(['cancelar', 'Cancelar', 'CANCELA', 'cancelar pedido'])(
     '%s apaga o pedido',
     async word => {

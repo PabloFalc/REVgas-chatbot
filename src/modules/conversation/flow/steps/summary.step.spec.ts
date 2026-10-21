@@ -211,6 +211,23 @@ describe('creatingSale', () => {
     saleAttemptAt: '2026-10-21T15:00:00Z',
   };
 
+  it('tentativa com 60 s ou mais vira saleFailed com tentar de novo', async () => {
+    const stale = { ...state, saleAttemptAt: new Date(FAKE_NOW.getTime() - 60_000).toISOString() };
+    const tools = createFakeTools();
+    const result = await handlers.creatingSale?.(stale, pick('x:y'), tools);
+    expect(result?.state?.step).toBe('saleFailed');
+    const reply = result?.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale']);
+    expect(tools.calls).toEqual([]);
+  });
+
+  it('tentativa com menos de 60 s continua em andamento', async () => {
+    const fresh = { ...state, saleAttemptAt: new Date(FAKE_NOW.getTime() - 59_000).toISOString() };
+    const result = await handlers.creatingSale?.(fresh, pick('x:y'), createFakeTools());
+    expect(result).toEqual({ state: fresh, replies: [text(msg.saleInProgress)] });
+  });
+
   it('qualquer entrada responde que está em andamento e não cria venda', async () => {
     const tools = createFakeTools();
     const confirm = await handlers.creatingSale?.(state, pick('summary:confirm'), tools);
@@ -255,7 +272,7 @@ describe('saleFailed', () => {
     expect(tools.calls.map(c => c.name)).toEqual(['findRecentSale', 'checkpoint', 'createSale']);
     expect(tools.calls[1].args[0]).toMatchObject({
       step: 'creatingSale',
-      saleAttemptAt: FAKE_NOW.toISOString(),
+      saleAttemptAt: state.saleAttemptAt,
     });
   });
 

@@ -14,6 +14,8 @@ import { msg } from '../messages';
 import { nextStep } from '../next-step';
 import { buttons, text } from '../replies';
 
+const STALE_ATTEMPT_MS = 60_000;
+
 function buildOrder(state: OrderState): SaleOrder | null {
   const { customer, address, product, quantity, payment, quote } = state;
   if (customer.id === undefined || !address || !product || !quantity || !payment || !quote) {
@@ -71,7 +73,7 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
   const attempt: OrderState = {
     ...state,
     step: 'creatingSale',
-    saleAttemptAt: tools.now().toISOString(),
+    saleAttemptAt: state.saleAttemptAt ?? tools.now().toISOString(),
   };
   await tools.checkpoint(attempt);
   try {
@@ -107,10 +109,13 @@ const handleChooseCorrection: HandleFn = async (state, input, tools) => {
   return chooseCorrection(state, tools);
 };
 
-const handleCreatingSale: HandleFn = async state => ({
-  state,
-  replies: [text(msg.saleInProgress)],
-});
+const handleCreatingSale: HandleFn = async (state, _input, tools) => {
+  const attemptAt = state.saleAttemptAt ? new Date(state.saleAttemptAt).getTime() : 0;
+  if (tools.now().getTime() - attemptAt < STALE_ATTEMPT_MS) {
+    return { state, replies: [text(msg.saleInProgress)] };
+  }
+  return saleFailed(state, tools);
+};
 
 const handleSaleFailed: HandleFn = async (state, input, tools) => {
   if (choiceOf(input, 'retry') !== 'sale') return saleFailed(state, tools);

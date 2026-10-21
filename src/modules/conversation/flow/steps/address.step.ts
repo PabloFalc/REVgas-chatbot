@@ -7,7 +7,15 @@ import {
   CpfTakenError,
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
-import type { AskFn, FlowTools, HandleFn, OrderState, Step, StepResult } from '../flow.types';
+import {
+  type AskFn,
+  type FlowTools,
+  type HandleFn,
+  type OrderState,
+  type Step,
+  type StepResult,
+  ToolError,
+} from '../flow.types';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -167,10 +175,11 @@ const handleConfirmAddress: HandleFn = async (state, input, tools) => {
       });
       customer = { ...customer, id: created.id, tagId: created.tagId };
     } catch (error) {
-      if (error instanceof CpfTakenError) {
+      const cause = error instanceof ToolError ? error.cause : error;
+      if (cause instanceof CpfTakenError) {
         return { state: null, replies: [text(msg.cpfTaken(tools.storePhone))] };
       }
-      if (error instanceof CustomerRejectedError) {
+      if (cause instanceof CustomerRejectedError) {
         return {
           state: { ...withoutDraft(state), step: 'askName', customer: {} },
           replies: [text(msg.registerFailed)],

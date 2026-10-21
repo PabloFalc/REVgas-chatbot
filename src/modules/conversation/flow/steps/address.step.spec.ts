@@ -3,7 +3,7 @@ import {
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
 import { describe, expect, it } from 'vitest';
-import type { FlowInput, OrderState } from '../flow.types';
+import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { buttons, text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
@@ -216,17 +216,38 @@ describe('confirmAddress', () => {
   it('CPF já cadastrado encerra a conversa', async () => {
     const tools = createFakeTools({
       createCustomer: async () => {
-        throw new CpfTakenError();
+        throw new ToolError(new CpfTakenError());
       },
     });
     const result = await handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools);
     expect(result).toEqual({ state: null, replies: [text(msg.cpfTaken(tools.storePhone))] });
   });
 
+  it('CPF já cadastrado também é reconhecido sem o ToolError', async () => {
+    const tools = createFakeTools({
+      createCustomer: async () => {
+        throw new CpfTakenError();
+      },
+    });
+    const result = await handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools);
+    expect(result?.state).toBeNull();
+  });
+
+  it('erro de ferramenta desconhecido é relançado', async () => {
+    const tools = createFakeTools({
+      createCustomer: async () => {
+        throw new ToolError(new Error('fora'));
+      },
+    });
+    await expect(
+      handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools),
+    ).rejects.toBeInstanceOf(ToolError);
+  });
+
   it('cadastro recusado volta para o nome', async () => {
     const tools = createFakeTools({
       createCustomer: async () => {
-        throw new CustomerRejectedError();
+        throw new ToolError(new CustomerRejectedError());
       },
     });
     const result = await handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools);
