@@ -8,6 +8,7 @@ import { msg } from '../messages';
 import { buttons, text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
 import { asks, handlers } from './address.step';
+import { asks as registry } from './registry';
 
 const say = (body: string): FlowInput => ({
   phone: FAKE_PHONE,
@@ -203,6 +204,27 @@ describe('confirmAddress', () => {
     expect(result?.state?.address).toEqual(a1);
     expect(result?.state?.draftAddress).toBeUndefined();
     expect(result?.state?.step).toBe('chooseProduct');
+  });
+
+  it('falha logo após criar o cadastro guarda o cliente criado e avisa indisponível', async () => {
+    const tools = createFakeTools();
+    const original = registry.chooseProduct;
+    registry.chooseProduct = async () => {
+      throw new ToolError(new Error('fora'));
+    };
+    let result: Awaited<ReturnType<NonNullable<typeof handlers.confirmAddress>>> | undefined;
+    try {
+      result = await handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools);
+    } finally {
+      registry.chooseProduct = original;
+    }
+    expect(result?.replies).toEqual([text(msg.unavailable)]);
+    expect(result?.state).toMatchObject({
+      step: 'chooseProduct',
+      customer: { id: 2, tagId: null },
+      address: a1,
+    });
+    expect(result?.state?.draftAddress).toBeUndefined();
   });
 
   it('ok de cliente conhecido não cria cadastro', async () => {

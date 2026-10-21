@@ -34,17 +34,20 @@ export async function runFlow(
   state: OrderState | null,
   input: FlowInput,
   tools: FlowTools,
+  onToolError?: (error: ToolError) => void,
 ): Promise<StepResult> {
   const safe = wrapTools(tools);
   try {
     const global = await globalCommand(state, input, safe);
     if (global) return global;
-    if (!state) return await start(input, safe);
-    const handle = handlers[state.step];
-    if (!handle) return { state, replies: [] };
+    const handle = state ? handlers[state.step] : undefined;
+    if (!state || !handle) return await start(input, safe);
     return await handle(state, input, safe);
   } catch (error) {
-    if (error instanceof ToolError) return { state, replies: [text(msg.unavailable)] };
+    if (error instanceof ToolError) {
+      onToolError?.(error);
+      return { state, replies: [text(msg.unavailable)] };
+    }
     throw error;
   }
 }

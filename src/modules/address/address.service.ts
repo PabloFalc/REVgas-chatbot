@@ -5,11 +5,11 @@ import { LlmError } from '../../core/erros/llm/llm.errors';
 import { ViacepError } from '../../core/erros/viacep/viacep.errors';
 import { LLM_CLIENT, type LlmClient } from '../../integrations/llm/llm.client';
 import { VIACEP_CLIENT, type ViacepClient } from '../../integrations/viacep/viacep.client';
-import type { AddressDraft, AddressField } from './contracts/address.types';
+import type { AddressDraft } from './contracts/address.types';
 
 const CPF_PATTERN = /(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)/g;
 
-const FIELD_ORDER: AddressField[] = ['street', 'number', 'neighborhood'];
+const UF_PATTERN = /^[A-Z]{2}$/;
 
 const SYSTEM_PROMPT = [
   'Você extrai dados de um endereço brasileiro escrito livremente por um cliente.',
@@ -78,15 +78,12 @@ export class AddressService {
       }
     }
     const completed = await this.completeFromCep(draft);
+    const uf = completed.state?.trim().toUpperCase();
     return {
       ...completed,
       city: completed.city ?? env.STORE_CITY,
-      state: completed.state ?? env.STORE_STATE,
+      state: uf && UF_PATTERN.test(uf) ? uf : env.STORE_STATE,
     };
-  }
-
-  missingField(draft: AddressDraft): AddressField | null {
-    return FIELD_ORDER.find(field => !draft[field]) ?? null;
   }
 
   private async parse(text: string): Promise<ParsedAddress | null> {

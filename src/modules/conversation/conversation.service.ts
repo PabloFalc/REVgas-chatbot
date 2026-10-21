@@ -10,6 +10,7 @@ import { maskPhone } from 'src/utils/mask';
 import type { IncomingMessage, Reply } from './contracts/conversation.types';
 import { ConversationRepository } from './conversation.repository';
 import { runFlow } from './flow/flow';
+import type { ToolError } from './flow/flow.types';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
 
@@ -109,7 +110,20 @@ export class ConversationService {
     const phone = incoming.from;
     const tools = this.flowTools.forPhone(state => this.conversations.saveOrder(phone, state));
     const before = await this.conversations.loadOrder(phone);
-    const result = await runFlow(before, { phone, content: incoming.content }, tools);
+    const result = await runFlow(
+      before,
+      { phone, content: incoming.content },
+      tools,
+      (error: ToolError) => {
+        this.logger.warn(
+          {
+            ...log,
+            cause: error.cause instanceof Error ? error.cause.name : typeof error.cause,
+          },
+          'Falha em ferramenta do fluxo',
+        );
+      },
+    );
 
     if (result.state === null) {
       await this.conversations.clearOrder(phone);

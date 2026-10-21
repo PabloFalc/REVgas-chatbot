@@ -24,6 +24,16 @@ describe('RedisService.delete', () => {
     expect(logger.error).toHaveBeenCalled();
   });
 
+  it('não loga a chave no erro, só o prefixo', async () => {
+    const del = vi.fn().mockRejectedValue(new Error('boom'));
+    const { service, logger } = build(del);
+    await service.delete({ prefix: 'p', key: '5586999990000' });
+    const [fields] = logger.error.mock.calls[0];
+    expect(fields).toMatchObject({ component: 'cache', prefix: 'p' });
+    expect(JSON.stringify(fields)).not.toContain('5586999990000');
+    expect(fields).not.toHaveProperty('key');
+  });
+
   it('withPrefix expõe delete', async () => {
     const del = vi.fn().mockResolvedValue(1);
     const { service } = build(del);

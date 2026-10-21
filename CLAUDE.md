@@ -45,8 +45,8 @@ src/
                 text (normalizeText, truncate), safe-equal, parse-json, guards (isRecord,
                 isTimeoutError), iso-datetime. Check here before writing a new helper.
   modules/      domain — conversation/ (WhatsApp webhook at /webhooks/whatsapp + order flow in
-                flow/: steps/, next-step, global-commands, messages, replies, testing/fake-tools;
-                flow-tools.ts binds FlowTools to the services), customer/, catalog/, order/,
+                flow/: steps/, next-step, global-commands, messages, replies, testing/fake-tools),
+                flow-tools.ts (binds FlowTools to the services), customer/, catalog/, order/,
                 address/ (repositories/services + contracts/), auth/ (on standby, not wired in
                 routes.module.ts)
 ```
@@ -82,8 +82,7 @@ Dependency rules:
 - `integrations/` knows nothing about the domain: it talks to the external service and validates responses with Zod.
 - Module services don't import SDKs (Redis, Drizzle, `integrations/`) directly. Access goes through:
   - **repositories** (`*.repository.ts`) — read/write data: Redis, Postgres, or records in an external
-    API (e.g. RevGás customers/sales). Example: `conversation.repository` (message dedup, later the
-    conversation state).
+    API (e.g. RevGás customers/sales). Example: `conversation.repository` (message dedup, order state).
   - **gateways** (`*.gateway.ts`) — outbound actions that store nothing (send a message, notify).
     Example: `messaging.gateway` (sends replies via `WHATSAPP_CLIENT`).
   - Known exception: `ConversationService` imports the WhatsApp webhook event **types**

@@ -4,6 +4,7 @@ import { msg } from '../messages';
 import { text } from '../replies';
 import { createFakeTools, FAKE_NOW, FAKE_PHONE } from '../testing/fake-tools';
 import { asks, handlers } from './index';
+import { cancelAfterFailedSale } from './summary.step';
 
 const pick = (id: string): FlowInput => ({
   phone: FAKE_PHONE,
@@ -285,5 +286,24 @@ describe('saleFailed', () => {
     );
     expect(result?.state?.step).toBe('saleFailed');
     expect(tools.calls).toEqual([]);
+  });
+
+  it('cancelar depois da falha acha a venda criada e avisa o número em vez de cancelar', async () => {
+    const seen: unknown[] = [];
+    const tools = createFakeTools({
+      findRecentSale: async (order, since) => {
+        seen.push(order, since);
+        return 888;
+      },
+    });
+    const result = await cancelAfterFailedSale(state, tools);
+    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(888))] });
+    expect(seen[0]).toEqual(order);
+    expect(seen[1]).toEqual(new Date('2026-10-21T15:00:00.000Z'));
+  });
+
+  it('cancelar depois da falha sem venda encontrada cancela normalmente', async () => {
+    const result = await cancelAfterFailedSale(state, createFakeTools());
+    expect(result).toEqual({ state: null, replies: [text(msg.cancelled)] });
   });
 });

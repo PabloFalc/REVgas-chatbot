@@ -4,6 +4,7 @@ import { textOf } from './input';
 import { msg } from './messages';
 import { text as textReply } from './replies';
 import { asks, start } from './steps';
+import { cancelAfterFailedSale } from './steps/summary.step';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
 const STORE = ['atendente', 'falar com alguem', 'humano'];
@@ -36,6 +37,7 @@ export async function globalCommand(
 
   if (CANCEL.includes(text)) {
     if (state?.step === 'creatingSale') return { state, replies: [textReply(msg.saleInProgress)] };
+    if (state?.step === 'saleFailed') return cancelAfterFailedSale(state, tools);
     return { state: null, replies: [textReply(msg.cancelled)] };
   }
 

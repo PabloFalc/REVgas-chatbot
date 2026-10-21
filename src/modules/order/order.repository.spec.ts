@@ -24,8 +24,12 @@ const order: SaleOrder = {
   total: 200,
 };
 
-const sale = (id: number, total: number | null, date?: string | null) =>
-  ({ id, status: 'OPEN', total, date }) as RevgasSale;
+const sale = (
+  id: number,
+  total: number | null,
+  date?: string | null,
+  products: { product_id: number; quantity: number }[] = [{ product_id: 3, quantity: 2 }],
+) => ({ id, status: 'OPEN', total, date, products }) as RevgasSale;
 
 const build = (sales: RevgasSale[] = []) => {
   const create = vi.fn(async () => ({ id: 99 }) as RevgasSale);
@@ -132,6 +136,35 @@ describe('OrderRepository', () => {
       expect(await repository.findRecentSale(order, since)).toBe(10);
       const old = build([sale(10, 200, '2026-10-21T11:50:00-03:00')]);
       expect(await old.repository.findRecentSale(order, since)).toBeNull();
+    });
+
+    it('ignores a sale with the same total but a different product', async () => {
+      const { repository } = build([
+        sale(11, 200, '2026-10-21T15:01:00.000Z', [{ product_id: 4, quantity: 2 }]),
+      ]);
+      expect(await repository.findRecentSale(order, since)).toBeNull();
+    });
+
+    it('ignores a sale with the same total and product but a different quantity', async () => {
+      const { repository } = build([
+        sale(12, 200, '2026-10-21T15:01:00.000Z', [{ product_id: 3, quantity: 1 }]),
+      ]);
+      expect(await repository.findRecentSale(order, since)).toBeNull();
+    });
+
+    it('ignores a sale without products', async () => {
+      const { repository } = build([sale(13, 200, null, [])]);
+      expect(await repository.findRecentSale(order, since)).toBeNull();
+    });
+
+    it('matches same total, product and quantity when the date is missing', async () => {
+      const { repository } = build([
+        sale(14, 200, undefined, [
+          { product_id: 9, quantity: 1 },
+          { product_id: 3, quantity: 2 },
+        ]),
+      ]);
+      expect(await repository.findRecentSale(order, since)).toBe(14);
     });
 
     it('returns null when nothing matches', async () => {

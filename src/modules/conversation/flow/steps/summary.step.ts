@@ -117,6 +117,19 @@ const handleCreatingSale: HandleFn = async (state, _input, tools) => {
   return saleFailed(state, tools);
 };
 
+export async function cancelAfterFailedSale(
+  state: OrderState,
+  tools: FlowTools,
+): Promise<StepResult> {
+  const order = buildOrder(state);
+  if (order) {
+    const since = new Date(state.saleAttemptAt ?? tools.now().toISOString());
+    const existing = await tools.findRecentSale(order, since);
+    if (existing !== null) return { state: null, replies: [text(msg.saleCreated(existing))] };
+  }
+  return { state: null, replies: [text(msg.cancelled)] };
+}
+
 const handleSaleFailed: HandleFn = async (state, input, tools) => {
   if (choiceOf(input, 'retry') !== 'sale') return saleFailed(state, tools);
   const order = buildOrder(state);

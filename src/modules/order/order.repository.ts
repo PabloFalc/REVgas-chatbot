@@ -59,6 +59,10 @@ export class OrderRepository {
     const threshold = since.getTime() - TOLERANCE_MS;
     const match = page.data.find(sale => {
       if (sale.total == null || Math.abs(sale.total - order.total) >= 0.005) return false;
+      const sameItem = (sale.products ?? []).some(
+        item => item.product_id === order.productId && item.quantity === order.quantity,
+      );
+      if (!sameItem) return false;
       const created = saleTimestamp(sale.date);
       return Number.isNaN(created) || created >= threshold;
     });

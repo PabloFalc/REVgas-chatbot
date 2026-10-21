@@ -189,7 +189,18 @@ const handleConfirmAddress: HandleFn = async (state, input, tools) => {
     }
   }
 
-  return nextStep({ ...withoutDraft(state), customer, address }, tools);
+  const advanced: OrderState = { ...withoutDraft(state), customer, address };
+  try {
+    return await nextStep(advanced, tools);
+  } catch (error) {
+    if (error instanceof ToolError) {
+      return {
+        state: { ...advanced, step: 'chooseProduct' },
+        replies: [text(msg.unavailable)],
+      };
+    }
+    throw error;
+  }
 };
 
 export const asks: Partial<Record<Step, AskFn>> = {

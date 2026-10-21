@@ -4,7 +4,13 @@ import {
 } from 'src/modules/customer/contracts/customer.types';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runFlow } from './flow';
-import type { FlowInput, OrderState, Step, StepResult } from './flow.types';
+import {
+  type FlowInput,
+  type OrderState,
+  type Step,
+  type StepResult,
+  ToolError,
+} from './flow.types';
 import { msg } from './messages';
 import { text } from './replies';
 import { asks, handlers } from './steps';
@@ -52,6 +58,28 @@ describe('runFlow', () => {
     const result = await runFlow(state, hello, tools);
     expect(result.state).toBe(state);
     expect(result.replies).toEqual([text(msg.unavailable)]);
+  });
+
+  it('etapa desconhecida no estado salvo começa um pedido novo', async () => {
+    const state = { step: 'oldStep', customer: {} } as unknown as OrderState;
+    const result = await runFlow(state, { ...hello, phone: '5500000000000' }, createFakeTools());
+    expect(result.state).toEqual({ step: 'askName', customer: {} });
+    expect(result.replies).toEqual([text(msg.welcomeNew)]);
+  });
+
+  it('avisa o callback com o ToolError quando uma ferramenta falha', async () => {
+    const boom = new Error('RevGás fora do ar');
+    const tools = createFakeTools({
+      findCustomer: async () => {
+        throw boom;
+      },
+    });
+    const seen: ToolError[] = [];
+    const result = await runFlow(null, hello, tools, error => seen.push(error));
+    expect(result.replies).toEqual([text(msg.unavailable)]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeInstanceOf(ToolError);
+    expect(seen[0].cause).toBe(boom);
   });
 
   it('erro comum de um handler (bug) não é escondido', async () => {
@@ -302,6 +330,29 @@ describe('cadastro sob runFlow', () => {
     });
     const result = await runFlow(confirming(), pick('address:ok'), tools);
     expect(result).toEqual({ state: null, replies: [text(msg.cpfTaken(tools.storePhone))] });
+  });
+
+  it('falha ao listar produtos depois de criar o cadastro não recria o cliente na próxima mensagem', async () => {
+    let listFails = true;
+    const tools = createFakeTools({
+      listProducts: async () => {
+        if (listFails) throw new Error('RevGás fora do ar');
+        return [{ id: 1, name: 'Botijão P13' }];
+      },
+    });
+    const first = await runFlow(confirming(), pick('address:ok'), tools);
+    expect(first.replies).toEqual([text(msg.unavailable)]);
+    expect(first.state?.customer.id).toBe(2);
+
+    listFails = false;
+    const second = await runFlow(
+      first.state,
+      { phone: FAKE_PHONE, content: { type: 'text', text: 'oi' } },
+      tools,
+    );
+    expect(second.state?.step).toBe('chooseProduct');
+    expect(second.replies[0].type).toBe('list');
+    expect(tools.calls.filter(call => call.name === 'createCustomer')).toHaveLength(1);
   });
 
   it('CustomerRejectedError do createCustomer volta para o nome', async () => {

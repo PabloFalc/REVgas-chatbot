@@ -1,3 +1,4 @@
+import { env } from 'src/config/env';
 import { LlmUnavailableError } from 'src/core/erros/llm/llm.errors';
 import { FakeLlmClient } from 'src/integrations/llm/fake-llm.client';
 import { FakeViacepClient } from 'src/integrations/viacep/fake-viacep.client';
@@ -102,6 +103,18 @@ describe('AddressService', () => {
       expect(result?.state).toBe('PI');
     });
 
+    it('normalizes a lowercase UF to uppercase', async () => {
+      llm.queueObject({ ...nullAi, street: 'Rua A', number: '1', state: ' ma ' });
+      const result = await service.fromText('Rua A 1 ma');
+      expect(result?.state).toBe('MA');
+    });
+
+    it('falls back to the store state when the UF is not two letters', async () => {
+      llm.queueObject({ ...nullAi, street: 'Rua A', number: '1', state: 'Piauí' });
+      const result = await service.fromText('Rua A 1 Piauí');
+      expect(result?.state).toBe(env.STORE_STATE);
+    });
+
     it('returns null when the llm fails', async () => {
       llm.queueError(new LlmUnavailableError('fora'));
       expect(await service.fromText('Rua A 10')).toBeNull();
@@ -128,15 +141,6 @@ describe('AddressService', () => {
         expect(user).not.toContain('52998224725');
         expect(user).not.toContain('529.982.247-25');
       }
-    });
-  });
-
-  describe('missingField', () => {
-    it('follows street, number, neighborhood order', () => {
-      expect(service.missingField({ street: 'Rua A', neighborhood: 'Centro' })).toBe('number');
-      expect(service.missingField({})).toBe('street');
-      expect(service.missingField({ street: 'Rua A', number: '1' })).toBe('neighborhood');
-      expect(service.missingField({ street: 'Rua A', number: '1', neighborhood: 'C' })).toBeNull();
     });
   });
 });

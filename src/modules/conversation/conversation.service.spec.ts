@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationRepository } from './conversation.repository';
 import { ConversationService } from './conversation.service';
 import { runFlow } from './flow/flow';
-import type { OrderState } from './flow/flow.types';
+import { type OrderState, ToolError } from './flow/flow.types';
 import { text } from './flow/replies';
 import { createFakeTools } from './flow/testing/fake-tools';
 import type { FlowToolsService } from './flow-tools';
@@ -79,6 +79,7 @@ describe('ConversationService.handle', () => {
       loaded,
       { phone: '5586999991234', content: { type: 'text', text: '123' } },
       expect.anything(),
+      expect.any(Function),
     );
     expect(repository.saveOrder).toHaveBeenCalledWith('5586999991234', saved);
     expect(repository.clearOrder).not.toHaveBeenCalled();
@@ -202,6 +203,30 @@ describe('ConversationService.handle', () => {
 
     expect(logger.error).toHaveBeenCalledOnce();
     expect(whatsapp.sent).toHaveLength(1);
+  });
+
+  it('falha de ferramenta é logada como aviso só com o nome da causa, sem mensagem nem telefone', async () => {
+    const { service, logger } = setup();
+    runFlowMock.mockImplementationOnce(async (_state, _input, _tools, onToolError) => {
+      onToolError?.(new ToolError(new TypeError('cpf 12345678909 fora do ar')));
+      return { state: null, replies: [text('indisponível')] };
+    });
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.G')));
+
+    const call = logger.warn.mock.calls.find(
+      ([, message]) => message === 'Falha em ferramenta do fluxo',
+    );
+    expect(call?.[0]).toMatchObject({
+      component: 'conversation',
+      messageId: 'wamid.G',
+      from: expect.not.stringContaining('5586999991234'),
+      cause: 'TypeError',
+    });
+    const logged = JSON.stringify(logger.warn.mock.calls);
+    expect(logged).not.toContain('12345678909');
+    expect(logged).not.toContain('fora do ar');
+    expect(logged).not.toContain('5586999991234');
   });
 
   it('nunca loga o telefone cru', async () => {

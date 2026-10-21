@@ -1,5 +1,9 @@
+import {
+  CpfTakenError,
+  CustomerRejectedError,
+} from 'src/modules/customer/contracts/customer.types';
 import { describe, expect, it } from 'vitest';
-import type { FlowInput } from '../flow.types';
+import { type FlowInput, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
@@ -119,6 +123,36 @@ describe('askMissingCpf', () => {
     expect(result?.state?.addresses).toHaveLength(2);
     expect(result?.state?.boughtProductIds).toEqual([2]);
     expect(result?.state?.step).toBe('chooseAddress');
+  });
+
+  it('CPF já cadastrado em outro cliente encerra com a mensagem de CPF já cadastrado', async () => {
+    const tools = createFakeTools({
+      saveCpf: async () => {
+        throw new ToolError(new CpfTakenError());
+      },
+    });
+    const result = await handlers.askMissingCpf?.(state, say(VALID_CPF), tools);
+    expect(result).toEqual({ state: null, replies: [text(msg.cpfTaken(tools.storePhone))] });
+  });
+
+  it('CPF rejeitado pelo RevGás pede o CPF de novo', async () => {
+    const tools = createFakeTools({
+      saveCpf: async () => {
+        throw new ToolError(new CustomerRejectedError());
+      },
+    });
+    const result = await handlers.askMissingCpf?.(state, say(VALID_CPF), tools);
+    expect(result).toEqual({ state, replies: [text(msg.invalidCpf)] });
+  });
+
+  it('outro erro ao salvar o CPF é repassado', async () => {
+    const boom = new ToolError(new Error('fora do ar'));
+    const tools = createFakeTools({
+      saveCpf: async () => {
+        throw boom;
+      },
+    });
+    await expect(handlers.askMissingCpf?.(state, say(VALID_CPF), tools)).rejects.toBe(boom);
   });
 
   it('CPF inválido não salva nada', async () => {

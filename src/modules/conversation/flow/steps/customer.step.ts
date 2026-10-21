@@ -1,12 +1,17 @@
+import {
+  CpfTakenError,
+  CustomerRejectedError,
+} from 'src/modules/customer/contracts/customer.types';
 import { isValidCpf, onlyDigits } from 'src/utils/cpf';
-import type {
-  AskFn,
-  FlowInput,
-  FlowTools,
-  HandleFn,
-  OrderState,
-  Step,
-  StepResult,
+import {
+  type AskFn,
+  type FlowInput,
+  type FlowTools,
+  type HandleFn,
+  type OrderState,
+  type Step,
+  type StepResult,
+  ToolError,
 } from '../flow.types';
 import { textOf } from '../input';
 import { msg } from '../messages';
@@ -88,7 +93,18 @@ const handleAskMissingCpf: HandleFn = async (state, input, tools) => {
     return { state, replies: [text(msg.invalidCpf)] };
   }
   const cpf = onlyDigits(raw);
-  await tools.saveCpf(customerId, cpf);
+  try {
+    await tools.saveCpf(customerId, cpf);
+  } catch (error) {
+    const cause = error instanceof ToolError ? error.cause : error;
+    if (cause instanceof CpfTakenError) {
+      return { state: null, replies: [text(msg.cpfTaken(tools.storePhone))] };
+    }
+    if (cause instanceof CustomerRejectedError) {
+      return { state, replies: [text(msg.invalidCpf)] };
+    }
+    throw error;
+  }
   const loaded = await withHistory(
     { ...state, customer: { ...state.customer, cpf } },
     customerId,

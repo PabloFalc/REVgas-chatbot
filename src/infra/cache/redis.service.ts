@@ -23,7 +23,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       if (!result) return null;
       return JSON.parse(result) as T;
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, key }, 'Cache get error');
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache get error');
       return null;
     }
   }
@@ -39,7 +39,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
         await this.redis.set(keyWithPrefix, serialized);
       }
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, key }, 'Cache set error');
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache set error');
     }
   }
 
@@ -58,7 +58,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
     try {
       return (await this.redis.exists(this._makePrefix(key, prefix))) === 1;
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, key }, 'Cache exists error');
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache exists error');
       return false;
     }
   }
@@ -68,7 +68,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
     try {
       await this.redis.del(this._makePrefix(key, prefix));
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, key }, 'Cache delete error');
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache delete error');
     }
   }
 
@@ -83,7 +83,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       );
       return result === 1;
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, key }, 'Cache deleteIfEquals error');
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache deleteIfEquals error');
       return false;
     }
   }

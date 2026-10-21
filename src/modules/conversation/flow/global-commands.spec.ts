@@ -26,6 +26,33 @@ describe('globalCommand', () => {
     expect(result).toEqual({ state: creating, replies: [text(msg.saleInProgress)] });
   });
 
+  it('cancelar em saleFailed com venda já criada devolve o número da venda', async () => {
+    const failed: OrderState = {
+      step: 'saleFailed',
+      customer: { id: 1 },
+      address: {
+        street: 'Rua A',
+        number: '1',
+        neighborhood: 'Centro',
+        city: 'Teresina',
+        state: 'PI',
+      },
+      product: { id: 1, name: 'Botijão P13' },
+      quantity: 1,
+      payment: { type: 'PIX', label: 'Pix' },
+      quote: { unitPrice: 110, total: 110 },
+      saleAttemptAt: '2026-10-21T15:00:00.000Z',
+    };
+    const found = await globalCommand(
+      failed,
+      say('cancelar'),
+      createFakeTools({ findRecentSale: async () => 321 }),
+    );
+    expect(found).toEqual({ state: null, replies: [text(msg.saleCreated(321))] });
+    const none = await globalCommand(failed, say('cancelar'), createFakeTools());
+    expect(none).toEqual({ state: null, replies: [text(msg.cancelled)] });
+  });
+
   it.each(['cancelar', 'Cancelar', 'CANCELA', 'cancelar pedido'])(
     '%s apaga o pedido',
     async word => {
