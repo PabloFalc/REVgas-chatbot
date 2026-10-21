@@ -7,9 +7,17 @@ import {
 import { asks as paymentAsks, handlers as paymentHandlers } from './payment.step';
 import { asks as productAsks, handlers as productHandlers } from './product.step';
 import { asks, handlers } from './registry';
+import { asks as summaryAsks, handlers as summaryHandlers } from './summary.step';
 
-Object.assign(asks, customerAsks, addressAsks, productAsks, paymentAsks);
-Object.assign(handlers, customerHandlers, addressHandlers, productHandlers, paymentHandlers);
+Object.assign(asks, customerAsks, addressAsks, productAsks, paymentAsks, summaryAsks);
+Object.assign(
+  handlers,
+  customerHandlers,
+  addressHandlers,
+  productHandlers,
+  paymentHandlers,
+  summaryHandlers,
+);
 
 export const start = customerStart;
 

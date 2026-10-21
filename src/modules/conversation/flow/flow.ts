@@ -1,15 +1,16 @@
-import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
+import {
+  type FlowInput,
+  type FlowTools,
+  type OrderState,
+  type StepResult,
+  ToolError,
+} from './flow.types';
 import { globalCommand } from './global-commands';
 import { msg } from './messages';
 import { text } from './replies';
 import { handlers, start } from './steps';
 
-export class ToolError extends Error {
-  constructor(cause: unknown) {
-    super('Flow tool failed', { cause });
-    this.name = 'ToolError';
-  }
-}
+export { ToolError };
 
 function wrapTools(tools: FlowTools): FlowTools {
   const wrapped: Record<string, unknown> = {};

@@ -94,3 +94,10 @@ export interface FlowTools {
   storePhone?: string;
   now(): Date;
 }
+
+export class ToolError extends Error {
+  constructor(cause: unknown) {
+    super('Flow tool failed', { cause });
+    this.name = 'ToolError';
+  }
+}
