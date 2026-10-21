@@ -111,9 +111,19 @@ Onde achar cada valor no painel da Meta: [whatsapp.md](../integrations/whatsapp.
 
 > As quatro obrigatórias só são exigidas em `live` (checagem em `resolveWhatsappConfig`), então o app sobe em `fake` sem nada configurado. **Em produção**, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` são exigidos em qualquer modo: sem eles a rota pública do webhook ficaria sem autenticação, e o boot falha. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
 
-## LLM
+## LLM (Gemini via API compatível com OpenAI)
 
-A definir quando o modelo de IA for escolhido.
+Chave gratuita em [aistudio.google.com](https://aistudio.google.com) (plano gratuito).
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `LLM_MODE` | Não | vazio = automático | `live` ou `fake`. Vazio: `live` se houver `LLM_API_KEY`, senão `fake`. Em `fake` a LLM não é chamada. |
+| `LLM_API_URL` | Não | `https://generativelanguage.googleapis.com/v1beta/openai` | URL base da API compatível com OpenAI. Validada como URL; a barra final é removida. |
+| `LLM_API_KEY` | Obrigatória em `live` | vazio | Chave da API. **Fica só no servidor**: nunca em log, erro ou resposta HTTP. |
+| `LLM_MODEL` | Não | `gemini-3.8-flash` | Nome do modelo enviado em cada chamada. |
+| `LLM_TIMEOUT_MS` | Não | `8000` | Timeout de cada chamada. Sem retry: estourou, a chamada falha e o bot segue pelos botões. |
+
+> `live` exige a chave (checagem em `resolveLlmConfig`), então o app sobe em `fake` sem nada configurado. `fake` em produção só loga um aviso e o bot fica só com botões. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
 
 ## E-mail — Resend (standby)
 
@@ -153,7 +163,7 @@ app (que usa só a `DATABASE_URL`); existem para conveniência de dev e têm def
 Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violados:
 
 - `BETTER_AUTH_SECRET` preenchida com < 32 chars → erro.
-- `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `WHATSAPP_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
+- `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `WHATSAPP_API_URL` / `LLM_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
 - **Em produção**, `CORS_ORIGIN` ausente → erro (`CORS_ORIGIN é obrigatório em produção`).
 - **Em produção**, `CORS_ORIGIN` contendo `*` → erro (`CORS_ORIGIN não pode conter "*"`).
 
