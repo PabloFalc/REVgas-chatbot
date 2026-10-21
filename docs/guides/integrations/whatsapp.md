@@ -31,9 +31,10 @@ src/integrations/whatsapp/
 
 src/modules/conversation/
   conversation.controller.ts    GET/POST /webhooks/whatsapp
-  conversation.service.ts       handle(): dedup → marcar lida → resposta → envio;
-                                replyTo(): decide a resposta (função pura, sem I/O)
-  conversation.repository.ts    dedup de mensagens no Redis (24h)
+  conversation.service.ts       handle(): dedup → trava por telefone → marcar lida → fluxo → envio
+  conversation.repository.ts    dedup (24h), estado do pedido (15 min) e trava por telefone (120 s)
+  flow/                         fluxo do pedido (etapas em flow/steps/, ver docs/project/fluxo.md)
+  flow-tools.ts                 liga o FlowTools aos serviços reais
   messaging.gateway.ts          envia as respostas pelo WhatsappClient (saída, não guarda nada)
   contracts/                    formatos de entrada e saída do módulo
     conversation.types.ts       IncomingMessage (mensagem já traduzida) e Reply (resposta do bot)
@@ -92,7 +93,7 @@ curl -X POST localhost:3100/webhooks/whatsapp -H 'Content-Type: application/json
   "object": "whatsapp_business_account",
   "entry": [{ "changes": [{ "field": "messages", "value": {
     "contacts": [{ "wa_id": "5586999991234", "profile": { "name": "Teste" } }],
-    "messages": [{ "from": "5586999991234", "id": "wamid.teste.1", "type": "text", "text": { "body": "lista" } }]
+    "messages": [{ "from": "5586999991234", "id": "wamid.teste.1", "type": "text", "text": { "body": "oi" } }]
   } }] }]
 }'
 ```
