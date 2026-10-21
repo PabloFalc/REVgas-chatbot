@@ -92,6 +92,14 @@ export const envConfigSchema = z
       z.coerce.number().int().positive().default(8_000),
     ),
 
+    // VIACEP (consulta de CEP, API publica sem chave)
+    VIACEP_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'fake']).optional()),
+    VIACEP_API_URL: z.preprocess(emptyAsUndefined, z.url().default('https://viacep.com.br/ws')),
+    VIACEP_TIMEOUT_MS: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().default(5_000),
+    ),
+
     // RESEND (standby)
     RESEND_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
     EMAIL_FROM: z.string().default('onboarding@resend.dev'),

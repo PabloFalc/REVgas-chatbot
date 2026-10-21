@@ -125,6 +125,16 @@ Chave gratuita em [aistudio.google.com](https://aistudio.google.com) (plano grat
 
 > `live` exige a chave (checagem em `resolveLlmConfig`), então o app sobe em `fake` sem nada configurado. `fake` em produção só loga um aviso e o bot fica só com botões. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
 
+## ViaCEP (consulta de CEP)
+
+API pública e gratuita, sem chave. Detalhes em `docs/guides/integrations/viacep.md`.
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `VIACEP_MODE` | Não | vazio = automático | `live` ou `fake`. Vazio: `fake` com `NODE_ENV=test`, `live` nos demais casos. Em `fake` a rede não é usada. |
+| `VIACEP_API_URL` | Não | `https://viacep.com.br/ws` | URL base. Validada como URL; a barra final é removida. |
+| `VIACEP_TIMEOUT_MS` | Não | `5000` | Timeout de cada consulta. Estourou, a consulta falha com `ViacepError`. |
+
 ## E-mail — Resend (standby)
 
 Usadas só pelo `EmailService`, cujo único consumidor é a auth (standby). Ver
