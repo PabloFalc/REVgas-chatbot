@@ -68,4 +68,40 @@ describe('runFlow', () => {
     await runFlow({ step: 'askName', customer: {} }, hello, createFakeTools());
     expect(seen).toBeInstanceOf(Date);
   });
+
+  it('erro em listPaymentOptions no choosePayment devolve indisponível e o estado de entrada', async () => {
+    const state: OrderState = { step: 'choosePayment', customer: { id: 1 } };
+    const tools = createFakeTools({
+      listPaymentOptions: async () => {
+        throw new Error('RevGás fora do ar');
+      },
+    });
+    const result = await runFlow(
+      state,
+      { phone: FAKE_PHONE, content: { type: 'choice', id: 'pay:PIX', title: 'Pix' } },
+      tools,
+    );
+    expect(result.state).toEqual(state);
+    expect(result.replies).toEqual([text(msg.unavailable)]);
+  });
+
+  it('escolha de produto durante choosePayment repete o pagamento sem mudar o estado', async () => {
+    const options = [
+      { type: 'PIX', label: 'Pix' },
+      { type: 'MONEY', label: 'Dinheiro' },
+      { type: 'CARTAO_DE_CREDITO', label: 'Cartão de crédito' },
+    ];
+    const state: OrderState = {
+      step: 'choosePayment',
+      customer: { id: 1 },
+      paymentOptions: options,
+    };
+    const result = await runFlow(
+      state,
+      { phone: FAKE_PHONE, content: { type: 'choice', id: 'product:12', title: 'x' } },
+      createFakeTools(),
+    );
+    expect(result.state).toEqual(state);
+    expect(result.replies[0].type).toBe('buttons');
+  });
 });
