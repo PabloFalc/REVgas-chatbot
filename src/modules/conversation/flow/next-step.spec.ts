@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { OrderState } from './flow.types';
 import { msg } from './messages';
 import { nextStep } from './next-step';
+import { text } from './replies';
 import { createFakeTools } from './testing/fake-tools';
 
 const address = {
@@ -59,7 +60,7 @@ describe('nextStep', () => {
     );
     expect(result.state?.step).toBe('choosePayment');
     expect(result.state?.payment).toBeUndefined();
-    expect(result.replies).toEqual([msg.noPriceForPayment]);
+    expect(result.replies).toEqual([text(msg.noPriceForPayment)]);
   });
 
   it('dinheiro sem troco informado pergunta o troco', async () => {

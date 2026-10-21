@@ -1,5 +1,6 @@
 import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
 import { msg } from './messages';
+import { text } from './replies';
 import { asks } from './steps';
 
 async function goTo(state: OrderState, step: Step, tools: FlowTools): Promise<StepResult> {
@@ -34,7 +35,7 @@ export async function nextStep(state: OrderState, tools: FlowTools): Promise<Ste
     if (!quote) {
       const { payment: _payment, ...rest } = current;
       const result = await goTo(rest, 'choosePayment', tools);
-      return { state: result.state, replies: [msg.noPriceForPayment, ...result.replies] };
+      return { state: result.state, replies: [text(msg.noPriceForPayment), ...result.replies] };
     }
     current = { ...current, quote };
   }

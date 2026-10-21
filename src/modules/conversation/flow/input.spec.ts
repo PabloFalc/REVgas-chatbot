@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FlowInput } from './flow.types';
-import { choiceOf, fit as shorten, textOf } from './input';
+import { choiceOf, clip, textOf } from './input';
 
 const choice: FlowInput = { phone: '1', content: { type: 'choice', id: 'product:12' } };
 const text: FlowInput = { phone: '1', content: { type: 'text', text: 'oi' } };
@@ -20,8 +20,8 @@ describe('input', () => {
     expect(textOf(text)).toBe('oi');
   });
 
-  it('fit corta em max-1 mais reticências', () => {
-    expect(shorten('abcdef', 4)).toBe('abc…');
-    expect(shorten('abc', 4)).toBe('abc');
+  it('clip corta em max-1 mais reticências', () => {
+    expect(clip('abcdef', 4)).toBe('abc…');
+    expect(clip('abc', 4)).toBe('abc');
   });
 });

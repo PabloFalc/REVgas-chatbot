@@ -10,6 +10,6 @@ export function choiceOf(input: FlowInput, prefix: string): string | null {
   return input.content.id.startsWith(head) ? input.content.id.slice(head.length) : null;
 }
 
-export function fit(text: string, max: number): string {
+export function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }

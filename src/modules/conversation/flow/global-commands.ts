@@ -2,6 +2,7 @@ import { normalizeText } from 'src/utils/text';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
 import { textOf } from './input';
 import { msg } from './messages';
+import { text as textReply } from './replies';
 import { asks, start } from './steps';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
@@ -14,8 +15,9 @@ async function repeatQuestion(
   first: StepResult['replies'][number],
 ): Promise<StepResult> {
   const ask = asks[state.step];
-  const asked = ask ? (await ask(state, tools)).replies : [];
-  return { state, replies: [first, ...asked] };
+  if (!ask) return { state, replies: [first] };
+  const asked = await ask(state, tools);
+  return { state: asked.state, replies: [first, ...asked.replies] };
 }
 
 export async function globalCommand(
@@ -25,22 +27,22 @@ export async function globalCommand(
 ): Promise<StepResult | null> {
   if (input.content.type === 'unsupported') {
     if (!state) return start(input, tools);
-    return repeatQuestion(state, tools, msg.textOnly);
+    return repeatQuestion(state, tools, textReply(msg.textOnly));
   }
 
   const raw = textOf(input);
   if (raw === null) return null;
   const text = normalizeText(raw);
 
-  if (CANCEL.includes(text)) return { state: null, replies: [msg.cancelled] };
+  if (CANCEL.includes(text)) return { state: null, replies: [textReply(msg.cancelled)] };
 
   if (STORE.some(word => text.includes(word))) {
-    return { state, replies: [msg.talkToStore(tools.storePhone)] };
+    return { state, replies: [textReply(msg.talkToStore(tools.storePhone))] };
   }
 
   if (DISCOUNT.some(word => text.includes(word))) {
-    if (!state) return { state, replies: [msg.noDiscount] };
-    return repeatQuestion(state, tools, msg.noDiscount);
+    if (!state) return { state, replies: [textReply(msg.noDiscount)] };
+    return repeatQuestion(state, tools, textReply(msg.noDiscount));
   }
 
   return null;
