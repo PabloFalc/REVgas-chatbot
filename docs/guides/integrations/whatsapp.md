@@ -9,10 +9,10 @@ Canal do chatbot: **Cloud API oficial da Meta**. A integração tem duas partes:
 Quem usa as duas é o módulo `src/modules/conversation`, que expõe a rota `/webhooks/whatsapp`.
 A integração não conhece o domínio e nunca importa `src/modules/`.
 
-> **Estado atual:** o bot ainda não tem o fluxo de pedido. Ele responde com uma **resposta de
-> teste** para provar a conexão: ecoa o texto, `lista` devolve uma lista de produtos de exemplo,
-> `botões` devolve três botões e a escolha volta confirmada. A máquina de estados do pedido
-> substitui a função `replyTo` (em `conversation.service.ts`) depois.
+> **Estado atual:** cada mensagem recebida entra no fluxo de pedido
+> (`src/modules/conversation/flow`). O `ConversationService` carrega o pedido em andamento do
+> Redis (TTL de 15 min), roda `runFlow` sob um lock por telefone, grava o novo estado e envia as
+> respostas.
 
 ## Estrutura
 
@@ -72,8 +72,8 @@ forçam `fake` em `vitest.config.e2e.ts`, então nunca mandam mensagem de verdad
    `https://<endereço-do-túnel>/webhooks/whatsapp` e o mesmo verify token. Clique em
    **Verificar e salvar**; a Meta chama o `GET` e espera o `hub.challenge` de volta.
 8. Ainda em Webhook, **assine o campo `messages`** (sem isso nenhuma mensagem chega).
-9. Do celular cadastrado, mande `oi` para o número de teste. O bot responde; mande `lista` e
-   `botões` para testar as mensagens interativas.
+9. Do celular cadastrado, mande `oi` para o número de teste. O bot inicia o fluxo de pedido
+   (boas-vindas e pedido de nome para um telefone novo); mande `cancelar` para encerrar.
 
 O endereço do túnel muda a cada execução do `cloudflared`/`ngrok` grátis; quando mudar, atualize a
 URL na Meta (passo 7).

@@ -143,6 +143,7 @@ Usadas pelo módulo `address` quando o cliente digita o endereço sem cidade ou 
 |---|---|---|---|
 | `STORE_CITY` | Não | `Teresina` | Cidade assumida quando o endereço não traz cidade. |
 | `STORE_STATE` | Não | `PI` | UF (2 letras) assumida quando o endereço não traz UF. |
+| `STORE_PHONE` | Não | vazio | Telefone da revenda em texto livre (ex.: `(86) 3222-0000`), mostrado quando o cliente pede atendente ou o CPF já está em outro cadastro. Sem ela, a mensagem diz só "fale direto com a revenda". |
 
 ## E-mail — Resend (standby)
 

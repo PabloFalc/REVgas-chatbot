@@ -103,6 +103,7 @@ export const envConfigSchema = z
     // LOJA (cidade e UF assumidas quando o cliente nao informa)
     STORE_CITY: z.preprocess(emptyAsUndefined, z.string().min(1).default('Teresina')),
     STORE_STATE: z.preprocess(emptyAsUndefined, z.string().length(2).default('PI')),
+    STORE_PHONE: z.preprocess(emptyAsUndefined, z.string().min(1).optional()),
 
     // RESEND (standby)
     RESEND_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
