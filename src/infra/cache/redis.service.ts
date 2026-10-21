@@ -60,6 +60,15 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
     }
   }
 
+  async delete(params: CacheGetParams): Promise<void> {
+    const { key, prefix } = params;
+    try {
+      await this.redis.del(this._makePrefix(key, prefix));
+    } catch (error) {
+      this.logger.error({ component: 'cache', err: error, key }, 'Cache delete error');
+    }
+  }
+
   async clear(prefix: string): Promise<void> {
     try {
       let cursor = '0';
@@ -83,6 +92,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       set: params => this.set({ ...params, prefix }),
       setIfAbsent: params => this.setIfAbsent({ ...params, prefix }),
       exists: params => this.exists({ ...params, prefix }),
+      delete: params => this.delete({ ...params, prefix }),
       clear: () => this.clear(prefix),
     };
   }
