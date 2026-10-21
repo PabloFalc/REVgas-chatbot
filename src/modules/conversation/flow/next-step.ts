@@ -1,7 +1,7 @@
 import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
 import { msg } from './messages';
 import { text } from './replies';
-import { asks } from './steps';
+import { asks } from './steps/registry';
 
 async function goTo(state: OrderState, step: Step, tools: FlowTools): Promise<StepResult> {
   const next = { ...state, step };

@@ -83,7 +83,7 @@ describe('globalCommand', () => {
   it('áudio sem pedido em andamento começa pela saudação', async () => {
     const result = await globalCommand(
       null,
-      { phone: FAKE_PHONE, content: { type: 'unsupported' } },
+      { phone: '5500000000000', content: { type: 'unsupported' } },
       createFakeTools(),
     );
     expect(result?.replies).toEqual([text(msg.welcomeNew)]);

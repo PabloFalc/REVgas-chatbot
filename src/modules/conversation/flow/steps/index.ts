@@ -1,12 +1,13 @@
-import type { AskFn, FlowInput, FlowTools, HandleFn, Step, StepResult } from '../flow.types';
-import { msg } from '../messages';
-import { text } from '../replies';
+import {
+  asks as customerAsks,
+  handlers as customerHandlers,
+  start as customerStart,
+} from './customer.step';
+import { asks, handlers } from './registry';
 
-export const asks: Partial<Record<Step, AskFn>> = {};
+Object.assign(asks, customerAsks);
+Object.assign(handlers, customerHandlers);
 
-export const handlers: Partial<Record<Step, HandleFn>> = {};
+export const start = customerStart;
 
-export async function start(input: FlowInput, tools: FlowTools): Promise<StepResult> {
-  await tools.findCustomer(input.phone);
-  return { state: { step: 'askName', customer: {} }, replies: [text(msg.welcomeNew)] };
-}
+export { asks, handlers };
