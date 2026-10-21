@@ -82,6 +82,19 @@ describe('AddressService', () => {
       });
     });
 
+    it('normalizes the llm cep to digits', async () => {
+      llm.queueObject({ ...nullAi, street: 'Rua A', number: '1', postalCode: '64000-000' });
+      const result = await service.fromText('Rua A 1 64000-000');
+      expect(result?.postalCode).toBe('64000000');
+    });
+
+    it('propagates unexpected errors', async () => {
+      llm.respondWith(() => {
+        throw new Error('boom');
+      });
+      await expect(service.fromText('Rua A 1')).rejects.toThrow('boom');
+    });
+
     it('uses the store city and state when missing', async () => {
       llm.queueObject({ ...nullAi, street: 'Rua A', number: '1', neighborhood: 'Centro' });
       const result = await service.fromText('Rua A 1 Centro');

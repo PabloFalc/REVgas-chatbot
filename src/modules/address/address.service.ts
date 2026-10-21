@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { env } from '../../config/env';
+import { LlmError } from '../../core/erros/llm/llm.errors';
+import { ViacepError } from '../../core/erros/viacep/viacep.errors';
 import { LLM_CLIENT, type LlmClient } from '../../integrations/llm/llm.client';
 import { VIACEP_CLIENT, type ViacepClient } from '../../integrations/viacep/viacep.client';
 import type { AddressDraft, AddressField } from './contracts/address.types';
@@ -67,6 +69,14 @@ export class AddressService {
       return null;
     }
     const draft = presentFields(parsed);
+    if (draft.postalCode) {
+      const digits = draft.postalCode.replace(/\D/g, '');
+      if (digits) {
+        draft.postalCode = digits;
+      } else {
+        delete draft.postalCode;
+      }
+    }
     const completed = await this.completeFromCep(draft);
     return {
       ...completed,
@@ -92,8 +102,11 @@ export class AddressService {
         ],
       });
       return object;
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof LlmError) {
+        return null;
+      }
+      throw error;
     }
   }
 
@@ -104,8 +117,11 @@ export class AddressService {
     try {
       const found = await this.fromCep(draft.postalCode);
       return found ? { ...found, ...draft } : draft;
-    } catch {
-      return draft;
+    } catch (error) {
+      if (error instanceof ViacepError) {
+        return draft;
+      }
+      throw error;
     }
   }
 }
