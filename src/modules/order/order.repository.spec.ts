@@ -112,6 +112,28 @@ describe('OrderRepository', () => {
       expect(await other.repository.findRecentSale(order, since)).toBe(7);
     });
 
+    it('reads a zoneless datetime as Sao Paulo time', async () => {
+      const { repository } = build([sale(8, 200, '2026-10-21 12:00:05')]);
+      expect(await repository.findRecentSale(order, since)).toBe(8);
+    });
+
+    it('rejects a zoneless datetime 10 minutes before since', async () => {
+      const { repository } = build([sale(8, 200, '2026-10-21T11:50:00')]);
+      expect(await repository.findRecentSale(order, since)).toBeNull();
+    });
+
+    it('compares only the total for a date-only value', async () => {
+      const { repository } = build([sale(9, 200, '2026-10-21')]);
+      expect(await repository.findRecentSale(order, since)).toBe(9);
+    });
+
+    it('still honors an ISO datetime with an explicit offset', async () => {
+      const { repository } = build([sale(10, 200, '2026-10-21T12:00:05-03:00')]);
+      expect(await repository.findRecentSale(order, since)).toBe(10);
+      const old = build([sale(10, 200, '2026-10-21T11:50:00-03:00')]);
+      expect(await old.repository.findRecentSale(order, since)).toBeNull();
+    });
+
     it('returns null when nothing matches', async () => {
       const { repository } = build([sale(1, 150, '2026-10-21T15:01:00.000Z')]);
       expect(await repository.findRecentSale(order, since)).toBeNull();

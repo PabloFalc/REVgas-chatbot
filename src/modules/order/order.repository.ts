@@ -11,6 +11,15 @@ const SAO_PAULO_DATE = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 
+const WITH_OFFSET = /(Z|[+-]\d{2}(:?\d{2})?)$/i;
+const DATE_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+
+const saleTimestamp = (date: string | null | undefined): number => {
+  if (!date || !DATE_TIME.test(date)) return Number.NaN;
+  const iso = date.replace(' ', 'T');
+  return Date.parse(WITH_OFFSET.test(iso) ? iso : `${iso}-03:00`);
+};
+
 @Injectable()
 export class OrderRepository {
   constructor(@Inject(REVGAS_CLIENT) private readonly revgas: RevgasClient) {}
@@ -50,7 +59,7 @@ export class OrderRepository {
     const threshold = since.getTime() - TOLERANCE_MS;
     const match = page.data.find(sale => {
       if (sale.total == null || Math.abs(sale.total - order.total) >= 0.005) return false;
-      const created = sale.date ? Date.parse(sale.date) : Number.NaN;
+      const created = saleTimestamp(sale.date);
       return Number.isNaN(created) || created >= threshold;
     });
     return match?.id ?? null;
