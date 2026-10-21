@@ -207,5 +207,41 @@ describe('CustomerRepository', () => {
       expect(history.addresses.map(item => item.street)).toEqual(['Rua B']);
       expect(history.productIds).toEqual([3]);
     });
+
+    it('drops a registration address without city', async () => {
+      const { repository } = build([
+        seeded({
+          id: 5001,
+          location: 'Rua das Flores',
+          number: '10',
+          neighborhood: 'Centro',
+          state_federation: 'PI',
+        }),
+      ]);
+
+      expect((await repository.history(5001)).addresses).toEqual([]);
+    });
+
+    it('drops a sale address without state_federation', async () => {
+      const { client, repository } = build([seeded({ id: 5001 })]);
+      vi.spyOn(client.sales, 'list').mockResolvedValue({
+        data: [
+          {
+            id: 1,
+            status: 'ACTIVE',
+            customer_id: 5001,
+            location: 'Rua B',
+            number: '20',
+            neighborhood: 'Fátima',
+            city: 'Teresina',
+            state_federation: null,
+            products: [],
+          },
+        ],
+        pagination: { page: 1, count: 1, total_count: 1 },
+      });
+
+      expect((await repository.history(5001)).addresses).toEqual([]);
+    });
   });
 });

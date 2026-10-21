@@ -46,15 +46,17 @@ const toAddress = (raw: RawAddress): Address | null => {
   const street = raw.location?.trim();
   const number = raw.number?.trim();
   const neighborhood = raw.neighborhood?.trim();
-  if (!street || !number || !neighborhood) {
+  const city = raw.city?.trim();
+  const state = raw.state_federation?.trim();
+  if (!street || !number || !neighborhood || !city || !state) {
     return null;
   }
   const address: Address = {
     street,
     number,
     neighborhood,
-    city: raw.city?.trim() ?? '',
-    state: raw.state_federation?.trim() ?? '',
+    city,
+    state,
   };
   if (raw.complement) {
     address.complement = raw.complement;
