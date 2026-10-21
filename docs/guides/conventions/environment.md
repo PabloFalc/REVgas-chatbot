@@ -135,6 +135,15 @@ API pública e gratuita, sem chave. Detalhes em `docs/guides/integrations/viacep
 | `VIACEP_API_URL` | Não | `https://viacep.com.br/ws` | URL base. Validada como URL; a barra final é removida. |
 | `VIACEP_TIMEOUT_MS` | Não | `5000` | Timeout de cada consulta. Estourou, a consulta falha com `ViacepError`. |
 
+## Loja (endereço padrão)
+
+Usadas pelo módulo `address` quando o cliente digita o endereço sem cidade ou UF.
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `STORE_CITY` | Não | `Teresina` | Cidade assumida quando o endereço não traz cidade. |
+| `STORE_STATE` | Não | `PI` | UF (2 letras) assumida quando o endereço não traz UF. |
+
 ## E-mail — Resend (standby)
 
 Usadas só pelo `EmailService`, cujo único consumidor é a auth (standby). Ver
