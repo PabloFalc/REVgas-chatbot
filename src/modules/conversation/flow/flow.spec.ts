@@ -388,8 +388,8 @@ describe('primeira mensagem com pedido', () => {
     const tools = createFakeTools({ interpret: async () => order });
     const chat = new Conversation(tools, '5586988887777');
     const first = await chat.send(say('quero 2 botijão P13 no pix'));
-    expect(first.replies[0]).toEqual(text(msg.noted(['2x Botijão P13', 'Pix'])));
-    expect(first.replies[1]).toEqual(text(msg.welcomeNew));
+    expect(first.replies[0]).toEqual(text(msg.welcomeNew));
+    expect(first.replies[1]).toEqual(text(msg.noted(['2x Botijão P13', 'Pix'])));
     expect(chat.step).toBe('askName');
     expect(chat.state).toMatchObject({
       product: { id: 1 },
@@ -409,7 +409,9 @@ describe('primeira mensagem com pedido', () => {
   it('cliente cadastrado com pedido completo', async () => {
     const tools = createFakeTools({ interpret: async () => order });
     const chat = new Conversation(tools);
-    await chat.send(say('quero 2 botijão P13 no pix'));
+    const first = await chat.send(say('quero 2 botijão P13 no pix'));
+    expect(first.replies[0]).toEqual(text(msg.welcomeBack('Maria da Silva')));
+    expect(first.replies[1]).toEqual(text(msg.noted(['2x Botijão P13', 'Pix'])));
     expect(chat.step).toBe('chooseAddress');
     await chat.send(pick('address:0'));
     expect(chat.step).toBe('summary');
@@ -432,7 +434,7 @@ describe('primeira mensagem com pedido', () => {
     });
     const chat = new Conversation(tools, '5586988887777');
     const result = await chat.send(say('vocês entregam hoje? quero saber'));
-    expect(result.replies).toEqual([text(msg.offTopic('86999990000')), text(msg.welcomeNew)]);
+    expect(result.replies).toEqual([text(msg.welcomeNew), text(msg.offTopic('86999990000'))]);
   });
 
   it('IA falhou na primeira mensagem', async () => {

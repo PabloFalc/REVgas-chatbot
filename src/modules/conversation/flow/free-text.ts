@@ -93,7 +93,10 @@ export function applyInterpretation(
   const quantity =
     Number.isInteger(result.quantity) && (result.quantity ?? 0) >= 1 ? result.quantity : undefined;
 
-  if (matched.length > 0) {
+  let productChanged = false;
+  const keepsCurrent = matched.some(item => item.id === state.product?.id);
+  if (matched.length > 0 && !keepsCurrent) {
+    productChanged = true;
     changed = true;
     delete next.quote;
     if (quantity === undefined) delete next.quantity;
@@ -112,9 +115,9 @@ export function applyInterpretation(
     delete next.quote;
   }
 
-  if (next.product && matched.length <= 1) {
+  if (next.product) {
     if (quantity !== undefined) notes.push(`${quantity}x ${next.product.name}`);
-    else if (matched.length === 1) notes.push(next.product.name);
+    else if (productChanged) notes.push(next.product.name);
   }
 
   const payment = matchPayment(result.payment, catalog.payments);
@@ -215,15 +218,18 @@ export async function freeText(
   state: OrderState,
   raw: string,
   tools: FlowTools,
+  whenNothingApplied?: () => Promise<StepResult>,
 ): Promise<StepResult> {
   const catalog = await loadCatalog(state, tools);
   const result = await tools.interpret(raw, contextOf(catalog));
   if (!result || result.confidence < MIN_CONFIDENCE) {
+    if (whenNothingApplied) return whenNothingApplied();
     return repeatQuestion(state, tools, text(msg.notUnderstood));
   }
 
   const applied = applyInterpretation(state, result, catalog);
   if (!applied) {
+    if (whenNothingApplied) return whenNothingApplied();
     const first = result.intent === 'question' ? msg.offTopic(tools.storePhone) : msg.notUnderstood;
     return repeatQuestion(state, tools, text(first));
   }

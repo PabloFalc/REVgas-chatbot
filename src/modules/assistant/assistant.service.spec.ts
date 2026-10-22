@@ -51,6 +51,7 @@ describe('AssistantService', () => {
     const system = call?.messages.find(message => message.role === 'system')?.content ?? '';
     expect(system).toContain('Botijão P13');
     expect(system).toContain('PIX');
+    expect(system).toContain('mesma casa');
     const user = call?.messages.find(message => message.role === 'user')?.content ?? '';
     expect(user).not.toContain('12345678909');
   });

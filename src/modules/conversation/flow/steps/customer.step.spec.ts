@@ -58,6 +58,16 @@ describe('start', () => {
 describe('askName', () => {
   const state = { step: 'askName' as const, customer: {} };
 
+  it('texto com palavra de pedido que a IA não entende vira o nome', async () => {
+    const tools = createFakeTools({ interpret: async () => null });
+    const result = await handlers.askName?.(state, say('Maria da Rua Silva'), tools);
+    expect(result?.state).toMatchObject({
+      step: 'askCpf',
+      customer: { name: 'Maria da Rua Silva' },
+    });
+    expect(result?.replies).toEqual([text(msg.askCpf)]);
+  });
+
   it('pergunta o nome', async () => {
     const result = await asks.askName?.(state, createFakeTools());
     expect(result?.replies).toEqual([text(msg.askName)]);

@@ -50,7 +50,9 @@ export async function runFlow(
         ? await seedFromText(raw, safe)
         : { fields: {}, replies: [] };
     const started = await start(input, safe, seed.fields);
-    return { ...started, replies: [...seed.replies, ...started.replies] };
+    const [greeting, ...rest] = started.replies;
+    const replies = greeting ? [greeting, ...seed.replies, ...rest] : seed.replies;
+    return { ...started, replies };
   } catch (error) {
     if (error instanceof ToolError) {
       onToolError?.(error);

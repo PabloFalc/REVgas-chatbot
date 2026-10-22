@@ -98,6 +98,47 @@ describe('applyInterpretation', () => {
     expect(applied?.notes).toEqual(['Botijão P45']);
   });
 
+  it('repetir o produto do pedido mantém quantidade e cotação', () => {
+    const state: OrderState = {
+      step: 'summary',
+      customer: {},
+      product: p13,
+      quantity: 2,
+      quote: { unitPrice: 100, total: 200 },
+    };
+    const applied = applyInterpretation(
+      state,
+      result({ products: ['Botijão P13'], payment: 'PIX' }),
+      catalog,
+    );
+    expect(applied?.state.product).toEqual(p13);
+    expect(applied?.state.quantity).toBe(2);
+    expect(applied?.notes).toEqual(['Pix']);
+  });
+
+  it('ambíguo com o produto atual entre os candidatos mantém o atual', () => {
+    const state: OrderState = { step: 'summary', customer: {}, product: p13, quantity: 2 };
+    const applied = applyInterpretation(
+      state,
+      result({ products: ['Botijão P13', 'Botijão P45'] }),
+      catalog,
+    );
+    expect(applied).toBeNull();
+  });
+
+  it('ambíguo com o produto atual mantém o atual e aplica o resto', () => {
+    const state: OrderState = { step: 'summary', customer: {}, product: p13, quantity: 2 };
+    const applied = applyInterpretation(
+      state,
+      result({ products: ['Botijão P13', 'Botijão P45'], payment: 'PIX' }),
+      catalog,
+    );
+    expect(applied?.state.product).toEqual(p13);
+    expect(applied?.state.productCandidates).toBeUndefined();
+    expect(applied?.state.quantity).toBe(2);
+    expect(applied?.notes).toEqual(['Pix']);
+  });
+
   it('produto ambíguo vira candidatos', () => {
     const state: OrderState = { step: 'chooseProduct', customer: {} };
     const applied = applyInterpretation(

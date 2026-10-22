@@ -85,10 +85,14 @@ const askMissingCpf: AskFn = async state => ({
 
 const handleAskName: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
-  if (raw !== null && looksLikeOrder(raw)) return freeText(state, raw, tools);
   const name = parseName(raw);
+  const acceptName = (valid: string) =>
+    askCpf({ ...state, customer: { ...state.customer, name: valid } }, tools);
+  if (raw !== null && looksLikeOrder(raw)) {
+    return freeText(state, raw, tools, name ? () => acceptName(name) : undefined);
+  }
   if (!name) return { state, replies: [text(msg.invalidName)] };
-  return askCpf({ ...state, customer: { ...state.customer, name } }, tools);
+  return acceptName(name);
 };
 
 const handleAskCpf: HandleFn = async (state, input, tools) => {

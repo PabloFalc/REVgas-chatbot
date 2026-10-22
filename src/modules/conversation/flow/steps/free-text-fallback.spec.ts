@@ -74,6 +74,12 @@ describe('fallback de texto livre nas etapas', () => {
     expect(out?.state?.quantity).toBe(3);
   });
 
+  it.each(['summary', 'chooseCorrection'] as Step[])('%s com IA não cria a venda', async step => {
+    const { fake, out } = await run(step, 'quero 3 botijões');
+    expect(fake.calls.some(call => call.name === 'createSale')).toBe(false);
+    expect(out?.state?.step).toBe('summary');
+  });
+
   it('chooseQuantity aceita número digitado sem IA', async () => {
     const { fake, out } = await run('chooseQuantity', '2', { quantity: undefined });
     expect(out?.state?.quantity).toBe(2);
