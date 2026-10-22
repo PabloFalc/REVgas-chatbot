@@ -1,7 +1,15 @@
-import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
+import type {
+  Interpretation,
+  InterpretContext,
+} from 'src/modules/assistant/contracts/assistant.types';
 import type { PaymentOption, Product } from 'src/modules/catalog/contracts/catalog.types';
 import { normalizeText } from 'src/utils/text';
-import type { OrderState } from './flow.types';
+import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
+import { msg } from './messages';
+import { nextStep } from './next-step';
+import { repeatQuestion } from './repeat-question';
+import { text } from './replies';
+import { asks } from './steps/registry';
 
 export const MIN_CONFIDENCE = 0.6;
 
@@ -29,6 +37,7 @@ const ORDER_WORDS = new Set([
 ]);
 
 const NUMERIC_ONLY = /^[\d\s.,\-/R$]*$/i;
+const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askMissingCpf'];
 const OTHER_ADDRESS_NOTE = 'entrega em outro endereço';
 
 export interface Catalog {
@@ -128,4 +137,55 @@ export function applyInterpretation(
   }
 
   return changed ? { state: next, notes } : null;
+}
+
+async function loadCatalog(state: OrderState, tools: FlowTools): Promise<Catalog> {
+  const products =
+    state.productOptions ??
+    (await tools.listProducts({ id: state.customer.id, tagId: state.customer.tagId }));
+  const payments = state.paymentOptions ?? (await tools.listPaymentOptions());
+  return { products, payments };
+}
+
+function contextOf(catalog: Catalog): InterpretContext {
+  return {
+    products: catalog.products.map(product => product.name),
+    payments: catalog.payments.map(({ type, label }) => ({ type, label })),
+  };
+}
+
+export async function freeText(
+  state: OrderState,
+  raw: string,
+  tools: FlowTools,
+): Promise<StepResult> {
+  const catalog = await loadCatalog(state, tools);
+  const result = await tools.interpret(raw, contextOf(catalog));
+  if (!result || result.confidence < MIN_CONFIDENCE) {
+    return repeatQuestion(state, tools, text(msg.notUnderstood));
+  }
+
+  const applied = applyInterpretation(state, result, catalog);
+  if (!applied) {
+    const first = result.intent === 'question' ? msg.offTopic(tools.storePhone) : msg.notUnderstood;
+    return repeatQuestion(state, tools, text(first));
+  }
+
+  const noted = applied.notes.length > 0 ? [text(msg.noted(applied.notes))] : [];
+  const ask = asks[state.step];
+  const next =
+    IDENTIFICATION_STEPS.includes(state.step) && ask
+      ? await ask(applied.state, tools)
+      : await nextStep(applied.state, tools);
+  return { ...next, replies: [...noted, ...next.replies] };
+}
+
+export function freeTextOr(
+  state: OrderState,
+  raw: string | null,
+  tools: FlowTools,
+  fallback: string,
+): Promise<StepResult> {
+  if (raw !== null && shouldInterpret(raw)) return freeText(state, raw, tools);
+  return Promise.resolve({ state, replies: [text(fallback)] });
 }

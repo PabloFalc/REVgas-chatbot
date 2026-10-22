@@ -1,6 +1,7 @@
 import type { PriceCustomer, Product } from 'src/modules/catalog/contracts/catalog.types';
 import { normalizeText } from 'src/utils/text';
 import type { AskFn, FlowTools, HandleFn, OrderState, Step, StepResult } from '../flow.types';
+import { freeText, freeTextOr } from '../free-text';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -70,6 +71,8 @@ const handleChooseProduct: HandleFn = async (state, input, tools) => {
   if (choice === 'search') return searchProduct(state, tools);
   const product = findChosen(state, choice);
   if (product) return selectProduct(state, product, tools);
+  const raw = textOf(input);
+  if (raw !== null) return freeText(state, raw, tools);
   return chooseProduct(state, tools);
 };
 
@@ -105,7 +108,11 @@ const handlePickProduct: HandleFn = async (state, input, tools) => {
     choice !== null && /^\d+$/.test(choice)
       ? state.productCandidates?.find(item => item.id === Number(choice))
       : undefined;
-  if (!product) return pickProduct(state, tools);
+  if (!product) {
+    const raw = textOf(input);
+    if (raw !== null) return freeText(state, raw, tools);
+    return pickProduct(state, tools);
+  }
   const { productCandidates: _candidates, quote: _quote, ...rest } = state;
   return nextStep({ ...rest, product }, tools);
 };
@@ -135,13 +142,18 @@ const handleChooseQuantity: HandleFn = async (state, input, tools) => {
   const choice = choiceOf(input, 'qty');
   if (choice === 'other') return askQuantity(state, tools);
   if (choice === '1' || choice === '2') return setQuantity(state, Number(choice), tools);
+  const raw = textOf(input);
+  if (raw !== null && /^\d+$/.test(raw.trim()) && Number(raw) >= 1) {
+    return setQuantity(state, Number(raw), tools);
+  }
+  if (raw !== null) return freeText(state, raw, tools);
   return chooseQuantity(state, tools);
 };
 
 const handleAskQuantity: HandleFn = async (state, input, tools) => {
-  const raw = textOf(input)?.trim();
-  if (raw === undefined || !/^\d+$/.test(raw) || Number(raw) < 1) {
-    return { state, replies: [text(msg.invalidQuantity)] };
+  const raw = textOf(input);
+  if (raw === null || !/^\d+$/.test(raw.trim()) || Number(raw) < 1) {
+    return freeTextOr(state, raw, tools, msg.invalidQuantity);
   }
   return setQuantity(state, Number(raw), tools);
 };

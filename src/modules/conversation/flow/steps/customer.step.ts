@@ -13,6 +13,7 @@ import {
   type StepResult,
   ToolError,
 } from '../flow.types';
+import { freeText, freeTextOr, looksLikeOrder } from '../free-text';
 import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -75,14 +76,16 @@ const askMissingCpf: AskFn = async state => ({
 });
 
 const handleAskName: HandleFn = async (state, input, tools) => {
-  const name = parseName(textOf(input));
+  const raw = textOf(input);
+  if (raw !== null && looksLikeOrder(raw)) return freeText(state, raw, tools);
+  const name = parseName(raw);
   if (!name) return { state, replies: [text(msg.invalidName)] };
   return askCpf({ ...state, customer: { ...state.customer, name } }, tools);
 };
 
 const handleAskCpf: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
-  if (raw === null || !isValidCpf(raw)) return { state, replies: [text(msg.invalidCpf)] };
+  if (raw === null || !isValidCpf(raw)) return freeTextOr(state, raw, tools, msg.invalidCpf);
   return nextStep({ ...state, customer: { ...state.customer, cpf: onlyDigits(raw) } }, tools);
 };
 
@@ -90,7 +93,7 @@ const handleAskMissingCpf: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
   const customerId = state.customer.id;
   if (raw === null || !isValidCpf(raw) || customerId === undefined) {
-    return { state, replies: [text(msg.invalidCpf)] };
+    return freeTextOr(state, raw, tools, msg.invalidCpf);
   }
   const cpf = onlyDigits(raw);
   try {

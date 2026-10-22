@@ -351,7 +351,7 @@ describe('cadastro sob runFlow', () => {
       tools,
     );
     expect(second.state?.step).toBe('chooseProduct');
-    expect(second.replies[0].type).toBe('list');
+    expect(second.replies.at(-1)?.type).toBe('list');
     expect(tools.calls.filter(call => call.name === 'createCustomer')).toHaveLength(1);
   });
 

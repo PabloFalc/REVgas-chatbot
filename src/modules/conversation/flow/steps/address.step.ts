@@ -16,6 +16,7 @@ import {
   type StepResult,
   ToolError,
 } from '../flow.types';
+import { freeText } from '../free-text';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -123,6 +124,8 @@ const handleChooseAddress: HandleFn = async (state, input, tools) => {
     const address = state.addresses?.[Number(choice)];
     if (address) return nextStep({ ...state, address }, tools);
   }
+  const raw = textOf(input);
+  if (raw !== null) return freeText(state, raw, tools);
   return chooseAddress(state, tools);
 };
 
@@ -165,6 +168,8 @@ const handleAskAddressField: HandleFn = async (state, input, tools) => {
 const handleConfirmAddress: HandleFn = async (state, input, tools) => {
   const choice = choiceOf(input, 'address');
   if (choice === 'retype') return askNewAddress(withoutDraft(state), tools);
+  const raw = textOf(input);
+  if (raw !== null) return freeText(state, raw, tools);
   if (choice !== 'ok' || !state.draftAddress) return confirmAddress(state, tools);
 
   const address = state.draftAddress as Address;

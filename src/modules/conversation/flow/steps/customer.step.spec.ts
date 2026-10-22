@@ -8,6 +8,7 @@ import { msg } from '../messages';
 import { text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
 import { asks, handlers, start } from './customer.step';
+import './index';
 
 const say = (body: string): FlowInput => ({
   phone: FAKE_PHONE,
@@ -68,10 +69,16 @@ describe('askName', () => {
     expect(result?.replies).toEqual([text(msg.askCpf)]);
   });
 
-  it.each(['Maria', '   ', '123 456', `Ana ${'b'.repeat(100)}`])('recusa o nome %j', async raw => {
+  it.each(['Maria', '   ', `Ana ${'b'.repeat(100)}`])('recusa o nome %j', async raw => {
     const result = await handlers.askName?.(state, say(raw), createFakeTools());
     expect(result?.state).toBe(state);
     expect(result?.replies).toEqual([text(msg.invalidName)]);
+  });
+
+  it('nome com dígito vai para a IA e, sem resposta, repete a pergunta', async () => {
+    const result = await handlers.askName?.(state, say('123 456'), createFakeTools());
+    expect(result?.state).toMatchObject({ step: 'askName' });
+    expect(result?.replies).toEqual([text(msg.notUnderstood), text(msg.askName)]);
   });
 
   it('recusa entrada que não é texto', async () => {

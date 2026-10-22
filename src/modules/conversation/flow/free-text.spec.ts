@@ -1,8 +1,17 @@
 import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { OrderState } from './flow.types';
-import { applyInterpretation, type Catalog, looksLikeOrder, shouldInterpret } from './free-text';
+import {
+  applyInterpretation,
+  type Catalog,
+  freeText,
+  looksLikeOrder,
+  shouldInterpret,
+} from './free-text';
 import { msg } from './messages';
+import { buttons, text } from './replies';
+import './steps';
+import { createFakeTools } from './testing/fake-tools';
 
 const p13 = { id: 1, name: 'Botijão P13' };
 const p45 = { id: 2, name: 'Botijão P45' };
@@ -160,5 +169,102 @@ describe('messages de texto livre', () => {
   it('textos fixos', () => {
     expect(msg.notUnderstood).toBe('Não entendi.');
     expect(msg.chooseAmbiguousProduct).toBe('Qual desses você quer?');
+  });
+});
+
+describe('freeText', () => {
+  const paying: OrderState = {
+    step: 'choosePayment',
+    customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+    address,
+    product: p13,
+    quantity: 1,
+  };
+  const paymentButtons = buttons(
+    msg.choosePayment,
+    [pix, money, credit].map(option => ({ id: `pay:${option.type}`, title: option.label })),
+  );
+  const tools = (value: Interpretation | null) => createFakeTools({ interpret: async () => value });
+
+  it('IA indisponível repete a pergunta', async () => {
+    const out = await freeText(paying, 'blá', tools(null));
+    expect(out.replies).toEqual([text(msg.notUnderstood), paymentButtons]);
+    expect(out.state).toMatchObject({ step: 'choosePayment', quantity: 1 });
+  });
+
+  it('confiança baixa repete a pergunta', async () => {
+    const out = await freeText(paying, 'blá', tools(result({ confidence: 0.5, quantity: 5 })));
+    expect(out.replies).toEqual([text(msg.notUnderstood), paymentButtons]);
+    expect(out.state?.quantity).toBe(1);
+  });
+
+  it('dúvida sem campos', async () => {
+    const out = await freeText(paying, 'vocês abrem?', tools(result({ intent: 'question' })));
+    expect(out.replies[0]).toEqual(text(msg.offTopic('86999990000')));
+    expect(out.replies[1]).toEqual(paymentButtons);
+  });
+
+  it('dúvida com campos aplica os campos', async () => {
+    const out = await freeText(
+      paying,
+      'tem entrega? quero 2',
+      tools(result({ intent: 'question', quantity: 2 })),
+    );
+    expect(out.state?.quantity).toBe(2);
+    expect(out.replies[0]).toEqual(text(msg.noted(['2x Botijão P13'])));
+    expect(out.replies[1]).toEqual(paymentButtons);
+  });
+
+  it('troca quantidade e pede novo endereço', async () => {
+    const withAddresses: OrderState = {
+      ...paying,
+      addresses: [address, { ...address, number: '9' }],
+    };
+    const out = await freeText(
+      withAddresses,
+      'na verdade 3, em outro endereço',
+      tools(result({ quantity: 3, newAddress: true })),
+    );
+    expect(out.replies[0]).toEqual(text('Anotado: 3x Botijão P13, entrega em outro endereço.'));
+    expect(out.state?.step).toBe('chooseAddress');
+    expect(out.state?.quantity).toBe(3);
+  });
+
+  it('nas etapas de identificação repete a pergunta da etapa', async () => {
+    const asking: OrderState = { step: 'askName', customer: {} };
+    const out = await freeText(
+      asking,
+      'quero botijão no pix',
+      tools(result({ products: ['Botijão P13'], payment: 'PIX' })),
+    );
+    expect(out.state).toMatchObject({ step: 'askName', product: p13, payment: pix });
+    expect(out.replies).toHaveLength(2);
+    expect(out.replies[1]).toEqual(text(msg.askName));
+  });
+
+  it('manda o contexto do catálogo', async () => {
+    const fake = tools(result({ intent: 'other' }));
+    const spy = vi.spyOn(fake, 'interpret');
+    await freeText({ ...paying, step: 'summary' }, 'x', fake);
+    expect(spy).toHaveBeenCalledWith('x', {
+      products: ['Botijão P13', 'Botijão P45', 'Água mineral 20L'],
+      payments: [
+        { type: 'PIX', label: 'Pix' },
+        { type: 'MONEY', label: 'Dinheiro' },
+        { type: 'CARTAO_DE_CREDITO', label: 'Cartão de crédito' },
+      ],
+    });
+    expect(fake.calls.map(call => call.name)).toContain('listProducts');
+  });
+
+  it('usa productOptions e paymentOptions do estado sem chamar o catálogo', async () => {
+    const fake = tools(null);
+    const spy = vi.spyOn(fake, 'interpret');
+    await freeText({ ...paying, productOptions: [p45], paymentOptions: [pix] }, 'x', fake);
+    expect(spy).toHaveBeenCalledWith('x', {
+      products: ['Botijão P45'],
+      payments: [{ type: 'PIX', label: 'Pix' }],
+    });
+    expect(fake.calls.map(call => call.name)).not.toContain('listProducts');
   });
 });

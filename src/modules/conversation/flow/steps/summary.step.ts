@@ -9,7 +9,8 @@ import {
   type StepResult,
   ToolError,
 } from '../flow.types';
-import { choiceOf } from '../input';
+import { freeText } from '../free-text';
+import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
 import { buttons, text } from '../replies';
@@ -94,6 +95,8 @@ const handleSummary: HandleFn = async (state, input, tools) => {
   const choice = choiceOf(input, 'summary');
   if (choice === 'confirm') return submitSale(state, tools);
   if (choice === 'fix') return chooseCorrection(state, tools);
+  const raw = textOf(input);
+  if (raw !== null) return freeText(state, raw, tools);
   return summary(state, tools);
 };
 
@@ -111,6 +114,8 @@ const handleChooseCorrection: HandleFn = async (state, input, tools) => {
     const { payment: _payment, quote: _quote, changeFor: _changeFor, ...rest } = state;
     return nextStep(rest, tools);
   }
+  const raw = textOf(input);
+  if (raw !== null) return freeText(state, raw, tools);
   return chooseCorrection(state, tools);
 };
 

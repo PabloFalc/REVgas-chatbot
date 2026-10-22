@@ -2,24 +2,14 @@ import { normalizeText } from 'src/utils/text';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
 import { textOf } from './input';
 import { msg } from './messages';
+import { repeatQuestion } from './repeat-question';
 import { text as textReply } from './replies';
-import { asks, start } from './steps';
+import { start } from './steps';
 import { cancelAfterFailedSale } from './steps/summary.step';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
 const STORE = ['atendente', 'falar com alguem', 'humano'];
 const DISCOUNT = ['desconto', 'promocao', 'mais barato'];
-
-async function repeatQuestion(
-  state: OrderState,
-  tools: FlowTools,
-  first: StepResult['replies'][number],
-): Promise<StepResult> {
-  const ask = asks[state.step];
-  if (!ask) return { state, replies: [first] };
-  const asked = await ask(state, tools);
-  return { state: asked.state, replies: [first, ...asked.replies] };
-}
 
 export async function globalCommand(
   state: OrderState | null,
