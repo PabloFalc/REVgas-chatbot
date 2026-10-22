@@ -86,7 +86,7 @@ export const envConfigSchema = z
       z.url().default('https://generativelanguage.googleapis.com/v1beta/openai'),
     ),
     LLM_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
-    LLM_MODEL: z.preprocess(emptyAsUndefined, z.string().min(1).default('gemini-3.8-flash')),
+    LLM_MODEL: z.preprocess(emptyAsUndefined, z.string().min(1).default('gemini-3.5-flash')),
     LLM_TIMEOUT_MS: z.preprocess(
       emptyAsUndefined,
       z.coerce.number().int().positive().default(8_000),

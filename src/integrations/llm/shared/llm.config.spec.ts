@@ -15,7 +15,7 @@ describe('resolveLlmConfig', () => {
       mode: 'fake',
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
       apiKey: undefined,
-      model: 'gemini-3.8-flash',
+      model: 'gemini-3.5-flash',
       timeoutMs: 8000,
     });
   });
@@ -38,7 +38,7 @@ describe('resolveLlmConfig', () => {
     const config = resolveLlmConfig(
       parse({ LLM_API_KEY: '', LLM_MODEL: '', LLM_API_URL: '', LLM_TIMEOUT_MS: '', LLM_MODE: '' }),
     );
-    expect(config.model).toBe('gemini-3.8-flash');
+    expect(config.model).toBe('gemini-3.5-flash');
     expect(config.mode).toBe('fake');
     expect(config.timeoutMs).toBe(8000);
   });

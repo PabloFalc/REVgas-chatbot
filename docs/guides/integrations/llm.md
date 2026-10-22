@@ -123,7 +123,7 @@ Todos estendem `LlmError` (`kind` e `status?`), em `src/core/erros/llm/llm.error
 
 | Classe | `kind` | Quando |
 | --- | --- | --- |
-| `LlmUnauthorizedError` | `unauthorized` | 401/403, ou 400 com motivo `API_KEY_INVALID` (o Gemini devolve 400 para chave inválida) |
+| `LlmUnauthorizedError` | `unauthorized` | 401/403, ou 400 com motivo `API_KEY_INVALID` ou mensagem do provedor sobre "API key" (o Gemini devolve 400 `INVALID_ARGUMENT` para chave inválida) |
 | `LlmRateLimitedError` | `rate_limited` | 429 (limite por minuto ou cota diária do plano gratuito) |
 | `LlmRejectedError` | `rejected` | outros 4xx, conteúdo bloqueado pelo provedor (`content_filter`) |
 | `LlmUnavailableError` | `unavailable` | 5xx, timeout, falha de rede, ou `fake` sem resposta programada |
@@ -188,12 +188,19 @@ teste é pulado.** Ele confere:
 2. `generateObject` segue um schema parecido com o do `interpretar()` (enum, número, objeto aninhado, campos opcionais) e extrai `intencao` e `quantidade` de "manda 2 botijão no pix".
 3. Chave inválida vira `LlmUnauthorizedError`.
 
-> **Ainda não confirmado contra a API real.** Esse check não pôde ser executado até agora, por falta
-> de chave. Continuam sem confirmação: o modelo padrão `gemini-3.8-flash`, a aceitação do JSON
-> Schema com `strict: true` pelo endpoint, o status que o Gemini devolve para chave inválida (o
-> mapeamento cobre 401/403 e 400 `API_KEY_INVALID`) e a latência real. **`pnpm llm:check` é a
-> primeira coisa a rodar depois de colocar a `LLM_API_KEY`**; se algo falhar, corrija o modelo no
-> `.env` ou o mapeamento e atualize esta seção com o que foi observado.
+> **Confirmado contra a API real em 2026-10-22 (plano gratuito):**
+>
+> - **Modelo padrão `gemini-3.5-flash`**: respostas entre 1,4 e 2,2 s, e o JSON Schema com
+>   `strict: true` é aceito. `pnpm llm:check` passou 3 vezes seguidas.
+> - **`gemini-3.8-flash`** responde 503 (sobrecarregado) quase sempre no plano gratuito. **Não use.**
+> - **Modelos "lite"** (`gemini-3.5-flash-lite`, `gemini-flash-lite-latest`) funcionam, mas a
+>   latência varia de 2,5 a mais de 20 s e estoura o timeout de 8 s com frequência.
+> - **Chave inválida** volta como 400 `INVALID_ARGUMENT`, sem `API_KEY_INVALID` nos `details`, com a
+>   mensagem "Please pass a valid API key". O mapeamento reconhece "api key" na mensagem do
+>   provedor só para classificar como `LlmUnauthorizedError`; o texto do provedor continua fora da
+>   mensagem do erro.
+> - Rodar o check várias vezes em sequência pode dar **429** (limite por minuto do plano gratuito).
+>   Espere cerca de 30 s entre as rodadas.
 
 ## Comportamentos que valem saber
 
