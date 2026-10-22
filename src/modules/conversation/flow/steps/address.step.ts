@@ -16,7 +16,7 @@ import {
   type StepResult,
   ToolError,
 } from '../flow.types';
-import { freeText } from '../free-text';
+import { freeText, keepOfferedProduct } from '../free-text';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -200,7 +200,7 @@ const handleConfirmAddress: HandleFn = async (state, input, tools) => {
 
   const advanced: OrderState = { ...withoutDraft(state), customer, address };
   try {
-    return await nextStep(advanced, tools);
+    return await nextStep(await keepOfferedProduct(advanced, tools), tools);
   } catch (error) {
     if (error instanceof ToolError) {
       return {

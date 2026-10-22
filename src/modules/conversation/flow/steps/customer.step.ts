@@ -13,7 +13,7 @@ import {
   type StepResult,
   ToolError,
 } from '../flow.types';
-import { freeText, freeTextOr, looksLikeOrder } from '../free-text';
+import { freeText, freeTextOr, keepOfferedProduct, looksLikeOrder } from '../free-text';
 import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -38,16 +38,24 @@ async function withHistory(
   return { ...state, addresses: history.addresses, boughtProductIds: history.productIds };
 }
 
-export async function start(input: FlowInput, tools: FlowTools): Promise<StepResult> {
+export async function start(
+  input: FlowInput,
+  tools: FlowTools,
+  seed: Partial<OrderState> = {},
+): Promise<StepResult> {
   const customer = await tools.findCustomer(input.phone);
   if (!customer) {
-    return { state: { step: 'askName', customer: {} }, replies: [text(msg.welcomeNew)] };
+    return {
+      state: { step: 'askName', customer: {}, ...seed },
+      replies: [text(msg.welcomeNew)],
+    };
   }
 
   const welcome = text(msg.welcomeBack(customer.name));
   const base: OrderState = {
     step: 'askMissingCpf',
     customer: { id: customer.id, name: customer.name, tagId: customer.tagId },
+    ...seed,
   };
 
   if (!customer.cpf) {
@@ -56,7 +64,7 @@ export async function start(input: FlowInput, tools: FlowTools): Promise<StepRes
 
   const known: OrderState = { ...base, customer: { ...base.customer, cpf: customer.cpf } };
   const loaded = await withHistory(known, customer.id, tools);
-  const next = await nextStep(loaded, tools);
+  const next = await nextStep(await keepOfferedProduct(loaded, tools), tools);
   return { state: next.state, replies: [welcome, ...next.replies] };
 }
 
@@ -113,7 +121,7 @@ const handleAskMissingCpf: HandleFn = async (state, input, tools) => {
     customerId,
     tools,
   );
-  return nextStep(loaded, tools);
+  return nextStep(await keepOfferedProduct(loaded, tools), tools);
 };
 
 export const asks: Partial<Record<Step, AskFn>> = { askName, askCpf, askMissingCpf };

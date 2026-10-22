@@ -2,7 +2,7 @@ import {
   CpfTakenError,
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type FlowInput, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { text } from '../replies';
@@ -168,5 +168,33 @@ describe('askMissingCpf', () => {
     expect(tools.calls).toEqual([]);
     expect(result?.state).toBe(state);
     expect(result?.replies).toEqual([text(msg.invalidCpf)]);
+  });
+});
+
+describe('produto oferecido na primeira mensagem', () => {
+  const p13 = { id: 1, name: 'Botijão P13' };
+  const p45 = { id: 2, name: 'Botijão P45' };
+
+  it('start de cliente cadastrado reconfere o produto com o cliente identificado', async () => {
+    const tools = createFakeTools({ listProducts: async () => [p45] });
+    const spy = vi.spyOn(tools, 'listProducts');
+    const result = await start(say('oi'), tools, { product: p13, quantity: 2 });
+    expect(spy).toHaveBeenCalledWith({ id: 1, tagId: null });
+    expect(result.state?.product).toBeUndefined();
+    expect(result.state?.quantity).toBeUndefined();
+  });
+
+  it('askMissingCpf concluído reconfere o produto com o cliente identificado', async () => {
+    const tools = createFakeTools({ listProducts: async () => [p45] });
+    const spy = vi.spyOn(tools, 'listProducts');
+    const state = {
+      step: 'askMissingCpf' as const,
+      customer: { id: 7, name: 'Joana Lima', tagId: 3 },
+      product: p13,
+      quantity: 2,
+    };
+    const result = await handlers.askMissingCpf?.(state, say(VALID_CPF), tools);
+    expect(spy).toHaveBeenCalledWith({ id: 7, tagId: 3 });
+    expect(result?.state?.product).toBeUndefined();
   });
 });

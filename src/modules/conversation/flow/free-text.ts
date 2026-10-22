@@ -4,6 +4,7 @@ import type {
 } from 'src/modules/assistant/contracts/assistant.types';
 import type { PaymentOption, Product } from 'src/modules/catalog/contracts/catalog.types';
 import { normalizeText } from 'src/utils/text';
+import type { Reply } from '../contracts/conversation.types';
 import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
 import { msg } from './messages';
 import { nextStep } from './next-step';
@@ -152,6 +153,62 @@ function contextOf(catalog: Catalog): InterpretContext {
     products: catalog.products.map(product => product.name),
     payments: catalog.payments.map(({ type, label }) => ({ type, label })),
   };
+}
+
+export interface Seed {
+  fields: Partial<OrderState>;
+  replies: Reply[];
+}
+
+export async function seedFromText(raw: string, tools: FlowTools): Promise<Seed> {
+  const empty: Seed = { fields: {}, replies: [] };
+  const catalog: Catalog = {
+    products: await tools.listProducts({}),
+    payments: await tools.listPaymentOptions(),
+  };
+  const result = await tools.interpret(raw, contextOf(catalog));
+  if (!result || result.confidence < MIN_CONFIDENCE) return empty;
+
+  const applied = applyInterpretation({ step: 'askName', customer: {} }, result, catalog);
+  if (!applied) {
+    if (result.intent !== 'question') return empty;
+    return { fields: {}, replies: [text(msg.offTopic(tools.storePhone))] };
+  }
+
+  const { product, quantity, payment, productCandidates, pendingAddressText } = applied.state;
+  const fields: Partial<OrderState> = {};
+  if (product) fields.product = product;
+  if (quantity !== undefined) fields.quantity = quantity;
+  if (payment) fields.payment = payment;
+  if (productCandidates) fields.productCandidates = productCandidates;
+  if (pendingAddressText) fields.pendingAddressText = pendingAddressText;
+  const replies = applied.notes.length > 0 ? [text(msg.noted(applied.notes))] : [];
+  return { fields, replies };
+}
+
+export async function keepOfferedProduct(state: OrderState, tools: FlowTools): Promise<OrderState> {
+  if (!state.product && !state.productCandidates) return state;
+  const offered = await tools.listProducts({ id: state.customer.id, tagId: state.customer.tagId });
+  const ids = new Set(offered.map(item => item.id));
+  const next: OrderState = { ...state };
+
+  if (next.product && !ids.has(next.product.id)) {
+    delete next.product;
+    delete next.quantity;
+    delete next.quote;
+  }
+  if (next.productCandidates) {
+    const left = next.productCandidates.filter(item => ids.has(item.id));
+    if (left.length === 1 && !next.product) {
+      next.product = left[0];
+      delete next.productCandidates;
+    } else if (left.length > 1) {
+      next.productCandidates = left;
+    } else {
+      delete next.productCandidates;
+    }
+  }
+  return next;
 }
 
 export async function freeText(

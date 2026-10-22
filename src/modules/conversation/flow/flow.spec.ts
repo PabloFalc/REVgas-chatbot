@@ -366,3 +366,80 @@ describe('cadastro sob runFlow', () => {
     expect(result.replies).toEqual([text(msg.registerFailed)]);
   });
 });
+
+describe('primeira mensagem com pedido', () => {
+  const order = {
+    intent: 'order' as const,
+    products: ['Botijão P13'],
+    quantity: 2,
+    payment: 'PIX',
+    confidence: 0.9,
+  };
+  const interpretCalls = (tools: FakeTools) =>
+    tools.calls.filter(call => call.name === 'interpret');
+
+  it('"oi" não chama a IA', async () => {
+    const tools = createFakeTools();
+    await new Conversation(tools).send(say('oi'));
+    expect(interpretCalls(tools)).toHaveLength(0);
+  });
+
+  it('cliente novo com pedido completo', async () => {
+    const tools = createFakeTools({ interpret: async () => order });
+    const chat = new Conversation(tools, '5586988887777');
+    const first = await chat.send(say('quero 2 botijão P13 no pix'));
+    expect(first.replies[0]).toEqual(text(msg.noted(['2x Botijão P13', 'Pix'])));
+    expect(first.replies[1]).toEqual(text(msg.welcomeNew));
+    expect(chat.step).toBe('askName');
+    expect(chat.state).toMatchObject({
+      product: { id: 1 },
+      quantity: 2,
+      payment: { type: 'PIX' },
+    });
+    await chat.send(say('Maria da Silva'));
+    await chat.send(say('123.456.789-09'));
+    await chat.send(say('64000-000'));
+    expect(chat.step).toBe('askAddressField');
+    await chat.send(say('120'));
+    expect(chat.step).toBe('confirmAddress');
+    await chat.send(pick('address:ok'));
+    expect(chat.step).toBe('summary');
+  });
+
+  it('cliente cadastrado com pedido completo', async () => {
+    const tools = createFakeTools({ interpret: async () => order });
+    const chat = new Conversation(tools);
+    await chat.send(say('quero 2 botijão P13 no pix'));
+    expect(chat.step).toBe('chooseAddress');
+    await chat.send(pick('address:0'));
+    expect(chat.step).toBe('summary');
+  });
+
+  it('cliente novo com endereço na primeira mensagem', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'order', address: 'Rua A, 10, Centro', confidence: 0.9 }),
+    });
+    const chat = new Conversation(tools, '5586988887777');
+    await chat.send(say('entrega na Rua A, 10, Centro'));
+    await chat.send(say('Maria da Silva'));
+    await chat.send(say('123.456.789-09'));
+    expect(chat.step).toBe('confirmAddress');
+  });
+
+  it('dúvida na primeira mensagem', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'question', confidence: 0.9 }),
+    });
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('vocês entregam hoje? quero saber'));
+    expect(result.replies).toEqual([text(msg.offTopic('86999990000')), text(msg.welcomeNew)]);
+  });
+
+  it('IA falhou na primeira mensagem', async () => {
+    const tools = createFakeTools({ interpret: async () => null });
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('quero gás'));
+    expect(result.replies).toEqual([text(msg.welcomeNew)]);
+    expect(chat.state).toEqual({ step: 'askName', customer: {} });
+  });
+});

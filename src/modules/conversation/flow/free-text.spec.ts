@@ -5,6 +5,7 @@ import {
   applyInterpretation,
   type Catalog,
   freeText,
+  keepOfferedProduct,
   looksLikeOrder,
   shouldInterpret,
 } from './free-text';
@@ -266,5 +267,36 @@ describe('freeText', () => {
       payments: [{ type: 'PIX', label: 'Pix' }],
     });
     expect(fake.calls.map(call => call.name)).not.toContain('listProducts');
+  });
+});
+
+describe('keepOfferedProduct', () => {
+  const only45 = () => createFakeTools({ listProducts: async () => [p45] });
+  const base: OrderState = { step: 'askName', customer: { id: 1, tagId: null } };
+
+  it('descarta o produto que o cliente não pode comprar', async () => {
+    const out = await keepOfferedProduct({ ...base, product: p13, quantity: 2 }, only45());
+    expect(out.product).toBeUndefined();
+    expect(out.quantity).toBeUndefined();
+    expect(out.quote).toBeUndefined();
+  });
+
+  it('candidatos que sobram viram o produto', async () => {
+    const out = await keepOfferedProduct({ ...base, productCandidates: [p13, p45] }, only45());
+    expect(out.product).toEqual(p45);
+    expect(out.productCandidates).toBeUndefined();
+  });
+
+  it('mantém quando o produto está na lista', async () => {
+    const state: OrderState = { ...base, product: p13, quantity: 2 };
+    const out = await keepOfferedProduct(state, createFakeTools());
+    expect(out).toEqual(state);
+  });
+
+  it('sem produto nem candidatos não chama listProducts', async () => {
+    const fake = createFakeTools();
+    const out = await keepOfferedProduct(base, fake);
+    expect(out).toBe(base);
+    expect(fake.calls).toEqual([]);
   });
 });
