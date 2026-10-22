@@ -46,8 +46,9 @@ src/
                 isTimeoutError), iso-datetime. Check here before writing a new helper.
   modules/      domain — conversation/ (WhatsApp webhook at /webhooks/whatsapp + order flow in
                 flow/: steps/, next-step, global-commands, messages, replies, testing/fake-tools),
-                flow-tools.ts (binds FlowTools to the services), customer/, catalog/, order/,
-                address/ (repositories/services + contracts/), auth/ (on standby, not wired in
+                flow-tools.ts (binds FlowTools to the services, incl. `interpret`), customer/,
+                catalog/, order/, address/, assistant/ (`interpret`: LLM free-text interpretation
+                for the flow) (repositories/services + contracts/), auth/ (on standby, not wired in
                 routes.module.ts)
 ```
 

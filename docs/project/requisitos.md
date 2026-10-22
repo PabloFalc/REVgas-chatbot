@@ -17,7 +17,7 @@
 | RF07 | Mostrar resumo com total e pedir confirmação final | Total calculado no backend com preços da API; confirmação por botão | Boa prática + guardrails |
 | RF08 | Criar a venda no ERP RevGás via API | Uma confirmação = uma venda; ID da venda retornado e salvo | Foco do grupo |
 | RF09 | Informar status (entregador a caminho, tempo estimado) | Cliente recebe nº da venda e previsão | Mockup do WhatsApp |
-| RF10 | Responder dúvidas fora do menu com IA sobre FAQ curto | Horário, garantia, vale-gás etc.; fora do escopo → resposta curta e volta ao pedido | Tabela de técnicas |
+| RF10 | Responder dúvidas fora do menu com IA sobre FAQ curto | **Melhoria futura** (decisão de 2026-10-22). Hoje: resposta fixa com o telefone da revenda e volta ao pedido | Tabela de técnicas |
 | ~~RF11~~ | ~~Transferir para atendente humano com resumo~~ | **Fora do escopo** (decisão de 2026-10-21). Pedido de atendente → mensagem fixa com o telefone da revenda | Human Handoff |
 
 ## Requisitos não funcionais
@@ -52,7 +52,7 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 | RN10 | Confirmação | Resumo enviado e cliente respondeu "confirmo" (botão) | Não envia a venda |
 | RN11 | Envio | Chave de idempotência por conversa; sem venda igual nos últimos minutos | Não duplica; mostra a venda existente |
 | RN12 | Resposta da API | Status 2xx e ID da venda retornado | Avisa o cliente e oferece "Tentar de novo"; sem retry automático |
-| RN13 | Pós-venda | ID salvo no Postgres e enviado ao cliente | Alerta no log |
+| RN13 | Pós-venda | **Melhoria futura** (decisão de 2026-10-22): ID salvo no Postgres. Hoje o ID da venda só é enviado ao cliente | Alerta no log |
 
 ### Guardrails do LLM
 
@@ -74,6 +74,13 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 - **Endereços do cliente** = endereço do cadastro + endereços das vendas anteriores na RevGás, sem repetir. Cliente cadastrado escolhe um deles ou informa outro (CEP ou texto livre, sempre confirmado). A RevGás guarda um só endereço por cliente; não criamos tabela própria.
 - **Sem verificação de identidade no MVP.** Cliente reconhecido pelo telefone vê os endereços direto. **Risco conhecido:** número de telefone que mudou de dono expõe os endereços do dono anterior. Fica no roadmap (F14).
 
+## Decisões (2026-10-22)
+
+- **Escopo do MVP:** F01–F05. F03 (pedido em texto livre) e o fallback de intenção estão implementados; F04 e F05 continuam pendentes.
+- **Melhorias futuras, não usadas por enquanto:** F06, F07, F08, F09, F10, F11, F12, F13 e RN13. RF10 também fica para depois.
+- **Texto livre e fallback com resposta fixa.** A IA só interpreta o pedido (produto, quantidade, pagamento, endereço). Dúvida fora do pedido recebe uma resposta fixa com o telefone da revenda; mensagem que a IA não entende recebe "Não entendi."; nos dois casos o bot repete a pergunta da etapa. Não há FAQ com IA.
+- **Texto livre nunca pula o resumo.** A venda só é criada depois do botão "Confirmar".
+
 ## Pendências que afetam os requisitos
 
 Dependem das respostas da Flow/RevGás:
@@ -81,4 +88,4 @@ Dependem das respostas da Flow/RevGás:
 - Preço: todo acordo é ligado a uma forma de pagamento (confirmado em 2026-10-19). Falta a prioridade entre acordos sobrepostos; suposta: cliente > categoria > base. (RF07, RN06)
 - "Tempo estimado": a API não tem esse dado nem webhook de status; só a consulta da venda (status e entregador). (RF09)
 - Idempotência: a API **não** aceita chave de idempotência; a deduplicação é local. (RN11)
-- Conteúdo do FAQ. (RF10)
+- Conteúdo do FAQ. (RF10, melhoria futura)

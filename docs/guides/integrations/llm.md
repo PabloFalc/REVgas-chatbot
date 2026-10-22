@@ -59,8 +59,10 @@ chama volta para os botões.
 O módulo importa `LlmModule` e injeta `LLM_CLIENT` **num gateway próprio** (por exemplo
 `assistant/assistant.gateway.ts`), porque services não importam integrações direto (ver
 `CLAUDE.md`) e é no gateway que moram os prompts. O módulo não precisa saber se está em `live` ou
-`fake`, nem qual provedor está por trás. O exemplo abaixo é ilustrativo (o módulo `assistant/`
-ainda não existe):
+`fake`, nem qual provedor está por trás. O consumidor real é o `AssistantService`
+(`src/modules/assistant/assistant.service.ts`), que interpreta o texto livre do pedido
+(`interpret`, ligado ao fluxo em `flow-tools.ts`) e devolve `null` em qualquer falha. O exemplo
+abaixo é ilustrativo e mais simples:
 
 ```ts
 import { Inject, Injectable } from '@nestjs/common';
