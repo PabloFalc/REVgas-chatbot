@@ -137,6 +137,19 @@ describe('askNewAddress', () => {
   });
 });
 
+describe('askNewAddress com texto pendente', () => {
+  it('askNewAddress com texto pendente que a IA não entende', async () => {
+    const tools = createFakeTools({ addressFromText: async () => null });
+    const result = await asks.askNewAddress?.(
+      { ...known, step: 'askNewAddress', pendingAddressText: 'blablabla' },
+      tools,
+    );
+    expect(result?.replies).toEqual([text(msg.didNotUnderstandAddress)]);
+    expect(result?.state?.step).toBe('askNewAddress');
+    expect(result?.state?.pendingAddressText).toBeUndefined();
+  });
+});
+
 describe('askAddressField', () => {
   const base: OrderState = {
     ...known,

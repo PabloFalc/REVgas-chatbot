@@ -3,6 +3,7 @@ import type { OrderState } from './flow.types';
 import { msg } from './messages';
 import { nextStep } from './next-step';
 import { text } from './replies';
+import './steps';
 import { createFakeTools } from './testing/fake-tools';
 
 const address = {
@@ -60,7 +61,7 @@ describe('nextStep', () => {
     );
     expect(result.state?.step).toBe('choosePayment');
     expect(result.state?.payment).toBeUndefined();
-    expect(result.replies).toEqual([text(msg.noPriceForPayment)]);
+    expect(result.replies[0]).toEqual(text(msg.noPriceForPayment));
   });
 
   it('dinheiro sem troco informado pergunta o troco', async () => {
@@ -93,5 +94,41 @@ describe('nextStep', () => {
       createFakeTools(),
     );
     expect(result.state?.step).toBe('summary');
+  });
+
+  it('retoma o rascunho completo', async () => {
+    const result = await nextStep(stateWith({ draftAddress: address }), createFakeTools());
+    expect(result.state?.step).toBe('confirmAddress');
+  });
+
+  it('retoma o rascunho com campo faltando', async () => {
+    const { number: _number, ...draftAddress } = address;
+    const result = await nextStep(stateWith({ draftAddress }), createFakeTools());
+    expect(result.state?.step).toBe('askAddressField');
+    expect(result.state?.missingField).toBe('number');
+  });
+
+  it('usa o texto de endereço pendente antes dos endereços salvos', async () => {
+    const tools = createFakeTools();
+    const result = await nextStep(
+      stateWith({ addresses: [address, address], pendingAddressText: 'rua b 10' }),
+      tools,
+    );
+    expect(tools.calls).toEqual([{ name: 'addressFromText', args: ['rua b 10'] }]);
+    expect(result.state?.step).toBe('confirmAddress');
+    expect(result.state?.pendingAddressText).toBeUndefined();
+  });
+
+  it('mostra os candidatos quando o produto é ambíguo', async () => {
+    const productCandidates = [
+      { id: 1, name: 'Botijão P13' },
+      { id: 2, name: 'Botijão P45' },
+    ];
+    const result = await nextStep(stateWith({ address, productCandidates }), createFakeTools());
+    expect(result.state?.step).toBe('pickProduct');
+    const reply = result.replies[0];
+    if (reply?.type !== 'list') throw new Error('expected list');
+    expect(reply.body).toBe(msg.chooseAmbiguousProduct);
+    expect(reply.sections[0].rows.map(row => row.id)).toEqual(['product:1', 'product:2']);
   });
 });

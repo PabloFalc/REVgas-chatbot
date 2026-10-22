@@ -90,6 +90,26 @@ const handleSearchProduct: HandleFn = async (state, input, tools) => {
   return showProducts(next, 'searchProduct', found, false);
 };
 
+const pickProduct: AskFn = async state => {
+  const candidates = state.productCandidates ?? [];
+  const rows = candidates.map(product => ({ id: `product:${product.id}`, title: product.name }));
+  return {
+    state: { ...state, step: 'pickProduct' },
+    replies: [list(msg.chooseAmbiguousProduct, msg.viewProducts, rows)],
+  };
+};
+
+const handlePickProduct: HandleFn = async (state, input, tools) => {
+  const choice = choiceOf(input, 'product');
+  const product =
+    choice !== null && /^\d+$/.test(choice)
+      ? state.productCandidates?.find(item => item.id === Number(choice))
+      : undefined;
+  if (!product) return pickProduct(state, tools);
+  const { productCandidates: _candidates, quote: _quote, ...rest } = state;
+  return nextStep({ ...rest, product }, tools);
+};
+
 const chooseQuantity: AskFn = async state => ({
   state: { ...state, step: 'chooseQuantity' },
   replies: [
@@ -129,6 +149,7 @@ const handleAskQuantity: HandleFn = async (state, input, tools) => {
 export const asks: Partial<Record<Step, AskFn>> = {
   chooseProduct,
   searchProduct,
+  pickProduct,
   chooseQuantity,
   askQuantity,
 };
@@ -136,6 +157,7 @@ export const asks: Partial<Record<Step, AskFn>> = {
 export const handlers: Partial<Record<Step, HandleFn>> = {
   chooseProduct: handleChooseProduct,
   searchProduct: handleSearchProduct,
+  pickProduct: handlePickProduct,
   chooseQuantity: handleChooseQuantity,
   askQuantity: handleAskQuantity,
 };

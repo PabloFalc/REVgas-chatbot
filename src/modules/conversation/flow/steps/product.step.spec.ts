@@ -194,3 +194,26 @@ describe('quantidade', () => {
     expect(result?.state?.step).toBe('chooseProduct');
   });
 });
+
+describe('pickProduct', () => {
+  const candidates = [products[0], products[1]];
+  const state: OrderState = {
+    ...base,
+    step: 'pickProduct',
+    productCandidates: candidates,
+    quantity: 3,
+  };
+
+  it('escolher um candidato mantém a quantidade', async () => {
+    const result = await handlers.pickProduct?.(state, pick('product:2'), createFakeTools());
+    expect(result?.state?.product).toEqual(products[1]);
+    expect(result?.state?.quantity).toBe(3);
+    expect(result?.state?.productCandidates).toBeUndefined();
+  });
+
+  it('escolha fora dos candidatos repete a lista filtrada', async () => {
+    const result = await handlers.pickProduct?.(state, pick('product:3'), createFakeTools());
+    expect(result?.state?.step).toBe('pickProduct');
+    expect(rowIds(result)).toEqual(['product:1', 'product:2']);
+  });
+});

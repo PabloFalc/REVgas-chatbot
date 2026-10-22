@@ -18,9 +18,13 @@ function needsChange(state: OrderState): boolean {
 
 export async function nextStep(state: OrderState, tools: FlowTools): Promise<StepResult> {
   if (!state.address) {
+    if (state.draftAddress) return goTo(state, 'askAddressField', tools);
+    if (state.pendingAddressText) return goTo(state, 'askNewAddress', tools);
     return goTo(state, state.addresses?.length ? 'chooseAddress' : 'askNewAddress', tools);
   }
-  if (!state.product) return goTo(state, 'chooseProduct', tools);
+  if (!state.product) {
+    return goTo(state, state.productCandidates?.length ? 'pickProduct' : 'chooseProduct', tools);
+  }
   if (!state.quantity) return goTo(state, 'chooseQuantity', tools);
   if (!state.payment) return goTo(state, 'choosePayment', tools);
 

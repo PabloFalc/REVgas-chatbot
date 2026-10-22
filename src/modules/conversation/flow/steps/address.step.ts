@@ -72,10 +72,14 @@ const chooseAddress: AskFn = async state => {
   return { state: next, replies: [list(msg.chooseAddress, msg.viewAddresses, rows)] };
 };
 
-const askNewAddress: AskFn = async state => ({
-  state: { ...state, step: 'askNewAddress' },
-  replies: [text(msg.askNewAddress)],
-});
+const askNewAddress: AskFn = async (state, tools) => {
+  const { pendingAddressText: pending, ...rest } = state;
+  const next: OrderState = { ...rest, step: 'askNewAddress' };
+  if (!pending) return { state: next, replies: [text(msg.askNewAddress)] };
+  const fromText = await tools.addressFromText(pending);
+  if (!fromText) return { state: next, replies: [text(msg.didNotUnderstandAddress)] };
+  return continueDraft(next, fromText, tools);
+};
 
 function askField(state: OrderState, field: AddressField): StepResult {
   return {
@@ -84,9 +88,9 @@ function askField(state: OrderState, field: AddressField): StepResult {
   };
 }
 
-const askAddressField: AskFn = async state => {
-  const field = state.missingField ?? missingFieldOf(state.draftAddress ?? {}) ?? 'number';
-  return askField(state, field);
+const askAddressField: AskFn = async (state, tools) => {
+  const field = state.missingField ?? missingFieldOf(state.draftAddress ?? {});
+  return field ? askField(state, field) : confirmAddress(state, tools);
 };
 
 const confirmAddress: AskFn = async state => {
