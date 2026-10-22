@@ -29,7 +29,8 @@ const sale = (
   total: number | null,
   date?: string | null,
   products: { product_id: number; quantity: number }[] = [{ product_id: 3, quantity: 2 }],
-) => ({ id, status: 'OPEN', total, date, products }) as RevgasSale;
+  created_at?: string | null,
+) => ({ id, status: 'OPEN', total, date, created_at, products }) as RevgasSale;
 
 const build = (sales: RevgasSale[] = []) => {
   const create = vi.fn(async () => ({ id: 99 }) as RevgasSale);
@@ -165,6 +166,24 @@ describe('OrderRepository', () => {
         ]),
       ]);
       expect(await repository.findRecentSale(order, since)).toBe(14);
+    });
+
+    it('uses created_at over date when both are present', async () => {
+      const inside = build([
+        sale(20, 200, '2026-10-20T10:00:00-03:00', undefined, '2026-10-21T12:01:00-03:00'),
+      ]);
+      expect(await inside.repository.findRecentSale(order, since)).toBe(20);
+      const outside = build([
+        sale(21, 200, '2026-10-21T12:01:00-03:00', undefined, '2026-10-20T10:00:00-03:00'),
+      ]);
+      expect(await outside.repository.findRecentSale(order, since)).toBeNull();
+    });
+
+    it('falls back to date when created_at is absent', async () => {
+      const { repository } = build([sale(22, 200, '2026-10-21T12:01:00-03:00', undefined, null)]);
+      expect(await repository.findRecentSale(order, since)).toBe(22);
+      const old = build([sale(23, 200, '2026-10-20T10:00:00-03:00')]);
+      expect(await old.repository.findRecentSale(order, since)).toBeNull();
     });
 
     it('returns null when nothing matches', async () => {

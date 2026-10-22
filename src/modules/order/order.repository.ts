@@ -63,7 +63,7 @@ export class OrderRepository {
         item => item.product_id === order.productId && item.quantity === order.quantity,
       );
       if (!sameItem) return false;
-      const created = saleTimestamp(sale.date);
+      const created = saleTimestamp(sale.created_at ?? sale.date);
       return Number.isNaN(created) || created >= threshold;
     });
     return match?.id ?? null;
