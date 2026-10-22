@@ -48,7 +48,6 @@ src/
       order.service.ts
       order.repository.ts           # API RevGás + vendas salvas no Postgres
     assistant/              # interpretar() e responderFaq() (RF10)
-    handoff/                # transferência para atendente + resumo (RF11)
     metrics/                # painel da revenda (F08)
   infra/
     cache/                  # Redis (ioredis): estado da conversa com TTL
@@ -82,7 +81,7 @@ Chamada só quando a mensagem não bate com botão nem palavra-chave. Saída val
   quantidade?: number
   pagamento?: string
   endereco?: { logradouro?: string; numero?: string; bairro?: string; referencia?: string }
-  confianca: number       // 0..1; abaixo do limiar → handoff
+  confianca: number       // 0..1; abaixo do limiar → reapresenta os botões
 }
 ```
 
@@ -139,14 +138,14 @@ O catálogo da RevGás mistura gás, água, vasilhames (casco vendido à parte),
 - **Idempotência:** a API RevGás não aceita chave de idempotência. A garantia é local: trava por conversa no Redis na confirmação, mais checagem de venda do mesmo cliente no canal WhatsApp antes de qualquer nova tentativa.
 - **Retry:** backoff em 5xx, 429, 409 por lock e timeout. A criação de venda nunca é repetida às cegas: primeiro confere se a venda já existe.
 - **Persistência:** ID da venda salvo no Postgres e enviado ao cliente; falha → alerta no log.
-- **Logs:** toda chamada à API RevGás e todo handoff, com CPF e telefone mascarados.
+- **Logs:** toda chamada à API RevGás, com CPF e telefone mascarados.
 
 ## Dados
 
 | Onde | O quê |
 | --- | --- |
 | Redis (TTL) | Estado da conversa e carrinho em andamento |
-| Postgres | Histórico de conversas, vendas criadas, handoffs, métricas do painel |
+| Postgres | Histórico de conversas, vendas criadas, métricas do painel |
 
 ## Restrições do canal (WhatsApp)
 

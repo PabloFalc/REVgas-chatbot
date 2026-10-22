@@ -3,11 +3,27 @@ import { WhatsappRejectedError } from 'src/core/erros/whatsapp/whatsapp.errors';
 import { FakeWhatsappClient } from 'src/integrations/whatsapp/fake-whatsapp.client';
 import { textWebhook, webhookPayload } from 'src/integrations/whatsapp/testing/webhook.testing';
 import { parseWebhook } from 'src/integrations/whatsapp/webhook/webhook.parser';
-import { describe, expect, it, vi } from 'vitest';
-import type { IncomingContent } from './contracts/conversation.types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationRepository } from './conversation.repository';
-import { ConversationService, replyTo } from './conversation.service';
+import { ConversationService } from './conversation.service';
+import { runFlow } from './flow/flow';
+import { type OrderState, ToolError } from './flow/flow.types';
+import { text } from './flow/replies';
+import { createFakeTools } from './flow/testing/fake-tools';
+import type { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
+
+vi.mock('./flow/flow', () => ({ runFlow: vi.fn() }));
+
+const runFlowMock = vi.mocked(runFlow);
+
+beforeEach(() => {
+  runFlowMock.mockReset();
+  runFlowMock.mockResolvedValue({
+    state: { step: 'askName', customer: {} },
+    replies: [text('olá')],
+  });
+});
 
 function setup(whatsapp = new FakeWhatsappClient()) {
   const claimed = new Set<string>();
@@ -17,7 +33,12 @@ function setup(whatsapp = new FakeWhatsappClient()) {
       claimed.add(id);
       return true;
     }),
+    loadOrder: vi.fn(async () => null as OrderState | null),
+    saveOrder: vi.fn(async () => undefined),
+    clearOrder: vi.fn(async () => undefined),
+    withPhoneLock: vi.fn(async (_phone: string, work: () => Promise<unknown>) => work()),
   };
+  const flowTools = { forPhone: vi.fn(() => createFakeTools()) };
   const logger = {
     setContext: vi.fn(),
     debug: vi.fn(),
@@ -28,55 +49,80 @@ function setup(whatsapp = new FakeWhatsappClient()) {
   const service = new ConversationService(
     repository as unknown as ConversationRepository,
     new MessagingGateway(whatsapp),
+    flowTools as unknown as FlowToolsService,
     logger as unknown as PinoLogger,
   );
-  return { service, repository, whatsapp, logger };
+  return { service, repository, flowTools, whatsapp, logger };
 }
-
-const message = (content: IncomingContent, name?: string) => ({
-  id: 'wamid.1',
-  from: '5586999991234',
-  name,
-  content,
-});
-
-describe('replyTo (resposta de teste, função pura)', () => {
-  it('ecoa o texto e cumprimenta pelo primeiro nome', () => {
-    const [reply] = replyTo(message({ type: 'text', text: 'oi' }, 'Maria da Silva'));
-    expect(reply.type).toBe('text');
-    expect(reply.type === 'text' && reply.text).toMatch(/^Olá, Maria! Recebi: "oi"/);
-  });
-
-  it('corta eco longo', () => {
-    const [reply] = replyTo(message({ type: 'text', text: 'a'.repeat(500) }));
-    expect(reply.type === 'text' && reply.text.length).toBeLessThan(400);
-  });
-
-  it('"lista" devolve lista interativa e "botões" devolve botões', () => {
-    expect(replyTo(message({ type: 'text', text: 'Lista' }))[0].type).toBe('list');
-    expect(replyTo(message({ type: 'text', text: 'botões' }))[0].type).toBe('buttons');
-  });
-
-  it('confirma a opção escolhida', () => {
-    const [reply] = replyTo(message({ type: 'choice', id: 'demo:p13', title: 'Botijão P13' }));
-    expect(reply.type === 'text' && reply.text).toContain('*Botijão P13*');
-  });
-
-  it('avisa quando o tipo de mensagem não é suportado', () => {
-    const [reply] = replyTo(message({ type: 'unsupported' }));
-    expect(reply.type === 'text' && reply.text).toContain('só entendo mensagens de texto');
-  });
-});
 
 describe('ConversationService.handle', () => {
   it('marca como lida e responde para quem mandou', async () => {
     const { service, whatsapp } = setup();
 
-    await service.handle(parseWebhook(textWebhook('lista', 'wamid.A')));
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.A')));
 
     expect(whatsapp.read).toEqual(['wamid.A']);
     expect(whatsapp.sent).toHaveLength(1);
-    expect(whatsapp.sent[0]).toMatchObject({ type: 'list', to: '5586999991234' });
+    expect(whatsapp.sent[0]).toMatchObject({ type: 'text', to: '5586999991234' });
+  });
+
+  it('roda o fluxo com o estado carregado, grava o novo e responde na ordem', async () => {
+    const { service, repository, whatsapp } = setup();
+    const loaded: OrderState = { step: 'askCpf', customer: { name: 'Maria' } };
+    const saved: OrderState = { step: 'chooseAddress', customer: { name: 'Maria' } };
+    repository.loadOrder.mockResolvedValueOnce(loaded);
+    runFlowMock.mockResolvedValueOnce({ state: saved, replies: [text('um'), text('dois')] });
+
+    await service.handle(parseWebhook(textWebhook('123', 'wamid.S')));
+
+    expect(runFlowMock).toHaveBeenCalledWith(
+      loaded,
+      { phone: '5586999991234', content: { type: 'text', text: '123' } },
+      expect.anything(),
+      expect.any(Function),
+    );
+    expect(repository.saveOrder).toHaveBeenCalledWith('5586999991234', saved);
+    expect(repository.clearOrder).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toHaveLength(2);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain('um');
+    expect(JSON.stringify(whatsapp.sent[1].body)).toContain('dois');
+  });
+
+  it('estado nulo apaga o pedido em andamento', async () => {
+    const { service, repository } = setup();
+    runFlowMock.mockResolvedValueOnce({ state: null, replies: [text('cancelado')] });
+
+    await service.handle(parseWebhook(textWebhook('cancelar', 'wamid.N')));
+
+    expect(repository.clearOrder).toHaveBeenCalledWith('5586999991234');
+    expect(repository.saveOrder).not.toHaveBeenCalled();
+  });
+
+  it('processa sob o lock do telefone e o checkpoint grava o pedido', async () => {
+    const { service, repository, flowTools } = setup();
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.LK')));
+
+    expect(repository.withPhoneLock).toHaveBeenCalledWith('5586999991234', expect.any(Function));
+    const [save] = flowTools.forPhone.mock.calls[0] as unknown as [
+      (state: OrderState) => Promise<void>,
+    ];
+    await save({ step: 'askName', customer: {} });
+    expect(repository.saveOrder).toHaveBeenCalledWith('5586999991234', {
+      step: 'askName',
+      customer: {},
+    });
+  });
+
+  it('erro inesperado do fluxo é logado sem responder e sem texto do cliente', async () => {
+    const { service, whatsapp, logger } = setup();
+    runFlowMock.mockRejectedValueOnce(new Error('bug'));
+
+    await service.handle(parseWebhook(textWebhook('meu cpf 12345678909', 'wamid.X')));
+
+    expect(whatsapp.sent).toEqual([]);
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('12345678909');
   });
 
   it('não responde duas vezes a mesma mensagem reenviada pela Meta', async () => {
@@ -87,16 +133,6 @@ describe('ConversationService.handle', () => {
     await service.handle(events);
 
     expect(whatsapp.sent).toHaveLength(1);
-  });
-
-  it('as respostas de demonstração cabem nos limites do WhatsApp', async () => {
-    const { service, whatsapp, logger } = setup();
-
-    await service.handle(parseWebhook(textWebhook('lista', 'wamid.L')));
-    await service.handle(parseWebhook(textWebhook('botoes', 'wamid.K')));
-
-    expect(logger.error).not.toHaveBeenCalled();
-    expect(whatsapp.sent.map(sent => sent.type)).toEqual(['list', 'buttons']);
   });
 
   it('falha no envio é logada sem derrubar o processamento dos outros eventos', async () => {
@@ -169,10 +205,96 @@ describe('ConversationService.handle', () => {
     expect(whatsapp.sent).toHaveLength(1);
   });
 
+  it('falha de ferramenta é logada como aviso só com o nome da causa, sem mensagem nem telefone', async () => {
+    const { service, logger } = setup();
+    runFlowMock.mockImplementationOnce(async (_state, _input, _tools, onToolError) => {
+      onToolError?.(new ToolError(new TypeError('cpf 12345678909 fora do ar')));
+      return { state: null, replies: [text('indisponível')] };
+    });
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.G')));
+
+    const call = logger.warn.mock.calls.find(
+      ([, message]) => message === 'Falha em ferramenta do fluxo',
+    );
+    expect(call?.[0]).toMatchObject({
+      component: 'conversation',
+      messageId: 'wamid.G',
+      from: expect.not.stringContaining('5586999991234'),
+      cause: 'TypeError',
+    });
+    const logged = JSON.stringify(logger.warn.mock.calls);
+    expect(logged).not.toContain('12345678909');
+    expect(logged).not.toContain('fora do ar');
+    expect(logged).not.toContain('5586999991234');
+  });
+
   it('nunca loga o telefone cru', async () => {
     const { service, logger } = setup();
     await service.handle(parseWebhook(textWebhook('oi', 'wamid.F')));
     const logged = JSON.stringify(Object.values(logger).map(fn => fn.mock.calls));
     expect(logged).not.toContain('5586999991234');
+  });
+});
+
+describe('ConversationService venda criada', () => {
+  const saleResult = {
+    state: null,
+    replies: [text('Pedido nº 55 confirmado')],
+    saleId: 55,
+  };
+
+  it('loga o id da venda antes de enviar as respostas', async () => {
+    const { service, logger, whatsapp } = setup();
+    const order: string[] = [];
+    logger.info.mockImplementation((_obj: unknown, message?: string) => {
+      if (message === 'Venda criada') order.push('log');
+    });
+    const send = whatsapp.sendText.bind(whatsapp);
+    vi.spyOn(whatsapp, 'sendText').mockImplementation(async (...args) => {
+      order.push('send');
+      return send(...args);
+    });
+    runFlowMock.mockResolvedValueOnce(saleResult);
+
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.V1')));
+
+    expect(order).toEqual(['log', 'send']);
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        component: 'conversation',
+        phone: '*******1234',
+        messageId: 'wamid.V1',
+        saleId: 55,
+      },
+      'Venda criada',
+    );
+  });
+
+  it('o id da venda já está no log quando o envio falha', async () => {
+    const whatsapp = new FakeWhatsappClient();
+    const { service, logger } = setup(whatsapp);
+    vi.spyOn(whatsapp, 'sendText').mockRejectedValue(new Error('rede'));
+    runFlowMock.mockResolvedValueOnce(saleResult);
+
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.V2')));
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ saleId: 55 }),
+      'Venda criada',
+    );
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('não loga telefone cru nem venda quando não há saleId', async () => {
+    const { service, logger } = setup();
+    runFlowMock.mockResolvedValueOnce(saleResult);
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.V3')));
+    const created = logger.info.mock.calls.filter(call => call[1] === 'Venda criada');
+    expect(JSON.stringify(created)).not.toContain('5586999991234');
+
+    const other = setup();
+    await other.service.handle(parseWebhook(textWebhook('oi', 'wamid.V4')));
+    expect(other.logger.info.mock.calls.some(call => call[1] === 'Venda criada')).toBe(false);
   });
 });

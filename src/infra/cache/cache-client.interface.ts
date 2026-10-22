@@ -16,5 +16,9 @@ export abstract class ICacheClient {
 
   abstract exists(params: CacheGetParams): Promise<boolean>;
 
+  abstract delete(params: CacheGetParams): Promise<void>;
+
+  abstract deleteIfEquals(params: CacheGetParams & { value: unknown }): Promise<boolean>;
+
   abstract clear(prefix: string): Promise<void>;
 }

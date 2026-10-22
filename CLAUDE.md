@@ -40,11 +40,15 @@ src/
   integrations/ revgas/ — RevGás ERP client by API module (live/hybrid/fake modes, mock included)
                 whatsapp/ — Meta Cloud API client (live/fake) + webhook (signature, parser)
                 llm/ — OpenAI-compatible LLM client (Gemini; live/fake)
+                viacep/ — CEP lookup client (http/fake)
   utils/        pure reusable helpers, no Nest/domain — mask (maskPhone, maskDocument, MASK),
                 text (normalizeText, truncate), safe-equal, parse-json, guards (isRecord,
                 isTimeoutError), iso-datetime. Check here before writing a new helper.
-  modules/      domain — conversation/ (WhatsApp webhook at /webhooks/whatsapp; for now a test
-                reply: echo, "lista", "botões"), auth/ (on standby, not wired in routes.module.ts)
+  modules/      domain — conversation/ (WhatsApp webhook at /webhooks/whatsapp + order flow in
+                flow/: steps/, next-step, global-commands, messages, replies, testing/fake-tools),
+                flow-tools.ts (binds FlowTools to the services), customer/, catalog/, order/,
+                address/ (repositories/services + contracts/), auth/ (on standby, not wired in
+                routes.module.ts)
 ```
 
 - **App is assembled in `AppModule`**: `CoreModule`, `RoutesModule`, `InfraModule`. Config comes from `src/config/env.ts` (dotenv + Zod), imported directly — there is no ConfigModule/ConfigService.
@@ -67,7 +71,7 @@ Planned (from `docs/project/specs.md`, names still to be validated with the grou
 
 ```
 src/
-  modules/     conversation, customer, catalog, order, assistant, handoff, metrics
+  modules/     conversation, customer, catalog, order, assistant, metrics
   infra/       cache (conversation state with TTL), database (Postgres + Drizzle)
   integrations/ revgas, whatsapp, llm — clients for external services
 ```
@@ -78,17 +82,19 @@ Dependency rules:
 - `integrations/` knows nothing about the domain: it talks to the external service and validates responses with Zod.
 - Module services don't import SDKs (Redis, Drizzle, `integrations/`) directly. Access goes through:
   - **repositories** (`*.repository.ts`) — read/write data: Redis, Postgres, or records in an external
-    API (e.g. RevGás customers/sales). Example: `conversation.repository` (message dedup, later the
-    conversation state).
+    API (e.g. RevGás customers/sales). Example: `conversation.repository` (message dedup, order state).
   - **gateways** (`*.gateway.ts`) — outbound actions that store nothing (send a message, notify).
     Example: `messaging.gateway` (sends replies via `WHATSAPP_CLIENT`).
   - Known exception: `ConversationService` imports the WhatsApp webhook event **types**
     (`integrations/whatsapp/webhook/webhook.schemas`) — types only, never clients.
 - Every `integrations/` client has a mock for tests.
-- `ConversationService` handles each WhatsApp event (dedup via repository, mark as read, send via
-  gateway, logging). The decision of what to reply stays a **pure function** in the same file
-  (`replyTo`, later the state machine): (state, message) → (new state, replies), no I/O, testable
-  without WhatsApp or AI (RNF08). Keep new flow logic inside the pure part.
+- `ConversationService` handles each WhatsApp event (dedup via repository, per-phone lock with
+  owner and 120 s TTL, mark as read, run the flow, send via gateway, logging). The order state lives
+  in Redis with a 15 min TTL. The flow itself is in `conversation/flow/`: step files in
+  `flow/steps/` receive `FlowTools` and **never import Nest, Redis, integrations, services or
+  repositories** (only flow files, `src/utils` and modules' `contracts/`), so they are testable
+  with `createFakeTools` (no WhatsApp, AI or DB — RNF08). `flow-tools.ts` is the only place that
+  wires `FlowTools` to the real services. Keep new flow logic inside the steps.
 - Zod schemas live in the module that uses them (`*.schemas.ts`); in `modules/`, input/output shapes
   (DTOs and domain types) go in the module's `contracts/` folder. Drizzle tables live in
   `infra/database/schemas`.
@@ -112,7 +118,7 @@ Dependency rules:
 - **DTOs** are Zod schemas via `nestjs-zod` (`createZodDto`), validated by the global `zodValidationPipe`.
 - **Auth split:** global at `/auth/*` (session) and `/auth/me/*` (user); method at `/auth/email/*`.
 - **Secrets:** `REVGAS_API_KEY`, `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_APP_SECRET` and `LLM_API_KEY` stay server-side only (RNF02) — never in responses, logs or AI
-  prompts. Customer CPF/phone/address must be masked in logs (LGPD) — use `src/utils/mask`.
+  prompts. `STORE_PHONE`/`STORE_CITY`/`STORE_STATE` are the reseller's contact and default address region. Customer CPF/phone/address must be masked in logs (LGPD) — use `src/utils/mask`.
 
 ## Documentation
 
@@ -122,6 +128,7 @@ Index: `docs/README.md`. Area guides (read before touching the matching area):
 - `docs/guides/modules/auth.md` — auth (standby + how to turn on), bearer-only, `AuthGuard`, email flows, routes
 - `docs/guides/integrations/revgas.md` — RevGás client (`src/integrations/revgas`): modes, hybrid routing, key permissions, errors, never retry POST, `pnpm revgas:check`
 - `docs/guides/integrations/whatsapp.md` — WhatsApp Cloud API (`src/integrations/whatsapp`) + webhook (`src/modules/conversation`): modes, Meta setup step by step, local tunnel, signature, dedup, message limits, errors
+- `docs/guides/integrations/viacep.md` — ViaCEP client (`src/integrations/viacep`): modes (live/fake), address lookup by CEP, errors
 - `docs/guides/integrations/llm.md` — LLM client (`src/integrations/llm`): modes, getting the key, how a module consumes it, errors, `FakeLlmClient`, switching provider, `pnpm llm:check`
 - `docs/guides/services/email-service.md` — `EmailService` (Resend), standby, log-only in dev/test
 - `docs/guides/conventions/api-doc.md` — the `@ApiDoc` decorator

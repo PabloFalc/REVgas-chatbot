@@ -191,20 +191,22 @@ As respostas abaixo decidem o escopo; levem a lista impressa para o encontro ap�
 ### API e ambiente
 
 - [ ] Teremos uma API Key de sandbox/homologação, ou só produção?
-- [ ] Qual o corpo exato de "criar venda" e quais campos são obrigatórios?
+- [x] Qual o corpo exato de "criar venda" e quais campos são obrigatórios? (spec OpenAPI)
 - [ ] A venda criada pela API já cai na central e no app do entregador, ou precisa de outra chamada?
 - [ ] Existe webhook de mudança de status (saiu para entrega, entregue)?
 - [ ] Há limite de requisições (rate limit)?
 
 ### Negócio
 
-- [ ] O preço muda por cliente, bairro ou forma de pagamento?
-- [ ] O bot pode oferecer promoção? Quem define as regras de desconto?
-- [ ] Quem recebe o handoff: o atendente da revenda na plataforma da Flow?
+- [x] O preço muda por cliente, bairro ou forma de pagamento? Sim: acordos por cliente, categoria e forma de pagamento (2026-10-19)
+- [x] O bot pode oferecer promoção? Não (2026-10-21)
+- [x] Quem recebe o handoff? Handoff fora do MVP (2026-10-21)
+- [x] CPF é obrigatório no cadastro? Sim (2026-10-21)
+- [ ] Qual a prioridade entre acordos de preço sobrepostos?
 
 ### Canal e entrega do projeto
 
-- [ ] O WhatsApp será via plataforma da Flow ou podemos usar a Cloud API / outro provedor?
+- [x] O WhatsApp será via plataforma da Flow ou podemos usar a Cloud API / outro provedor? Cloud API da Meta
 - [ ] O que a Flow espera ver na apresentação: protótipo funcionando, documentação, ou ambos?
 - [ ] Quais métricas importam para eles (conversão, tempo de atendimento, handoffs)?
 

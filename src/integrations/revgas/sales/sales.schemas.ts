@@ -33,6 +33,7 @@ export const RevgasSaleSchema = z.looseObject({
   deliverer_name: z.string().nullish(),
   delivered_at: z.string().nullish(),
   date: z.string().nullish(),
+  created_at: z.string().nullish(),
   location: z.string().nullish(),
   number: z.string().nullish(),
   neighborhood: z.string().nullish(),

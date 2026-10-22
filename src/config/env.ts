@@ -86,11 +86,24 @@ export const envConfigSchema = z
       z.url().default('https://generativelanguage.googleapis.com/v1beta/openai'),
     ),
     LLM_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
-    LLM_MODEL: z.preprocess(emptyAsUndefined, z.string().min(1).default('gemini-3.8-flash')),
+    LLM_MODEL: z.preprocess(emptyAsUndefined, z.string().min(1).default('gemini-3.5-flash')),
     LLM_TIMEOUT_MS: z.preprocess(
       emptyAsUndefined,
       z.coerce.number().int().positive().default(8_000),
     ),
+
+    // VIACEP (consulta de CEP, API publica sem chave)
+    VIACEP_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'fake']).optional()),
+    VIACEP_API_URL: z.preprocess(emptyAsUndefined, z.url().default('https://viacep.com.br/ws')),
+    VIACEP_TIMEOUT_MS: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().default(5_000),
+    ),
+
+    // LOJA (cidade e UF assumidas quando o cliente nao informa)
+    STORE_CITY: z.preprocess(emptyAsUndefined, z.string().min(1).default('Teresina')),
+    STORE_STATE: z.preprocess(emptyAsUndefined, z.string().length(2).default('PI')),
+    STORE_PHONE: z.preprocess(emptyAsUndefined, z.string().min(1).optional()),
 
     // RESEND (standby)
     RESEND_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),

@@ -4,6 +4,9 @@ import { PinoLogger } from 'nestjs-pino';
 import type { CacheGetParams, CacheSetParams, ICacheClient } from './cache-client.interface';
 import { REDIS } from './redis.client';
 
+const DELETE_IF_EQUALS =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
 @Injectable()
 export class RedisService implements ICacheClient, OnApplicationShutdown {
   constructor(
@@ -20,7 +23,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       if (!result) return null;
       return JSON.parse(result) as T;
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, key }, 'Cache get error');
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache get error');
       return null;
     }
   }
@@ -36,7 +39,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
         await this.redis.set(keyWithPrefix, serialized);
       }
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, key }, 'Cache set error');
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache set error');
     }
   }
 
@@ -55,7 +58,32 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
     try {
       return (await this.redis.exists(this._makePrefix(key, prefix))) === 1;
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, key }, 'Cache exists error');
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache exists error');
+      return false;
+    }
+  }
+
+  async delete(params: CacheGetParams): Promise<void> {
+    const { key, prefix } = params;
+    try {
+      await this.redis.del(this._makePrefix(key, prefix));
+    } catch (error) {
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache delete error');
+    }
+  }
+
+  async deleteIfEquals(params: CacheGetParams & { value: unknown }): Promise<boolean> {
+    const { key, prefix, value } = params;
+    try {
+      const result = await this.redis.eval(
+        DELETE_IF_EQUALS,
+        1,
+        this._makePrefix(key, prefix),
+        JSON.stringify(value),
+      );
+      return result === 1;
+    } catch (error) {
+      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache deleteIfEquals error');
       return false;
     }
   }
@@ -83,6 +111,8 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       set: params => this.set({ ...params, prefix }),
       setIfAbsent: params => this.setIfAbsent({ ...params, prefix }),
       exists: params => this.exists({ ...params, prefix }),
+      deleteIfEquals: params => this.deleteIfEquals({ ...params, prefix }),
+      delete: params => this.delete({ ...params, prefix }),
       clear: () => this.clear(prefix),
     };
   }

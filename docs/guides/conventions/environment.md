@@ -120,10 +120,30 @@ Chave gratuita em [aistudio.google.com](https://aistudio.google.com) (plano grat
 | `LLM_MODE` | Não | vazio = automático | `live` ou `fake`. Vazio: `live` se houver `LLM_API_KEY`, senão `fake`. Em `fake` a LLM não é chamada. |
 | `LLM_API_URL` | Não | `https://generativelanguage.googleapis.com/v1beta/openai` | URL base da API compatível com OpenAI. Validada como URL; a barra final é removida. |
 | `LLM_API_KEY` | Obrigatória em `live` | vazio | Chave da API. **Fica só no servidor**: nunca em log, erro ou resposta HTTP. |
-| `LLM_MODEL` | Não | `gemini-3.8-flash` | Nome do modelo enviado em cada chamada. |
+| `LLM_MODEL` | Não | `gemini-3.5-flash` | Nome do modelo enviado em cada chamada. |
 | `LLM_TIMEOUT_MS` | Não | `8000` | Timeout de cada chamada. Sem retry: estourou, a chamada falha e o bot segue pelos botões. |
 
 > `live` exige a chave (checagem em `resolveLlmConfig`), então o app sobe em `fake` sem nada configurado. `fake` em produção só loga um aviso e o bot fica só com botões. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
+
+## ViaCEP (consulta de CEP)
+
+API pública e gratuita, sem chave. Detalhes em `docs/guides/integrations/viacep.md`.
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `VIACEP_MODE` | Não | vazio = automático | `live` ou `fake`. Vazio: `fake` com `NODE_ENV=test`, `live` nos demais casos. Em `fake` a rede não é usada. |
+| `VIACEP_API_URL` | Não | `https://viacep.com.br/ws` | URL base. Validada como URL; a barra final é removida. |
+| `VIACEP_TIMEOUT_MS` | Não | `5000` | Timeout de cada consulta. Estourou, a consulta falha com `ViacepError`. |
+
+## Loja (endereço padrão)
+
+Usadas pelo módulo `address` quando o cliente digita o endereço sem cidade ou UF.
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `STORE_CITY` | Não | `Teresina` | Cidade assumida quando o endereço não traz cidade. |
+| `STORE_STATE` | Não | `PI` | UF (2 letras) assumida quando o endereço não traz UF. |
+| `STORE_PHONE` | Não | vazio | Telefone da revenda em texto livre (ex.: `(86) 3222-0000`), mostrado quando o cliente pede atendente ou o CPF já está em outro cadastro. Sem ela, a mensagem diz só "fale direto com a revenda". |
 
 ## E-mail — Resend (standby)
 

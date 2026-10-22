@@ -75,19 +75,26 @@ function findReason(error: Record<string, unknown>): string | undefined {
   return typeof error.status === 'string' && error.status ? error.status : undefined;
 }
 
-function llmErrorReason(body: unknown): string | undefined {
+const INVALID_KEY_MESSAGE = /api key/i;
+
+function llmErrorBody(body: unknown): Record<string, unknown> | undefined {
   const root = Array.isArray(body) ? body[0] : body;
-  if (!isRecord(root) || !isRecord(root.error)) {
-    return undefined;
+  return isRecord(root) && isRecord(root.error) ? root.error : undefined;
+}
+
+function isInvalidKey(error: Record<string, unknown> | undefined, reason?: string): boolean {
+  if (reason === 'API_KEY_INVALID') {
+    return true;
   }
-  return findReason(root.error);
+  return typeof error?.message === 'string' && INVALID_KEY_MESSAGE.test(error.message);
 }
 
 export function mapLlmError(status: number, body: unknown): LlmError {
-  const reason = llmErrorReason(body);
+  const error = llmErrorBody(body);
+  const reason = error ? findReason(error) : undefined;
   const text = reason ? `LLM respondeu ${status} (${reason})` : `LLM respondeu ${status}`;
 
-  if (status === 401 || status === 403 || (status === 400 && reason === 'API_KEY_INVALID')) {
+  if (status === 401 || status === 403 || (status === 400 && isInvalidKey(error, reason))) {
     return new LlmUnauthorizedError(text, status);
   }
   if (status === 429) {
