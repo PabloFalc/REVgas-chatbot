@@ -82,7 +82,7 @@ palavras-chave funcionam sem IA, e os comandos globais vêm antes de tudo. Códi
 | Botão, lista ou palavra-chave que a etapa entende | Igual antes. Sem IA |
 | Comandos globais (cancelar, atendente, desconto) | Antes de tudo. Sem IA |
 | Etapa de botão recebe texto que não entende | IA |
-| `askName` | Texto com palavra de pedido e que não seja só número → IA; senão, validação de nome |
+| `askName` | Texto com dígito ou palavra de pedido → IA; senão, validação de nome de sempre |
 | `askCpf`, `askMissingCpf`, `askQuantity`, `askChangeAmount` | Primeiro a validação de sempre; se falhar e o texto não for só números e pontuação, mas tiver palavra de pedido → IA; senão, o erro de sempre |
 | Primeira mensagem (sem estado) | Com dígito ou palavra de pedido → IA antes do `start`; senão ("oi") → `start` sem IA |
 | `askNewAddress`, `askAddressField`, `searchProduct` | Sem mudança (já recebem texto livre) |

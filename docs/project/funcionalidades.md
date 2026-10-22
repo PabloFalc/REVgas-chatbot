@@ -31,15 +31,15 @@ Decisão de 2026-10-22: nada desta seção é usado por enquanto. F14 já estava
 | # | Funcionalidade | Descrição | Dependência |
 | --- | --- | --- | --- |
 | F06 | FAQ com IA | Dúvidas fora do menu (horário, garantia, vale-gás) respondidas a partir de FAQ curto. Hoje a dúvida recebe resposta fixa com o telefone da revenda | Conteúdo do FAQ |
+| F07 | Handoff para atendente | Transfere a conversa com resumo | Definir quem recebe (plataforma da Flow?) |
 | F08 | Painel simples para a revenda | Conversas iniciadas, vendas criadas, taxa de conversão | Salvar vendas e conversas no Postgres |
-| RN13 | Salvar vendas e conversas no Postgres | ID da venda e histórico guardados no banco próprio, além do ERP | Tabelas e migrations |
 | F09 | Lembrete de recompra | Avisa quando o gás deve estar acabando, pelo intervalo entre compras do cliente | Histórico no Postgres; template aprovado no WhatsApp (fora da janela de 24h) |
 | F10 | Pedido por áudio | Transcreve o áudio e segue o mesmo fluxo | Serviço de transcrição |
-| F07 | Handoff para atendente | Transfere a conversa com resumo | Definir quem recebe (plataforma da Flow?) |
 | F11 | Pesquisa pós-entrega | Nota de 1 a 5 | Webhook/consulta de status "entregue" |
 | F12 | Recuperação de carrinho | Mensagem de retomada se o cliente parou no meio | Job agendado antes do TTL do Redis expirar |
 | F13 | RAG sobre o FAQ | pgvector + reranking, só se o FAQ ficar grande demais para o prompt | Base de FAQ crescer |
 | F14 | Verificação de identidade | Cliente reconhecido pelo telefone confirma os 3 primeiros dígitos do CPF antes de ver seus dados (telefone pode ter mudado de dono) | Definir o que fazer com cliente sem CPF |
+| RN13 | Salvar vendas e conversas no Postgres | ID da venda e histórico guardados no banco próprio, além do ERP | Tabelas e migrations |
 
 ## Onde cada funcionalidade usa IA
 
