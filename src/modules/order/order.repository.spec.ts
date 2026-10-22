@@ -1,8 +1,8 @@
-import { RevgasUnavailableError } from 'src/core/erros/revgas/revgas.errors';
+import { RevgasUnavailableError, RevgasValidationError } from 'src/core/erros/revgas/revgas.errors';
 import type { RevgasClient } from 'src/integrations/revgas/revgas.client';
 import type { RevgasSale } from 'src/integrations/revgas/sales/sales.schemas';
 import { describe, expect, it, vi } from 'vitest';
-import type { SaleOrder } from './contracts/order.types';
+import { type SaleOrder, SaleRejectedError } from './contracts/order.types';
 import { OrderRepository } from './order.repository';
 
 const order: SaleOrder = {
@@ -69,6 +69,13 @@ describe('OrderRepository', () => {
       await repository.createSale(order);
       const input = (create.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
       expect(input).not.toHaveProperty('observation');
+    });
+
+    it('maps a validation rejection to SaleRejectedError', async () => {
+      const { repository, create } = build();
+      create.mockRejectedValue(new RevgasValidationError('invalid', [], 422));
+      await expect(repository.createSale(order)).rejects.toBeInstanceOf(SaleRejectedError);
+      expect(create).toHaveBeenCalledTimes(1);
     });
 
     it('does not retry on failure and rethrows', async () => {

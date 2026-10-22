@@ -1,3 +1,4 @@
+import { SaleRejectedError } from 'src/modules/order/contracts/order.types';
 import { describe, expect, it } from 'vitest';
 import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { msg } from '../messages';
@@ -105,6 +106,17 @@ describe('summary', () => {
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
     expect(reply.body).toBe(msg.saleFailed);
     expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale']);
+  });
+
+  it('venda rejeitada pelo ERP encerra o pedido sem tentar de novo', async () => {
+    const tools = createFakeTools({
+      createSale: async () => {
+        throw new ToolError(new SaleRejectedError('invalid'));
+      },
+    });
+    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    expect(result).toEqual({ state: null, replies: [text(msg.saleRejected(tools.storePhone))] });
+    expect(result?.replies.some(reply => reply.type === 'buttons')).toBe(false);
   });
 
   it('erro que não é de ferramenta não é escondido', async () => {

@@ -11,3 +11,10 @@ export interface SaleOrder {
   total: number;
   observation?: string;
 }
+
+export class SaleRejectedError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = new.target.name;
+  }
+}

@@ -1,4 +1,4 @@
-import type { SaleOrder } from 'src/modules/order/contracts/order.types';
+import { type SaleOrder, SaleRejectedError } from 'src/modules/order/contracts/order.types';
 import { formatMoney } from 'src/utils/money';
 import {
   type AskFn,
@@ -80,7 +80,12 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
     const id = await tools.createSale(order);
     return { state: null, replies: [text(msg.saleCreated(id))] };
   } catch (error) {
-    if (error instanceof ToolError) return saleFailed(attempt, tools);
+    if (error instanceof ToolError) {
+      if (error.cause instanceof SaleRejectedError) {
+        return { state: null, replies: [text(msg.saleRejected(tools.storePhone))] };
+      }
+      return saleFailed(attempt, tools);
+    }
     throw error;
   }
 }
