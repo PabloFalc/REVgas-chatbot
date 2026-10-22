@@ -31,6 +31,7 @@ export type Step =
   | 'confirmAddress'
   | 'chooseProduct'
   | 'searchProduct'
+  | 'pickProduct'
   | 'chooseQuantity'
   | 'askQuantity'
   | 'choosePayment'
@@ -50,6 +51,8 @@ export interface OrderState {
   missingField?: AddressField;
   address?: Address;
   productOptions?: Product[];
+  productCandidates?: Product[];
+  pendingAddressText?: string;
   product?: Product;
   quantity?: number;
   paymentOptions?: PaymentOption[];
