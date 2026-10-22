@@ -78,7 +78,7 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
   await tools.checkpoint(attempt);
   try {
     const id = await tools.createSale(order);
-    return { state: null, replies: [text(msg.saleCreated(id))] };
+    return { state: null, replies: [text(msg.saleCreated(id))], saleId: id };
   } catch (error) {
     if (error instanceof ToolError) {
       if (error.cause instanceof SaleRejectedError) {
@@ -130,7 +130,8 @@ export async function cancelAfterFailedSale(
   if (order) {
     const since = new Date(state.saleAttemptAt ?? tools.now().toISOString());
     const existing = await tools.findRecentSale(order, since);
-    if (existing !== null) return { state: null, replies: [text(msg.saleCreated(existing))] };
+    if (existing !== null)
+      return { state: null, replies: [text(msg.saleCreated(existing))], saleId: existing };
   }
   return { state: null, replies: [text(msg.cancelled)] };
 }
@@ -141,7 +142,8 @@ const handleSaleFailed: HandleFn = async (state, input, tools) => {
   if (!order) return nextStep(state, tools);
   const since = new Date(state.saleAttemptAt ?? tools.now().toISOString());
   const existing = await tools.findRecentSale(order, since);
-  if (existing !== null) return { state: null, replies: [text(msg.saleCreated(existing))] };
+  if (existing !== null)
+    return { state: null, replies: [text(msg.saleCreated(existing))], saleId: existing };
   return submitSale(state, tools);
 };
 

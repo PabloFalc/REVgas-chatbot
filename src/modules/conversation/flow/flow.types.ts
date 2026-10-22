@@ -63,6 +63,7 @@ export interface FlowInput {
 export interface StepResult {
   state: OrderState | null;
   replies: Reply[];
+  saleId?: number;
 }
 
 export type AskFn = (state: OrderState, tools: FlowTools) => Promise<StepResult>;

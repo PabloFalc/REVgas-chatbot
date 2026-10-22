@@ -236,3 +236,65 @@ describe('ConversationService.handle', () => {
     expect(logged).not.toContain('5586999991234');
   });
 });
+
+describe('ConversationService venda criada', () => {
+  const saleResult = {
+    state: null,
+    replies: [text('Pedido nº 55 confirmado')],
+    saleId: 55,
+  };
+
+  it('loga o id da venda antes de enviar as respostas', async () => {
+    const { service, logger, whatsapp } = setup();
+    const order: string[] = [];
+    logger.info.mockImplementation((_obj: unknown, message?: string) => {
+      if (message === 'Venda criada') order.push('log');
+    });
+    const send = whatsapp.sendText.bind(whatsapp);
+    vi.spyOn(whatsapp, 'sendText').mockImplementation(async (...args) => {
+      order.push('send');
+      return send(...args);
+    });
+    runFlowMock.mockResolvedValueOnce(saleResult);
+
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.V1')));
+
+    expect(order).toEqual(['log', 'send']);
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        component: 'conversation',
+        phone: '*******1234',
+        messageId: 'wamid.V1',
+        saleId: 55,
+      },
+      'Venda criada',
+    );
+  });
+
+  it('o id da venda já está no log quando o envio falha', async () => {
+    const whatsapp = new FakeWhatsappClient();
+    const { service, logger } = setup(whatsapp);
+    vi.spyOn(whatsapp, 'sendText').mockRejectedValue(new Error('rede'));
+    runFlowMock.mockResolvedValueOnce(saleResult);
+
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.V2')));
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ saleId: 55 }),
+      'Venda criada',
+    );
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('não loga telefone cru nem venda quando não há saleId', async () => {
+    const { service, logger } = setup();
+    runFlowMock.mockResolvedValueOnce(saleResult);
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.V3')));
+    const created = logger.info.mock.calls.filter(call => call[1] === 'Venda criada');
+    expect(JSON.stringify(created)).not.toContain('5586999991234');
+
+    const other = setup();
+    await other.service.handle(parseWebhook(textWebhook('oi', 'wamid.V4')));
+    expect(other.logger.info.mock.calls.some(call => call[1] === 'Venda criada')).toBe(false);
+  });
+});

@@ -125,6 +125,18 @@ export class ConversationService {
       },
     );
 
+    if (result.saleId !== undefined) {
+      this.logger.info(
+        {
+          component: 'conversation',
+          phone: maskPhone(phone),
+          messageId: incoming.id,
+          saleId: result.saleId,
+        },
+        'Venda criada',
+      );
+    }
+
     if (result.state === null) {
       await this.conversations.clearOrder(phone);
     } else {

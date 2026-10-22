@@ -222,7 +222,7 @@ describe('conversas completas', () => {
     await chat.send(say('250'));
     expect(chat.step).toBe('summary');
     const done = await chat.send(pick('summary:confirm'));
-    expect(done).toEqual({ state: null, replies: [text(msg.saleCreated(4521))] });
+    expect(done).toEqual({ state: null, replies: [text(msg.saleCreated(4521))], saleId: 4521 });
     const createSale = tools.calls.find(call => call.name === 'createSale');
     expect(createSale?.args[0]).toMatchObject({
       customerId: 2,
@@ -295,7 +295,7 @@ describe('conversas completas', () => {
     expect(chat.step).toBe('saleFailed');
     expect(failed.replies[0].type).toBe('buttons');
     const retried = await chat.send(pick('retry:sale'));
-    expect(retried).toEqual({ state: null, replies: [text(msg.saleCreated(9001))] });
+    expect(retried).toEqual({ state: null, replies: [text(msg.saleCreated(9001))], saleId: 9001 });
     expect(createAttempts).toBe(1);
     expect(sinceSeen).toEqual([FAKE_NOW]);
   });
