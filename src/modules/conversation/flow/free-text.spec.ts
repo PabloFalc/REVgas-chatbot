@@ -156,4 +156,9 @@ describe('messages de texto livre', () => {
       'Essa dúvida eu não consigo responder por aqui. Fale com a revenda: 86999990000.',
     );
   });
+
+  it('textos fixos', () => {
+    expect(msg.notUnderstood).toBe('Não entendi.');
+    expect(msg.chooseAmbiguousProduct).toBe('Qual desses você quer?');
+  });
 });

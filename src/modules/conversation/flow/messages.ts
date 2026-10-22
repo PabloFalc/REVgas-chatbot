@@ -90,7 +90,7 @@ export const msg = {
   noDiscount: 'O preço é o da tabela da revenda.',
   offTopic: (phone?: string) =>
     `Essa dúvida eu não consigo responder por aqui. ${storeContact(phone)}`,
-  notUnderstood: 'Não consegui entender. Use os botões ou me diga o que você precisa.',
+  notUnderstood: 'Não entendi.',
   chooseAmbiguousProduct: 'Qual desses você quer?',
   noted: (parts: string[]) => `Anotado: ${parts.join(', ')}.`,
   textOnly: 'Por enquanto só entendo texto e os botões.',
