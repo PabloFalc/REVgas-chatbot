@@ -1,3 +1,4 @@
+import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
 import type { FlowTools } from '../flow.types';
 
 export const FAKE_PHONE = '5586999990000';
@@ -47,6 +48,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
     customerHistory: record('customerHistory', { addresses, productIds: [2] }),
     addressFromCep: record('addressFromCep', { ...addresses[0], number: undefined }),
     addressFromText: record('addressFromText', addresses[0]),
+    interpret: record('interpret', null as Interpretation | null),
     listProducts: record('listProducts', [
       { id: 1, name: 'Botijão P13' },
       { id: 2, name: 'Botijão P45' },

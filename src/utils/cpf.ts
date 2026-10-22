@@ -18,3 +18,9 @@ export function isValidCpf(text: string): boolean {
     checkDigit(digits, 9) === Number(digits[9]) && checkDigit(digits, 10) === Number(digits[10])
   );
 }
+
+const CPF_PATTERN = /(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)/g;
+
+export function removeCpfs(text: string): string {
+  return text.replace(CPF_PATTERN, '');
+}

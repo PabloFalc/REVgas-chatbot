@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AddressService } from '../address/address.service';
+import type { AssistantService } from '../assistant/assistant.service';
 import type { CatalogRepository } from '../catalog/catalog.repository';
 import type { CustomerRepository } from '../customer/customer.repository';
 import type { OrderRepository } from '../order/order.repository';
@@ -19,13 +20,15 @@ function setup() {
   };
   const orders = { createSale: vi.fn(async () => 7), findRecentSale: vi.fn(async () => null) };
   const addresses = { fromCep: vi.fn(async () => null), fromText: vi.fn(async () => null) };
+  const assistant = { interpret: vi.fn(async () => null) };
   const service = new FlowToolsService(
     customers as unknown as CustomerRepository,
     catalog as unknown as CatalogRepository,
     orders as unknown as OrderRepository,
     addresses as unknown as AddressService,
+    assistant as unknown as AssistantService,
   );
-  return { service, customers, catalog, orders, addresses };
+  return { service, customers, catalog, orders, addresses, assistant };
 }
 
 describe('FlowToolsService.forPhone', () => {
@@ -49,6 +52,16 @@ describe('FlowToolsService.forPhone', () => {
     expect(addresses.fromCep).toHaveBeenCalledWith('64000000');
     expect(addresses.fromText).toHaveBeenCalledWith('rua x');
     expect(orders.findRecentSale).toHaveBeenCalledOnce();
+  });
+
+  it('interpret delega ao assistente com os mesmos argumentos', async () => {
+    const { service, assistant } = setup();
+    const tools = service.forPhone(async () => undefined);
+    const context = { products: ['Botijão P13'], payments: [{ type: 'PIX', label: 'Pix' }] };
+
+    await tools.interpret('2 botijões', context);
+
+    expect(assistant.interpret).toHaveBeenCalledWith('2 botijões', context);
   });
 
   it('checkpoint grava pelo save recebido e now devolve uma data', async () => {

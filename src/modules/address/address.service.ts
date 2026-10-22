@@ -5,9 +5,8 @@ import { LlmError } from '../../core/erros/llm/llm.errors';
 import { ViacepError } from '../../core/erros/viacep/viacep.errors';
 import { LLM_CLIENT, type LlmClient } from '../../integrations/llm/llm.client';
 import { VIACEP_CLIENT, type ViacepClient } from '../../integrations/viacep/viacep.client';
+import { removeCpfs } from '../../utils/cpf';
 import type { AddressDraft } from './contracts/address.types';
-
-const CPF_PATTERN = /(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)/g;
 
 const UF_PATTERN = /^[A-Z]{2}$/;
 
@@ -95,7 +94,7 @@ export class AddressService {
         temperature: 0,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: text.replace(CPF_PATTERN, '') },
+          { role: 'user', content: removeCpfs(text) },
         ],
       });
       return object;

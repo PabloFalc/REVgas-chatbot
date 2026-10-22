@@ -4,6 +4,10 @@ import type {
   AddressField,
 } from 'src/modules/address/contracts/address.types';
 import type {
+  Interpretation,
+  InterpretContext,
+} from 'src/modules/assistant/contracts/assistant.types';
+import type {
   PaymentOption,
   PriceCustomer,
   Product,
@@ -81,6 +85,7 @@ export interface FlowTools {
   customerHistory(customerId: number): Promise<CustomerHistory>;
   addressFromCep(cep: string): Promise<AddressDraft | null>;
   addressFromText(text: string): Promise<AddressDraft | null>;
+  interpret(text: string, context: InterpretContext): Promise<Interpretation | null>;
   listProducts(customer: PriceCustomer): Promise<Product[]>;
   listPaymentOptions(): Promise<PaymentOption[]>;
   quote(

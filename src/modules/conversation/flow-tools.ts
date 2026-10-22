@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { env } from 'src/config/env';
 import { AddressService } from '../address/address.service';
+import { AssistantService } from '../assistant/assistant.service';
 import { CatalogRepository } from '../catalog/catalog.repository';
 import { CustomerRepository } from '../customer/customer.repository';
 import { OrderRepository } from '../order/order.repository';
@@ -13,6 +14,7 @@ export class FlowToolsService {
     private readonly catalog: CatalogRepository,
     private readonly orders: OrderRepository,
     private readonly addresses: AddressService,
+    private readonly assistant: AssistantService,
   ) {}
 
   forPhone(save: (state: OrderState) => Promise<void>): FlowTools {
@@ -23,6 +25,7 @@ export class FlowToolsService {
       customerHistory: customerId => this.customers.history(customerId),
       addressFromCep: cep => this.addresses.fromCep(cep),
       addressFromText: text => this.addresses.fromText(text),
+      interpret: (text, context) => this.assistant.interpret(text, context),
       listProducts: customer => this.catalog.listProducts(customer),
       listPaymentOptions: () => this.catalog.listPaymentOptions(),
       quote: (customer, productId, paymentType, quantity) =>
