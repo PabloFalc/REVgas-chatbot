@@ -33,6 +33,21 @@ describe('mapLlmError', () => {
     expect(mapLlmError(400, body)).toBeInstanceOf(LlmUnauthorizedError);
   });
 
+  it('400 do endpoint compatível com mensagem de chave inválida → LlmUnauthorizedError', () => {
+    const body = [
+      {
+        error: {
+          code: 400,
+          message: 'Please pass a valid API key.',
+          status: 'INVALID_ARGUMENT',
+        },
+      },
+    ];
+    const error = mapLlmError(400, body);
+    expect(error).toBeInstanceOf(LlmUnauthorizedError);
+    expect(error.message).toBe('LLM respondeu 400 (INVALID_ARGUMENT)');
+  });
+
   it('400 sem API_KEY_INVALID → LlmRejectedError', () => {
     expect(
       mapLlmError(400, { error: { message: 'x', status: 'INVALID_ARGUMENT' } }),
