@@ -14,6 +14,7 @@ import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
 import { text } from '../replies';
+import { offerOrNext } from './repeat.step';
 
 const MAX_NAME_LENGTH = 100;
 
@@ -31,14 +32,19 @@ async function withHistory(
   tools: FlowTools,
 ): Promise<OrderState> {
   const history = await tools.customerHistory(customerId);
-  return { ...state, addresses: history.addresses, boughtProductIds: history.productIds };
+  const loaded: OrderState = {
+    ...state,
+    addresses: history.addresses,
+    boughtProductIds: history.productIds,
+  };
+  return history.lastOrder ? { ...loaded, lastOrder: history.lastOrder } : loaded;
 }
 
 export async function welcomeKnown(state: OrderState, tools: FlowTools): Promise<StepResult> {
   const { id, name } = state.customer;
   if (id === undefined || name === undefined) return nextStep(state, tools);
   const loaded = await withHistory(state, id, tools);
-  const next = await nextStep(await keepOfferedProduct(loaded, tools), tools);
+  const next = await offerOrNext(await keepOfferedProduct(loaded, tools), tools);
   return { state: next.state, replies: [text(msg.welcomeBack(name)), ...next.replies] };
 }
 

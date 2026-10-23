@@ -233,5 +233,77 @@ describe('CustomerRepository', () => {
 
       expect((await repository.history(5001)).addresses).toEqual([]);
     });
+
+    describe('lastOrder', () => {
+      const sale = (id: number, extra: Record<string, unknown> = {}) => ({
+        id,
+        status: 'ACTIVE' as const,
+        customer_id: 5001,
+        location: 'Rua B',
+        number: '20',
+        neighborhood: 'Fátima',
+        city: 'Teresina',
+        state_federation: 'PI',
+        created_at: '2026-10-01 10:00:00',
+        products: [{ product_id: 7, quantity: 2, value: 100 }],
+        payments: [{ payment_type: 'CASH' as const, value: 200 }],
+        ...extra,
+      });
+
+      const withSales = async (sales: ReturnType<typeof sale>[]) => {
+        const { client, repository } = build([seeded({ id: 5001 })]);
+        vi.spyOn(client.sales, 'list').mockResolvedValue({
+          data: sales,
+          pagination: { page: 1, count: sales.length, total_count: sales.length },
+        });
+        return repository.history(5001);
+      };
+
+      it('lastOrder vem da venda mais recente não cancelada', async () => {
+        const history = await withSales([
+          sale(1, {
+            products: [{ product_id: 9, quantity: 1, value: 100 }],
+            created_at: '2026-09-01 10:00:00',
+          }),
+          sale(2, { status: 'CANCEL', created_at: '2026-10-20 10:00:00' }),
+        ]);
+
+        expect(history.lastOrder).toMatchObject({ productId: 9, quantity: 1, paymentType: 'CASH' });
+        expect(history.lastOrder?.address.street).toBe('Rua B');
+      });
+
+      it('sem lastOrder quando a mais recente tem 2 produtos', async () => {
+        const history = await withSales([
+          sale(1, { created_at: '2026-09-01 10:00:00' }),
+          sale(2, {
+            products: [
+              { product_id: 7, quantity: 1, value: 100 },
+              { product_id: 8, quantity: 1, value: 100 },
+            ],
+          }),
+        ]);
+
+        expect(history.lastOrder).toBeUndefined();
+      });
+
+      it('sem lastOrder quando a venda não tem endereço completo', async () => {
+        const history = await withSales([sale(1, { city: null })]);
+
+        expect(history.lastOrder).toBeUndefined();
+      });
+
+      it('ordena por created_at, não pela ordem da API', async () => {
+        const history = await withSales([
+          sale(1, { created_at: '2026-08-01 10:00:00' }),
+          sale(2, {
+            created_at: '2026-10-05 10:00:00',
+            products: [{ product_id: 11, quantity: 4, value: 100 }],
+          }),
+          sale(3, { created_at: '2026-09-01 10:00:00' }),
+        ]);
+
+        expect(history.lastOrder).toMatchObject({ productId: 11, quantity: 4 });
+      });
+    });
   });
 });

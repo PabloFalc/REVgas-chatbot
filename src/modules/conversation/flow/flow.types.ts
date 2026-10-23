@@ -16,6 +16,7 @@ import type {
 import type {
   Customer,
   CustomerHistory,
+  LastOrder,
   NewCustomer,
 } from 'src/modules/customer/contracts/customer.types';
 import type { SaleOrder } from 'src/modules/order/contracts/order.types';
@@ -27,6 +28,7 @@ export type Step =
   | 'askName'
   | 'askCpf'
   | 'askCpfPrefix'
+  | 'offerRepeat'
   | 'chooseAddress'
   | 'askNewAddress'
   | 'askAddressField'
@@ -44,11 +46,21 @@ export type Step =
   | 'creatingSale'
   | 'saleFailed';
 
+export interface RepeatOffer {
+  product: Product;
+  quantity: number;
+  payment: PaymentOption;
+  address: Address;
+  quote: Quote;
+}
+
 export interface OrderState {
   step: Step;
   customer: { id?: number; name?: string; cpf?: string; tagId?: number | null };
   addresses?: Address[];
   boughtProductIds?: number[];
+  lastOrder?: LastOrder;
+  repeatOffer?: RepeatOffer;
   draftAddress?: AddressDraft;
   missingField?: AddressField;
   address?: Address;
