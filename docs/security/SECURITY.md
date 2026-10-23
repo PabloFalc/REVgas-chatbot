@@ -103,7 +103,8 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - **Chave por telefone + id do cliente na RevGás**, validade de 15 dias: se o telefone passar a
   identificar outro cliente, a verificação anterior não vale.
 - **Bloqueio contra chute:** 3 erros em 1 h bloqueiam o telefone por 1 h (contador e bloqueio no
-  Redis). Só entrada de exatamente 3 dígitos conta como tentativa.
+  Redis). Só entrada só numérica (dígitos, espaços, pontos ou traços) com exatamente 3 dígitos
+  conta como tentativa; texto de pedido com letras ("2 P13") nunca conta.
 - Cliente sem CPF no cadastro, ou bloqueado, recebe só o telefone da revenda; nada do cadastro é mostrado.
 - Os 3 dígitos digitados nunca vão ao log nem ao prompt da IA (blocos soltos de 3 dígitos são removidos do texto livre; CPFs inteiros são removidos por `removeCpfs` antes de qualquer chamada à IA).
 

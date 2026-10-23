@@ -82,8 +82,9 @@ pode ter mudado de dono.
 - **Validade:** 15 dias, guardada no Redis por telefone + id do cliente na RevGás. Dentro do prazo o `start` pula a pergunta.
 - **Sem CPF no cadastro, ou telefone bloqueado:** mensagem fixa com o telefone da revenda e a conversa termina (estado apagado). O bot não pede nem grava CPF de cadastro existente.
 - **Erros:** 3 dígitos que não batem contam como tentativa; na 3ª o telefone fica bloqueado por 1 h e recebe o telefone da revenda. Acertar zera as tentativas.
-- **Formato:** entrada que não tem exatamente 3 dígitos não conta como tentativa; o bot pede de novo só os 3 dígitos.
+- **Formato:** só conta como tentativa a entrada só numérica (dígitos, espaços, pontos ou traços, como `123`, `1 2 3` ou `123.`) com exatamente 3 dígitos. Texto com letras ("2 P13", "quero 1 botijão P13") nunca conta: segue para o texto livre abaixo. Sem pedido no texto, o bot pede de novo só os 3 dígitos.
 - **Texto livre:** blocos soltos de 3 dígitos são removidos antes de o texto ir à IA, para o CPF nunca chegar ao prompt. Se não sobra texto, repete a pergunta.
+- **Cliente novo:** quem acabou de se cadastrar (digitou o CPF inteiro) já fica verificado por 15 dias; o próximo pedido não pede os 3 dígitos.
 
 ## Repetir último pedido
 
@@ -91,10 +92,11 @@ Depois de verificado (`welcomeKnown`), se o cliente ainda não informou nada do 
 oferece repetir o último (`offerRepeat`, em `flow/steps/repeat.step.ts`) com os botões "Repetir" e "Novo pedido".
 
 - **Origem:** a venda não cancelada mais recente do cliente, só se tiver 1 produto, 1 pagamento e endereço completo.
-- **Condições:** produto na lista do cliente, forma de pagamento ainda disponível e preço calculado por `tools.quote`. Se algo falhar, segue o fluxo normal.
+- **Condições:** produto na lista do cliente, forma de pagamento ainda disponível e preço calculado por `tools.quote`. Se algo falhar (inclusive erro numa dessas consultas), segue o fluxo normal sem aviso.
 - **Não oferece** se o texto livre inicial já trouxe produto, quantidade, pagamento ou endereço.
 - **Repetir** preenche endereço, produto, quantidade, pagamento e preço atual e vai para `nextStep`: o resumo, ou a pergunta de troco se o pagamento for dinheiro. Nunca cria a venda sem o "Confirmar".
-- **Novo pedido** segue o fluxo normal. Texto livre na oferta passa pela IA como em qualquer etapa.
+- **Novo pedido** segue o fluxo normal.
+- **Digitado:** "sim" ou "repetir" valem como o botão "Repetir"; "novo", "novo pedido" ou "não" valem como "Novo pedido" (sem diferenciar maiúsculas nem acentos). Outro texto livre na oferta passa pela IA como em qualquer etapa.
 
 ## Lembrete de pedido parado
 
