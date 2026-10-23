@@ -58,14 +58,41 @@ describe('start', () => {
 describe('askName', () => {
   const state = { step: 'askName' as const, customer: {} };
 
-  it('texto com palavra de pedido que a IA não entende vira o nome', async () => {
-    const tools = createFakeTools({ interpret: async () => null });
+  it('texto com palavra de pedido que a IA diz não ser pedido vira o nome', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'other', confidence: 0.9 }),
+    });
     const result = await handlers.askName?.(state, say('Maria da Rua Silva'), tools);
     expect(result?.state).toMatchObject({
       step: 'askCpf',
       customer: { name: 'Maria da Rua Silva' },
     });
     expect(result?.replies).toEqual([text(msg.askCpf)]);
+  });
+
+  it('sem resposta da IA o texto de pedido não vira o nome', async () => {
+    const tools = createFakeTools({ interpret: async () => null });
+    const result = await handlers.askName?.(state, say('quero gás no pix'), tools);
+    expect(result?.state).toMatchObject({ step: 'askName' });
+    expect(result?.state?.customer.name).toBeUndefined();
+    expect(result?.replies).toEqual([text(msg.notUnderstood), text(msg.askName)]);
+  });
+
+  it('IA com pouca confiança não vira o nome', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'other', confidence: 0.3 }),
+    });
+    const result = await handlers.askName?.(state, say('quero gás no pix'), tools);
+    expect(result?.state?.customer.name).toBeUndefined();
+  });
+
+  it('pergunta no nome responde fora do escopo e não vira o nome', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'question', confidence: 0.9 }),
+    });
+    const result = await handlers.askName?.(state, say('quero saber se entregam hoje'), tools);
+    expect(result?.state?.customer.name).toBeUndefined();
+    expect(result?.replies).toEqual([text(msg.offTopic(tools.storePhone)), text(msg.askName)]);
   });
 
   it('pergunta o nome', async () => {

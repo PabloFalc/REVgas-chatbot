@@ -99,7 +99,7 @@ O que a IA devolve e como vira pedido:
 - Dúvida sem campo válido → resposta fixa com o telefone da revenda e repete a pergunta. Mensagem sem relação com o pedido → "Não entendi."
 
 **Identificação primeiro.** Na primeira mensagem, o que foi dito fica guardado (produto, quantidade, pagamento e
-endereço como texto pendente) e o `start` segue: cliente novo dá nome e CPF; cadastrado sem CPF dá o CPF. A saudação (boas-vindas) vem primeiro, depois o "Anotado: ..." e a pergunta seguinte. Em `askName`, texto com palavra de pedido que a IA não aproveita e que é um nome válido vale como nome. Texto
+endereço como texto pendente) e o `start` segue: cliente novo dá nome e CPF; cadastrado sem CPF dá o CPF. A saudação (boas-vindas) vem primeiro, depois o "Anotado: ..." e a pergunta seguinte. Em `askName`, texto com palavra de pedido vale como nome só quando a IA responde com confiança que não é pedido nem pergunta e o texto é um nome válido; com a IA fora do ar ou incerta, o bot diz "Não entendi" e pede o nome de novo. Texto
 livre em `askName`/`askCpf`/`askMissingCpf` anota os campos, mas repete a pergunta de identificação. Quando o
 cliente fica conhecido, o produto guardado é conferido de novo com a lista dele e descartado se não estiver nela.
 

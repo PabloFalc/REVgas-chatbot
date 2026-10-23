@@ -223,13 +223,12 @@ export async function freeText(
   const catalog = await loadCatalog(state, tools);
   const result = await tools.interpret(raw, contextOf(catalog));
   if (!result || result.confidence < MIN_CONFIDENCE) {
-    if (whenNothingApplied) return whenNothingApplied();
     return repeatQuestion(state, tools, text(msg.notUnderstood));
   }
 
   const applied = applyInterpretation(state, result, catalog);
   if (!applied) {
-    if (whenNothingApplied) return whenNothingApplied();
+    if (whenNothingApplied && result.intent === 'other') return whenNothingApplied();
     const first = result.intent === 'question' ? msg.offTopic(tools.storePhone) : msg.notUnderstood;
     return repeatQuestion(state, tools, text(first));
   }
