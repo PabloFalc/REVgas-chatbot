@@ -75,8 +75,8 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 
 ## Decisões (2026-10-22)
 
-- **Escopo do MVP:** F01–F05. F03 (pedido em texto livre) e o fallback de intenção estão implementados; F04 e F05 continuam pendentes.
-- **Melhorias futuras, não usadas por enquanto:** F06, F07, F08, F09, F10, F11, F12, F13 e RN13. RF10 também fica para depois.
+- **Escopo do MVP:** F01–F05. F03 (pedido em texto livre) e o fallback de intenção estão implementados; F04 e F05 estavam pendentes (superado em 2026-10-23: F04, F12 e F14 entregues).
+- **Melhorias futuras, não usadas por enquanto:** F06, F07, F08, F09, F10, F11, F12, F13 e RN13 (F12 superado em 2026-10-23: entregue). RF10 também fica para depois.
 - **Texto livre e fallback com resposta fixa.** A IA só interpreta o pedido (produto, quantidade, pagamento, endereço). Dúvida fora do pedido recebe uma resposta fixa com o telefone da revenda; mensagem que a IA não entende recebe "Não entendi."; nos dois casos o bot repete a pergunta da etapa. Não há FAQ com IA.
 - **Texto livre nunca pula o resumo.** A venda só é criada depois do botão "Confirmar".
 

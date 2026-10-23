@@ -95,8 +95,8 @@ Dependency rules:
   their data (verified 15 days per phone + RevGás customer id; 3 wrong attempts block the phone
   for 1 h). `ReminderScheduler` sweeps every 30 s (off in `NODE_ENV=test`) and sends an idle
   reminder at 10 min without a customer message, once per idle period, never in `creatingSale`; it
-  does not renew the order TTL (`saveOrderKeepingTtl`). The flow itself is in `conversation/flow/`: step files in
-  `flow/steps/` receive `FlowTools` and **never import Nest, Redis, integrations, services or
+  does not renew the order TTL (`saveOrderKeepingTtl`). The flow itself is in
+  `conversation/flow/`: step files in `flow/steps/` receive `FlowTools` and **never import Nest, Redis, integrations, services or
   repositories** (only flow files, `src/utils` and modules' `contracts/`), so they are testable
   with `createFakeTools` (no WhatsApp, AI or DB — RNF08). `flow-tools.ts` is the only place that
   wires `FlowTools` to the real services. Keep new flow logic inside the steps.

@@ -17,8 +17,9 @@
 | F05 | Status do pedido | Nº da venda, entregador a caminho e tempo estimado; consulta "meu gás chegou?". **Pendente** | RF09 |
 
 > **Decisão de escopo (2026-10-22):** o MVP é F01–F05. F03 e o fallback de intenção estão
-> implementados; F04 e F05 continuam pendentes (F04 foi entregue em 2026-10-23). F06, F07, F08, F09, F10, F11, F13 e a RN13
-> (salvar venda e conversas no Postgres) viram melhorias futuras e não são usadas por enquanto.
+> implementados; F04 e F05 estavam pendentes. F06, F07, F08, F09, F10, F11, F12, F13 e a RN13
+> (salvar venda e conversas no Postgres) viraram melhorias futuras (F04 e F12 foram entregues em
+> 2026-10-23, junto com F14, na decisão abaixo).
 > Ver [requisitos.md](requisitos.md#decisões-2026-10-22).
 
 > **Decisão de escopo (2026-10-23):** F04 (repetir último pedido), F12 (lembrete de pedido parado

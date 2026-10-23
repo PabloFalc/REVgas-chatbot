@@ -105,7 +105,7 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - **Bloqueio contra chute:** 3 erros em 1 h bloqueiam o telefone por 1 h (contador e bloqueio no
   Redis). Só entrada de exatamente 3 dígitos conta como tentativa.
 - Cliente sem CPF no cadastro, ou bloqueado, recebe só o telefone da revenda; nada do cadastro é mostrado.
-- Os 3 dígitos digitados nunca vão ao log nem ao prompt da IA (dígitos soltos são removidos do texto livre).
+- Os 3 dígitos digitados nunca vão ao log nem ao prompt da IA (blocos soltos de 3 dígitos são removidos do texto livre; CPFs inteiros são removidos por `removeCpfs` antes de qualquer chamada à IA).
 
 ## Webhook do WhatsApp
 
