@@ -214,6 +214,52 @@ describe('askCpfPrefix', () => {
     });
   });
 
+  it('dígitos do CPF no meio do pedido não chegam à IA', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'order', quantity: 2, confidence: 0.9 }),
+    });
+    const spy = vi.spyOn(tools, 'interpret');
+    const result = await handlers.askCpfPrefix?.(state, say('quero 2 botijões, cpf 123'), tools);
+    const sent = spy.mock.calls[0]?.[0];
+    expect(sent).toContain('quero 2 botijões');
+    expect(sent).not.toContain('123');
+    expect(result?.state?.step).toBe('askCpfPrefix');
+    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
+  });
+
+  it('só dígitos soltos sem pedido pedem o formato sem contar tentativa', async () => {
+    const tools = createFakeTools();
+    const spy = vi.spyOn(tools, 'interpret');
+    const result = await handlers.askCpfPrefix?.(state, say('123 456'), tools);
+    expect(result).toEqual({ state, replies: [text(msg.cpfPrefixFormat)] });
+    expect(spy).not.toHaveBeenCalled();
+    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
+  });
+
+  it('botão em vez de texto pede o formato sem contar tentativa', async () => {
+    const tools = createFakeTools();
+    const input: FlowInput = {
+      phone: FAKE_PHONE,
+      content: { type: 'choice', id: 'x', title: 'x' },
+    };
+    const result = await handlers.askCpfPrefix?.(state, input, tools);
+    expect(result).toEqual({ state, replies: [text(msg.cpfPrefixFormat)] });
+    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
+  });
+
+  it.each([
+    { id: 1, name: 'Maria da Silva', tagId: null },
+    { name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+  ])('estado sem id ou CPF encerra com o contato da revenda', async customer => {
+    const tools = createFakeTools();
+    const result = await handlers.askCpfPrefix?.({ ...state, customer }, say('123'), tools);
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.identityContactStore('86999990000'))],
+    });
+    expect(tools.calls).toEqual([]);
+  });
+
   it('CPF inteiro não conta tentativa', async () => {
     const tools = createFakeTools();
     const result = await handlers.askCpfPrefix?.(state, say('12345678909'), tools);
