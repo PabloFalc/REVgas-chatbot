@@ -1,6 +1,6 @@
 import type { LastOrder } from 'src/modules/customer/contracts/customer.types';
-import { describe, expect, it } from 'vitest';
-import type { FlowInput, OrderState } from '../flow.types';
+import { describe, expect, it, vi } from 'vitest';
+import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
 import { buttons } from '../replies';
@@ -114,6 +114,57 @@ describe('offerOrNext', () => {
       await expectPlain({ ...base, product: { id: 2, name: 'Botijão P45' } }, {});
     });
   });
+
+  describe('falha numa consulta da oferta segue o fluxo normal', () => {
+    const boom = async () => {
+      throw new ToolError(new Error('fora'));
+    };
+
+    it.each([
+      ['listProducts', { listProducts: boom }],
+      ['listPaymentOptions', { listPaymentOptions: boom }],
+      ['quote', { quote: boom }],
+    ] as const)('%s', async (_name, overrides) => {
+      const result = await offerOrNext(base, createFakeTools(overrides));
+      const plain = await nextStep(base, createFakeTools());
+      expect(result).toEqual(plain);
+      expect(result.state?.step).toBe('chooseAddress');
+    });
+
+    it('erro comum (bug) não é escondido', async () => {
+      const tools = createFakeTools({
+        listProducts: async () => {
+          throw new TypeError('bug');
+        },
+      });
+      await expect(offerOrNext(base, tools)).rejects.toThrow('bug');
+    });
+  });
+
+  it.each(['sim', 'Repetir', ' SIM '])('"%s" digitado repete o pedido', async body => {
+    const tools = createFakeTools();
+    const spy = vi.spyOn(tools, 'interpret');
+    const offered = await offerOrNext(base, tools);
+    const result = await answer(offered.state, say(body), tools);
+    expect(result?.state?.step).toBe('summary');
+    expect(result?.state?.quote?.total).toBe(110);
+    expect(result?.state?.repeatOffer).toBeUndefined();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it.each(['novo', 'Novo pedido', 'não', 'nao'])(
+    '"%s" digitado começa um pedido novo',
+    async body => {
+      const tools = createFakeTools();
+      const spy = vi.spyOn(tools, 'interpret');
+      const offered = await offerOrNext(base, tools);
+      const result = await answer(offered.state, say(body), tools);
+      expect(result?.state?.step).toBe('chooseAddress');
+      expect(result?.state?.product).toBeUndefined();
+      expect(result?.state?.repeatOffer).toBeUndefined();
+      expect(spy).not.toHaveBeenCalled();
+    },
+  );
 
   it('texto digitado na oferta passa pela IA', async () => {
     const tools = createFakeTools({

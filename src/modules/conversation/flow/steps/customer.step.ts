@@ -112,13 +112,20 @@ const handleAskCpf: HandleFn = async (state, input, tools) => {
 
 const CPF_PREFIX_LENGTH = 3;
 const STANDALONE_PREFIX = /\b\d{3}\b/g;
+const NUMERIC_ONLY = /^[\d\s.-]+$/;
+
+function prefixAttempt(raw: string | null): string | null {
+  if (raw === null || !NUMERIC_ONLY.test(raw)) return null;
+  const digits = onlyDigits(raw);
+  return digits.length === CPF_PREFIX_LENGTH ? digits : null;
+}
 
 const handleAskCpfPrefix: HandleFn = async (state, input, tools) => {
   const { id, cpf } = state.customer;
   if (id === undefined || !cpf) return contactStore(tools);
   const raw = textOf(input);
-  const digits = raw === null ? '' : onlyDigits(raw);
-  if (digits.length !== CPF_PREFIX_LENGTH) {
+  const digits = prefixAttempt(raw);
+  if (digits === null) {
     const rest = raw?.replace(STANDALONE_PREFIX, '').trim() ?? '';
     if (!rest) return { state, replies: [text(msg.cpfPrefixFormat)] };
     return freeTextOr(state, rest, tools, msg.cpfPrefixFormat);

@@ -212,6 +212,7 @@ describe('confirmAddress', () => {
         name: 'createCustomer',
         args: [{ phone: FAKE_PHONE, name: 'Joana Lima', cpf: '12345678909', address: a1 }],
       },
+      { name: 'markVerified', args: [FAKE_PHONE, 2] },
     ]);
     expect(result?.state?.customer).toMatchObject({ id: 2, tagId: null });
     expect(result?.state?.address).toEqual(a1);
@@ -277,6 +278,27 @@ describe('confirmAddress', () => {
     await expect(
       handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools),
     ).rejects.toBeInstanceOf(ToolError);
+  });
+
+  it('falha ao marcar verificado não impede o pedido do cliente criado', async () => {
+    const tools = createFakeTools({
+      markVerified: async () => {
+        throw new ToolError(new Error('redis fora'));
+      },
+    });
+    const result = await handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools);
+    expect(result?.state?.customer).toMatchObject({ id: 2 });
+    expect(result?.state?.step).toBe('chooseProduct');
+  });
+
+  it('cadastro que falha não marca verificado', async () => {
+    const tools = createFakeTools({
+      createCustomer: async () => {
+        throw new ToolError(new CpfTakenError());
+      },
+    });
+    await handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools);
+    expect(tools.calls.map(call => call.name)).not.toContain('markVerified');
   });
 
   it('cadastro recusado volta para o nome', async () => {

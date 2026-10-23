@@ -445,3 +445,32 @@ describe('primeira mensagem com pedido', () => {
     expect(chat.state).toEqual({ step: 'askName', customer: {} });
   });
 });
+
+describe('identidade antes dos dados do cliente', () => {
+  const say = (body: string): FlowInput => ({
+    phone: FAKE_PHONE,
+    content: { type: 'text', text: body },
+  });
+  const secrets = ['Maria', 'Rua das Flores', 'Av. Frei Serafim'];
+  const expectHidden = (result: StepResult) => {
+    const sent = JSON.stringify(result.replies);
+    for (const secret of secrets) expect(sent).not.toContain(secret);
+  };
+
+  it('não mostra nome nem endereço até os 3 dígitos serem confirmados', async () => {
+    const tools = createFakeTools({ isVerified: async () => false });
+    const first = await runFlow(null, hello, tools);
+    expectHidden(first);
+    expect(first.state?.step).toBe('askCpfPrefix');
+
+    const wrong = await runFlow(first.state, say('999'), tools);
+    expectHidden(wrong);
+
+    const order = await runFlow(wrong.state, say('quero 1 botijão P13'), tools);
+    expectHidden(order);
+    expect(tools.calls.map(call => call.name)).not.toContain('customerHistory');
+
+    const right = await runFlow(order.state, say('123'), tools);
+    expect(JSON.stringify(right.replies)).toContain('Maria');
+  });
+});

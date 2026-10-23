@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { FlowInput } from '../flow.types';
+import { type FlowInput, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
@@ -271,6 +271,62 @@ describe('askCpfPrefix', () => {
     const tools = createFakeTools();
     const result = await handlers.askCpfPrefix?.(state, say('987'), tools);
     expect(JSON.stringify(result?.replies)).not.toContain('987');
+  });
+
+  it.each(['quero 1 botijão P13', '2 botijões 12'])(
+    'pedido com 3 dígitos no texto (%s) não conta tentativa e vai para a IA',
+    async body => {
+      const tools = createFakeTools();
+      const spy = vi.spyOn(tools, 'interpret');
+      await handlers.askCpfPrefix?.(state, say(body), tools);
+      expect(spy).toHaveBeenCalled();
+      expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
+      expect(tools.calls.map(call => call.name)).not.toContain('markVerified');
+    },
+  );
+
+  it('"2 P13" sem palavra de pedido pede o formato sem contar tentativa', async () => {
+    const tools = createFakeTools();
+    const result = await handlers.askCpfPrefix?.(state, say('2 P13'), tools);
+    expect(result).toEqual({ state, replies: [text(msg.cpfPrefixFormat)] });
+    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
+    expect(tools.calls.map(call => call.name)).not.toContain('markVerified');
+  });
+
+  it('acerto com falha na consulta da oferta de repetir segue o fluxo normal', async () => {
+    const tools = createFakeTools({
+      customerHistory: async () => ({
+        addresses: [],
+        productIds: [],
+        lastOrder: {
+          productId: 1,
+          quantity: 1,
+          paymentType: 'PIX',
+          address: {
+            street: 'Rua das Flores',
+            number: '120',
+            neighborhood: 'Centro',
+            city: 'Teresina',
+            state: 'PI',
+          },
+        },
+      }),
+      quote: async () => {
+        throw new ToolError(new Error('fora'));
+      },
+    });
+    const result = await handlers.askCpfPrefix?.(state, say('123'), tools);
+    expect(tools.calls.map(call => call.name)).toContain('markVerified');
+    expect(result?.state?.step).not.toBe('askCpfPrefix');
+    expect(result?.state?.step).not.toBe('offerRepeat');
+    expect(result?.replies[0]).toEqual(text(msg.welcomeBack('Maria da Silva')));
+  });
+
+  it('aceita "1 2 3" com espaços', async () => {
+    const tools = createFakeTools();
+    const result = await handlers.askCpfPrefix?.(state, say('1 2 3'), tools);
+    expect(tools.calls.map(call => call.name)).toContain('markVerified');
+    expect(result?.state?.step).toBe('chooseAddress');
   });
 
   it('texto de pedido anota e repete a pergunta', async () => {

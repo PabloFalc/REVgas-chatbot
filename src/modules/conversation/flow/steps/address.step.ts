@@ -165,6 +165,19 @@ const handleAskAddressField: HandleFn = async (state, input, tools) => {
   return continueDraft(state, updated, tools);
 };
 
+async function markNewCustomerVerified(
+  phone: string,
+  customerId: number | undefined,
+  tools: FlowTools,
+): Promise<void> {
+  if (customerId === undefined) return;
+  try {
+    await tools.markVerified(phone, customerId);
+  } catch (error) {
+    if (!(error instanceof ToolError)) throw error;
+  }
+}
+
 const handleConfirmAddress: HandleFn = async (state, input, tools) => {
   const choice = choiceOf(input, 'address');
   if (choice === 'retype') return askNewAddress(withoutDraft(state), tools);
@@ -196,6 +209,7 @@ const handleConfirmAddress: HandleFn = async (state, input, tools) => {
       }
       throw error;
     }
+    await markNewCustomerVerified(input.phone, customer.id, tools);
   }
 
   const advanced: OrderState = { ...withoutDraft(state), customer, address };
