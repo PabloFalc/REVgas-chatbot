@@ -91,7 +91,11 @@ Dependency rules:
 - Every `integrations/` client has a mock for tests.
 - `ConversationService` handles each WhatsApp event (dedup via repository, per-phone lock with
   owner and 120 s TTL, mark as read, run the flow, send via gateway, logging). The order state lives
-  in Redis with a 15 min TTL. The flow itself is in `conversation/flow/`: step files in
+  in Redis with a 15 min TTL. Returning customers confirm the first 3 CPF digits before seeing
+  their data (verified 15 days per phone + RevGás customer id; 3 wrong attempts block the phone
+  for 1 h). `ReminderScheduler` sweeps every 30 s (off in `NODE_ENV=test`) and sends an idle
+  reminder at 10 min without a customer message, once per idle period, never in `creatingSale`; it
+  does not renew the order TTL (`saveOrderKeepingTtl`). The flow itself is in `conversation/flow/`: step files in
   `flow/steps/` receive `FlowTools` and **never import Nest, Redis, integrations, services or
   repositories** (only flow files, `src/utils` and modules' `contracts/`), so they are testable
   with `createFakeTools` (no WhatsApp, AI or DB — RNF08). `flow-tools.ts` is the only place that

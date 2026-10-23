@@ -11,7 +11,8 @@ flowchart TD
     A["1. Cliente manda mensagem<br/>Webhook do WhatsApp chega no backend"] --> B["2. Identificar cliente<br/>API: buscar cliente pelo telefone"]
     B --> C{Cliente existe?}
     C -- não --> D["Cadastrar cliente<br/>Coleta nome, CPF, endereço → API"]
-    C -- sim --> E["3. Produto e quantidade<br/>API: produtos com preço e estoque"]
+    C -- sim --> V["Verificar identidade<br/>3 primeiros dígitos do CPF"]
+    V --> E["3. Produto e quantidade<br/>API: produtos com preço e estoque"]
     D --> E
     E --> F["4. Confirmar endereço<br/>Sim ou alterar"]
     F --> G["5. Forma de pagamento<br/>Pix, cartão ou dinheiro com troco"]
@@ -33,7 +34,8 @@ O estado do pedido (`OrderState.step`) vive no Redis por 15 min. Os valores de `
 | --- | --- | --- |
 | `askName` | Cliente novo: pede o nome | Texto |
 | `askCpf` | Cliente novo: pede o CPF e cadastra | Texto (CPF inválido ou já usado → pede de novo) |
-| `askMissingCpf` | Cliente existente sem CPF: pede e salva | Texto |
+| `askCpfPrefix` | Cliente existente: pede os 3 primeiros dígitos do CPF (ver [Verificação de identidade](#verificação-de-identidade)) | Texto (3 dígitos) |
+| `offerRepeat` | Cliente verificado: oferece repetir o último pedido (ver [Repetir último pedido](#repetir-último-pedido)) | Botão (`repeat:yes\|new`) |
 | `chooseAddress` | Mostra os endereços salvos (≤ 2 em botões, mais em lista) | Botão / lista (`address:<i>`, `address:new`) |
 | `askNewAddress` | Pede CEP ou endereço completo (ViaCEP ou IA) | Texto |
 | `askAddressField` | Pede o campo que faltou no endereço | Texto |
@@ -71,6 +73,40 @@ Valem em qualquer etapa (`global-commands.ts`): `cancelar` apaga o estado (bloqu
 `desconto`/`promoção` responde que o preço é o da tabela e repete a pergunta; mensagem que não é
 texto/botão/lista (áudio, imagem) pede texto e repete a pergunta. O estado não muda, exceto no cancelar.
 
+## Verificação de identidade
+
+Cliente que o telefone já identifica na RevGás precisa confirmar os 3 primeiros dígitos do CPF
+antes de ver endereços ou pedidos (`askCpfPrefix`, em `flow/steps/customer.step.ts`). O telefone
+pode ter mudado de dono.
+
+- **Validade:** 15 dias, guardada no Redis por telefone + id do cliente na RevGás. Dentro do prazo o `start` pula a pergunta.
+- **Sem CPF no cadastro, ou telefone bloqueado:** mensagem fixa com o telefone da revenda e a conversa termina (estado apagado). O bot não pede nem grava CPF de cadastro existente.
+- **Erros:** 3 dígitos que não batem contam como tentativa; na 3ª o telefone fica bloqueado por 1 h e recebe o telefone da revenda. Acertar zera as tentativas.
+- **Formato:** entrada que não tem exatamente 3 dígitos não conta como tentativa; o bot pede de novo só os 3 dígitos.
+- **Texto livre:** blocos soltos de 3 dígitos são removidos antes de o texto ir à IA, para o CPF nunca chegar ao prompt. Se não sobra texto, repete a pergunta.
+
+## Repetir último pedido
+
+Depois de verificado (`welcomeKnown`), se o cliente ainda não informou nada do pedido, o bot
+oferece repetir o último (`offerRepeat`, em `flow/steps/repeat.step.ts`) com os botões "Repetir" e "Novo pedido".
+
+- **Origem:** a venda não cancelada mais recente do cliente, só se tiver 1 produto, 1 pagamento e endereço completo.
+- **Condições:** produto na lista do cliente, forma de pagamento ainda disponível e preço calculado por `tools.quote`. Se algo falhar, segue o fluxo normal.
+- **Não oferece** se o texto livre inicial já trouxe produto, quantidade, pagamento ou endereço.
+- **Repetir** preenche endereço, produto, quantidade, pagamento e preço atual e vai para `nextStep`: o resumo, ou a pergunta de troco se o pagamento for dinheiro. Nunca cria a venda sem o "Confirmar".
+- **Novo pedido** segue o fluxo normal. Texto livre na oferta passa pela IA como em qualquer etapa.
+
+## Lembrete de pedido parado
+
+Se o cliente some no meio do pedido, o bot manda um lembrete aos 10 min sem mensagem dele
+(`flow/reminder.ts`, enviado pelo `ReminderScheduler`).
+
+- Uma vez por período parado; nova mensagem do cliente abre um novo período.
+- Nunca durante `creatingSale`.
+- Repete a pergunta da etapa atual com o aviso de que o pedido fica guardado por mais 5 minutos.
+- Não renova o TTL de 15 min do pedido: só mensagem do cliente renova.
+- O agendador varre a cada 30 s e fica desligado com `NODE_ENV=test`.
+
 ## Texto livre e fallback
 
 A IA (`interpret`) só é chamada quando a etapa não entendeu a mensagem. Botões, listas e
@@ -83,7 +119,7 @@ palavras-chave funcionam sem IA, e os comandos globais vêm antes de tudo. Códi
 | Comandos globais (cancelar, atendente, desconto) | Antes de tudo. Sem IA |
 | Etapa de botão recebe texto que não entende | IA |
 | `askName` | Texto com dígito ou palavra de pedido → IA; senão, validação de nome de sempre |
-| `askCpf`, `askMissingCpf`, `askQuantity`, `askChangeAmount` | Primeiro a validação de sempre; se falhar e o texto não for só números e pontuação, mas tiver palavra de pedido → IA; senão, o erro de sempre |
+| `askCpf`, `askCpfPrefix`, `askQuantity`, `askChangeAmount` | Primeiro a validação de sempre; se falhar e o texto não for só números e pontuação, mas tiver palavra de pedido → IA; senão, o erro de sempre |
 | Primeira mensagem (sem estado) | Com dígito ou palavra de pedido → IA antes do `start`; senão ("oi") → `start` sem IA |
 | `askNewAddress`, `askAddressField`, `searchProduct` | Sem mudança (já recebem texto livre) |
 | `creatingSale`, `saleFailed` | Nunca chama a IA |
@@ -99,23 +135,23 @@ O que a IA devolve e como vira pedido:
 - Dúvida sem campo válido → resposta fixa com o telefone da revenda e repete a pergunta. Mensagem sem relação com o pedido → "Não entendi."
 
 **Identificação primeiro.** Na primeira mensagem, o que foi dito fica guardado (produto, quantidade, pagamento e
-endereço como texto pendente) e o `start` segue: cliente novo dá nome e CPF; cadastrado sem CPF dá o CPF. A saudação (boas-vindas) vem primeiro, depois o "Anotado: ..." e a pergunta seguinte. Em `askName`, texto com palavra de pedido vale como nome só quando a IA responde com confiança que não é pedido nem pergunta e o texto é um nome válido; com a IA fora do ar ou incerta, o bot diz "Não entendi" e pede o nome de novo. Texto
-livre em `askName`/`askCpf`/`askMissingCpf` anota os campos, mas repete a pergunta de identificação. Quando o
+endereço como texto pendente) e o `start` segue: cliente novo dá nome e CPF; cadastrado confirma os 3 primeiros dígitos do CPF. A saudação (boas-vindas) vem primeiro, depois o "Anotado: ..." e a pergunta seguinte. Em `askName`, texto com palavra de pedido vale como nome só quando a IA responde com confiança que não é pedido nem pergunta e o texto é um nome válido; com a IA fora do ar ou incerta, o bot diz "Não entendi" e pede o nome de novo. Texto
+livre em `askName`/`askCpf`/`askCpfPrefix` anota os campos, mas repete a pergunta de identificação. Quando o
 cliente fica conhecido, o produto guardado é conferido de novo com a lista dele e descartado se não estiver nela.
 
 ## Atalhos e transições especiais
 
 - **Fora de ordem (passos 3–5):** se o cliente escreve "2 botijões no Pix pra mesma casa", a IA extrai tudo de uma vez e o bot só pergunta o que faltou (ver [Texto livre e fallback](#texto-livre-e-fallback)).
-- **Repetir último pedido:** cliente conhecido pode ir direto do passo 2 para o passo 6.
+- **Repetir último pedido:** cliente conhecido e verificado pode ir direto do passo 2 para o passo 6 (ver [Repetir último pedido](#repetir-último-pedido)).
 - **Pedido de atendente:** de qualquer estado, resposta fixa com o telefone da revenda; o estado não muda.
 - **Pedido de desconto:** resposta fixa ("o preço é o da tabela"); o estado não muda.
 - **Dúvida no meio do fluxo:** resposta fixa com o telefone da revenda e repete a pergunta; o estado não muda. FAQ com IA é melhoria futura.
-- **Expiração:** o estado no Redis tem TTL; se o cliente sumir, o carrinho expira.
+- **Expiração e lembrete:** o estado no Redis tem TTL de 15 min; se o cliente sumir, o carrinho expira. Aos 10 min sem mensagem, o bot manda um lembrete (ver [Lembrete de pedido parado](#lembrete-de-pedido-parado)).
 - **Fallback da IA:** se a IA falhar, demorar ou não entender, o bot diz "Não entendi." e repete a pergunta com os botões do estado atual.
 
 ## Observações sobre o fluxo
 
-- O diagrama não mostra o atalho "repetir último pedido"; ele só aparece no texto.
+- O diagrama não mostra o atalho "repetir último pedido" nem a saída da verificação (telefone da revenda); eles só aparecem no texto.
 - "Corrigir" sempre volta ao passo 3. Vale perguntar *o que* corrigir (produto, endereço ou pagamento) e voltar só àquele passo.
 - O passo 8 promete "tempo estimado", mas a API não fornece esse dado nem webhook de status: dá para informar só o status e o entregador, consultando a venda.
 - O preço vem dos acordos da RevGás e pode depender da forma de pagamento. Se depender, o passo 3 mostra no máximo um preço de referência e o total definitivo só sai no passo 6, depois do pagamento.
