@@ -47,7 +47,7 @@ src/
     order/                  # resumo, total, idempotência e criação da venda (RF07, RF08, RF09)
       order.service.ts
       order.repository.ts           # API RevGás + vendas salvas no Postgres
-    assistant/              # interpretar() e responderFaq() (RF10)
+    assistant/              # interpret(): texto livre e fallback de intenção (responderFaq() é futuro)
     metrics/                # painel da revenda (F08)
   infra/
     cache/                  # Redis (ioredis): estado da conversa com TTL
@@ -70,26 +70,32 @@ src/
 
 ## Contratos de IA
 
-### `interpretar(mensagem, estadoAtual)`
+### `interpret(text, context)`
 
-Chamada só quando a mensagem não bate com botão nem palavra-chave. Saída validada com Zod:
+Implementado em `src/modules/assistant/` e ligado ao fluxo como `FlowTools.interpret`. Chamada só quando a etapa não entendeu a mensagem (tabela em [fluxo.md](fluxo.md#texto-livre-e-fallback)). Devolve `null` se a IA falhar, demorar ou devolver algo inválido. Saída validada com Zod:
 
 ```ts
-{
-  intencao: string        // ex.: "pedido", "faq", "atendente", "outro"
-  produto?: string
-  quantidade?: number
-  pagamento?: string
-  endereco?: { logradouro?: string; numero?: string; bairro?: string; referencia?: string }
-  confianca: number       // 0..1; abaixo do limiar → reapresenta os botões
+interface InterpretContext {
+  products: string[]                           // nomes dos produtos oferecidos
+  payments: { type: string; label: string }[]  // formas de pagamento da revenda
+}
+
+interface Interpretation {
+  intent: 'order' | 'question' | 'other'
+  products?: string[]    // nomes copiados da lista; vários = ambíguo
+  quantity?: number      // inteiro >= 1
+  payment?: string       // type copiado da lista
+  address?: string       // trecho do endereço como o cliente escreveu
+  newAddress?: boolean   // "outro endereço" sem dizer qual
+  confidence: number     // 0..1; abaixo de 0,6 → "Não entendi." e repete a pergunta
 }
 ```
 
-> Os tipos e valores de `intencao` são proposta; o documento só lista os campos.
+O contexto traz só dados da revenda, nunca do cliente; CPFs são removidos do texto antes de ir à IA. Toda saída é conferida contra `listProducts` / `listPaymentOptions`, e a IA nunca define preço, total ou troco.
 
-### `responderFaq(pergunta)`
+### `responderFaq(pergunta)` (futuro)
 
-Responde a partir de um FAQ curto (poucas dezenas de perguntas) embutido no prompt. RAG com pgvector só se a base crescer.
+Melhoria futura (F06, RF10), fora do escopo atual. Hoje a dúvida recebe resposta fixa com o telefone da revenda. A ideia: responder a partir de um FAQ curto (poucas dezenas de perguntas) embutido no prompt. RAG com pgvector só se a base crescer.
 
 **Regras:** saída inválida → perguntar de novo; IA indisponível → voltar aos botões; o prompt nunca recebe a API Key nem dados de outros clientes.
 

@@ -12,26 +12,34 @@
 | --- | --- | --- | --- |
 | F01 | Pedido completo pelo WhatsApp | Do "oi" até a venda criada no ERP, com confirmação de produto, endereço e pagamento | RF01–RF08 |
 | F02 | Identificação e cadastro automático | Reconhece o cliente pelo telefone; cadastra se for novo | RF02, RF03 |
-| F03 | Pedido em texto livre | "manda 2 botijão, pago no pix" → IA extrai tudo e o bot só pergunta o que faltou | RF04–RF06 |
-| F04 | Repetir último pedido | Cliente conhecido recebe botão com último pedido e endereço; fecha em 2 toques (pula para o resumo) | RF02, RF07 |
-| F05 | Status do pedido | Nº da venda, entregador a caminho e tempo estimado; consulta "meu gás chegou?" | RF09 |
-| F06 | FAQ com IA | Dúvidas fora do menu (horário, garantia, vale-gás) respondidas a partir de FAQ curto | RF10 |
-| F08 | Painel simples para a revenda | Conversas iniciadas, vendas criadas, taxa de conversão | RNF05 |
+| F03 | Pedido em texto livre | "manda 2 botijão, pago no pix" → IA extrai tudo e o bot só pergunta o que faltou. **Entregue** (2026-10-22), junto com o fallback de intenção | RF04–RF06 |
+| F04 | Repetir último pedido | Cliente conhecido recebe botão com último pedido e endereço; fecha em 2 toques (pula para o resumo). **Pendente** | RF02, RF07 |
+| F05 | Status do pedido | Nº da venda, entregador a caminho e tempo estimado; consulta "meu gás chegou?". **Pendente** | RF09 |
+
+> **Decisão de escopo (2026-10-22):** o MVP é F01–F05. F03 e o fallback de intenção estão
+> implementados; F04 e F05 continuam pendentes. F06, F07, F08, F09, F10, F11, F12, F13 e a RN13
+> (salvar venda e conversas no Postgres) viram melhorias futuras e não são usadas por enquanto.
+> Ver [requisitos.md](requisitos.md#decisões-2026-10-22).
 
 > **Fora do MVP (2026-10-21):** F07 — handoff para atendente. Pedido de atendente recebe uma
 > mensagem fixa com o telefone da revenda. Ver as decisões em [requisitos.md](requisitos.md#decisões-2026-10-21).
 
-## Roadmap (pós-MVP)
+## Melhorias futuras (fora do escopo atual)
+
+Decisão de 2026-10-22: nada desta seção é usado por enquanto. F14 já estava no roadmap.
 
 | # | Funcionalidade | Descrição | Dependência |
 | --- | --- | --- | --- |
+| F06 | FAQ com IA | Dúvidas fora do menu (horário, garantia, vale-gás) respondidas a partir de FAQ curto. Hoje a dúvida recebe resposta fixa com o telefone da revenda | Conteúdo do FAQ |
+| F07 | Handoff para atendente | Transfere a conversa com resumo | Definir quem recebe (plataforma da Flow?) |
+| F08 | Painel simples para a revenda | Conversas iniciadas, vendas criadas, taxa de conversão | Salvar vendas e conversas no Postgres |
 | F09 | Lembrete de recompra | Avisa quando o gás deve estar acabando, pelo intervalo entre compras do cliente | Histórico no Postgres; template aprovado no WhatsApp (fora da janela de 24h) |
 | F10 | Pedido por áudio | Transcreve o áudio e segue o mesmo fluxo | Serviço de transcrição |
-| F07 | Handoff para atendente | Transfere a conversa com resumo | Definir quem recebe (plataforma da Flow?) |
 | F11 | Pesquisa pós-entrega | Nota de 1 a 5 | Webhook/consulta de status "entregue" |
 | F12 | Recuperação de carrinho | Mensagem de retomada se o cliente parou no meio | Job agendado antes do TTL do Redis expirar |
 | F13 | RAG sobre o FAQ | pgvector + reranking, só se o FAQ ficar grande demais para o prompt | Base de FAQ crescer |
 | F14 | Verificação de identidade | Cliente reconhecido pelo telefone confirma os 3 primeiros dígitos do CPF antes de ver seus dados (telefone pode ter mudado de dono) | Definir o que fazer com cliente sem CPF |
+| RN13 | Salvar vendas e conversas no Postgres | ID da venda e histórico guardados no banco próprio, além do ERP | Tabelas e migrations |
 
 ## Onde cada funcionalidade usa IA
 
@@ -44,10 +52,10 @@
 | CEP, CPF, telefone | Regex + dígito verificador; CEP via ViaCEP | Não |
 | Preço, total, troco | Backend com dados da API | **Nunca** |
 | Criar a venda | Backend, após o botão "Confirmar" | **Nunca** |
-| Pedido em texto livre | IA extrai intenção e entidades em JSON | Sim |
+| Pedido em texto livre | IA extrai intenção e entidades em JSON (só quando a etapa não entendeu a mensagem) | Sim |
 | Endereço novo digitado sem CEP | IA separa rua, número, bairro e referência; cliente confirma | Sim |
-| Dúvida fora do menu | IA responde a partir do FAQ no prompt | Sim |
-| Mensagem que não bate com nada | IA classifica a intenção; confiança baixa → reapresenta os botões | Sim |
+| Dúvida fora do menu | Resposta fixa com o telefone da revenda e repete a pergunta (FAQ com IA é futuro, F06) | Não |
+| Mensagem que não bate com nada | IA classifica a intenção; confiança baixa → "Não entendi." e repete a pergunta com os botões | Sim |
 | Pedido de atendente ou de desconto | Mensagem fixa (telefone da revenda / "o preço é o da tabela") | Não |
 
 ## Técnicas de IA — decisão por técnica

@@ -2,12 +2,13 @@ import {
   CpfTakenError,
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type FlowInput, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
 import { asks, handlers, start } from './customer.step';
+import './index';
 
 const say = (body: string): FlowInput => ({
   phone: FAKE_PHONE,
@@ -57,6 +58,43 @@ describe('start', () => {
 describe('askName', () => {
   const state = { step: 'askName' as const, customer: {} };
 
+  it('texto com palavra de pedido que a IA diz não ser pedido vira o nome', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'other', confidence: 0.9 }),
+    });
+    const result = await handlers.askName?.(state, say('Maria da Rua Silva'), tools);
+    expect(result?.state).toMatchObject({
+      step: 'askCpf',
+      customer: { name: 'Maria da Rua Silva' },
+    });
+    expect(result?.replies).toEqual([text(msg.askCpf)]);
+  });
+
+  it('sem resposta da IA o texto de pedido não vira o nome', async () => {
+    const tools = createFakeTools({ interpret: async () => null });
+    const result = await handlers.askName?.(state, say('quero gás no pix'), tools);
+    expect(result?.state).toMatchObject({ step: 'askName' });
+    expect(result?.state?.customer.name).toBeUndefined();
+    expect(result?.replies).toEqual([text(msg.notUnderstood), text(msg.askName)]);
+  });
+
+  it('IA com pouca confiança não vira o nome', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'other', confidence: 0.3 }),
+    });
+    const result = await handlers.askName?.(state, say('quero gás no pix'), tools);
+    expect(result?.state?.customer.name).toBeUndefined();
+  });
+
+  it('pergunta no nome responde fora do escopo e não vira o nome', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'question', confidence: 0.9 }),
+    });
+    const result = await handlers.askName?.(state, say('quero saber se entregam hoje'), tools);
+    expect(result?.state?.customer.name).toBeUndefined();
+    expect(result?.replies).toEqual([text(msg.offTopic(tools.storePhone)), text(msg.askName)]);
+  });
+
   it('pergunta o nome', async () => {
     const result = await asks.askName?.(state, createFakeTools());
     expect(result?.replies).toEqual([text(msg.askName)]);
@@ -68,10 +106,16 @@ describe('askName', () => {
     expect(result?.replies).toEqual([text(msg.askCpf)]);
   });
 
-  it.each(['Maria', '   ', '123 456', `Ana ${'b'.repeat(100)}`])('recusa o nome %j', async raw => {
+  it.each(['Maria', '   ', `Ana ${'b'.repeat(100)}`])('recusa o nome %j', async raw => {
     const result = await handlers.askName?.(state, say(raw), createFakeTools());
     expect(result?.state).toBe(state);
     expect(result?.replies).toEqual([text(msg.invalidName)]);
+  });
+
+  it('nome com dígito vai para a IA e, sem resposta, repete a pergunta', async () => {
+    const result = await handlers.askName?.(state, say('123 456'), createFakeTools());
+    expect(result?.state).toMatchObject({ step: 'askName' });
+    expect(result?.replies).toEqual([text(msg.notUnderstood), text(msg.askName)]);
   });
 
   it('recusa entrada que não é texto', async () => {
@@ -161,5 +205,33 @@ describe('askMissingCpf', () => {
     expect(tools.calls).toEqual([]);
     expect(result?.state).toBe(state);
     expect(result?.replies).toEqual([text(msg.invalidCpf)]);
+  });
+});
+
+describe('produto oferecido na primeira mensagem', () => {
+  const p13 = { id: 1, name: 'Botijão P13' };
+  const p45 = { id: 2, name: 'Botijão P45' };
+
+  it('start de cliente cadastrado reconfere o produto com o cliente identificado', async () => {
+    const tools = createFakeTools({ listProducts: async () => [p45] });
+    const spy = vi.spyOn(tools, 'listProducts');
+    const result = await start(say('oi'), tools, { product: p13, quantity: 2 });
+    expect(spy).toHaveBeenCalledWith({ id: 1, tagId: null });
+    expect(result.state?.product).toBeUndefined();
+    expect(result.state?.quantity).toBeUndefined();
+  });
+
+  it('askMissingCpf concluído reconfere o produto com o cliente identificado', async () => {
+    const tools = createFakeTools({ listProducts: async () => [p45] });
+    const spy = vi.spyOn(tools, 'listProducts');
+    const state = {
+      step: 'askMissingCpf' as const,
+      customer: { id: 7, name: 'Joana Lima', tagId: 3 },
+      product: p13,
+      quantity: 2,
+    };
+    const result = await handlers.askMissingCpf?.(state, say(VALID_CPF), tools);
+    expect(spy).toHaveBeenCalledWith({ id: 7, tagId: 3 });
+    expect(result?.state?.product).toBeUndefined();
   });
 });

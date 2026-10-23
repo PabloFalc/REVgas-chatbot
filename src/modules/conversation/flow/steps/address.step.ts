@@ -16,6 +16,7 @@ import {
   type StepResult,
   ToolError,
 } from '../flow.types';
+import { freeText, keepOfferedProduct } from '../free-text';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -72,10 +73,14 @@ const chooseAddress: AskFn = async state => {
   return { state: next, replies: [list(msg.chooseAddress, msg.viewAddresses, rows)] };
 };
 
-const askNewAddress: AskFn = async state => ({
-  state: { ...state, step: 'askNewAddress' },
-  replies: [text(msg.askNewAddress)],
-});
+const askNewAddress: AskFn = async (state, tools) => {
+  const { pendingAddressText: pending, ...rest } = state;
+  const next: OrderState = { ...rest, step: 'askNewAddress' };
+  if (!pending) return { state: next, replies: [text(msg.askNewAddress)] };
+  const fromText = await tools.addressFromText(pending);
+  if (!fromText) return { state: next, replies: [text(msg.didNotUnderstandAddress)] };
+  return continueDraft(next, fromText, tools);
+};
 
 function askField(state: OrderState, field: AddressField): StepResult {
   return {
@@ -84,9 +89,9 @@ function askField(state: OrderState, field: AddressField): StepResult {
   };
 }
 
-const askAddressField: AskFn = async state => {
-  const field = state.missingField ?? missingFieldOf(state.draftAddress ?? {}) ?? 'number';
-  return askField(state, field);
+const askAddressField: AskFn = async (state, tools) => {
+  const field = state.missingField ?? missingFieldOf(state.draftAddress ?? {});
+  return field ? askField(state, field) : confirmAddress(state, tools);
 };
 
 const confirmAddress: AskFn = async state => {
@@ -119,6 +124,8 @@ const handleChooseAddress: HandleFn = async (state, input, tools) => {
     const address = state.addresses?.[Number(choice)];
     if (address) return nextStep({ ...state, address }, tools);
   }
+  const raw = textOf(input);
+  if (raw !== null) return freeText(state, raw, tools);
   return chooseAddress(state, tools);
 };
 
@@ -161,6 +168,8 @@ const handleAskAddressField: HandleFn = async (state, input, tools) => {
 const handleConfirmAddress: HandleFn = async (state, input, tools) => {
   const choice = choiceOf(input, 'address');
   if (choice === 'retype') return askNewAddress(withoutDraft(state), tools);
+  const raw = textOf(input);
+  if (raw !== null) return freeText(state, raw, tools);
   if (choice !== 'ok' || !state.draftAddress) return confirmAddress(state, tools);
 
   const address = state.draftAddress as Address;
@@ -191,7 +200,7 @@ const handleConfirmAddress: HandleFn = async (state, input, tools) => {
 
   const advanced: OrderState = { ...withoutDraft(state), customer, address };
   try {
-    return await nextStep(advanced, tools);
+    return await nextStep(await keepOfferedProduct(advanced, tools), tools);
   } catch (error) {
     if (error instanceof ToolError) {
       return {

@@ -2,7 +2,7 @@ import {
   CpfTakenError,
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { buttons, text } from '../replies';
@@ -134,6 +134,19 @@ describe('askNewAddress', () => {
     const result = await handlers.askNewAddress?.(state, say('sei lá'), tools);
     expect(result?.state?.step).toBe('askNewAddress');
     expect(result?.replies).toEqual([text(msg.didNotUnderstandAddress)]);
+  });
+});
+
+describe('askNewAddress com texto pendente', () => {
+  it('askNewAddress com texto pendente que a IA não entende', async () => {
+    const tools = createFakeTools({ addressFromText: async () => null });
+    const result = await asks.askNewAddress?.(
+      { ...known, step: 'askNewAddress', pendingAddressText: 'blablabla' },
+      tools,
+    );
+    expect(result?.replies).toEqual([text(msg.didNotUnderstandAddress)]);
+    expect(result?.state?.step).toBe('askNewAddress');
+    expect(result?.state?.pendingAddressText).toBeUndefined();
   });
 });
 
@@ -276,5 +289,24 @@ describe('confirmAddress', () => {
     expect(result?.state?.step).toBe('askName');
     expect(result?.state?.customer).toEqual({});
     expect(result?.replies).toEqual([text(msg.registerFailed)]);
+  });
+});
+
+describe('confirmAddress com produto oferecido', () => {
+  it('cliente novo reconfere o produto com o cliente criado', async () => {
+    const p13 = { id: 1, name: 'Botijão P13' };
+    const tools = createFakeTools({ listProducts: async () => [{ id: 2, name: 'Botijão P45' }] });
+    const spy = vi.spyOn(tools, 'listProducts');
+    const state: OrderState = {
+      step: 'confirmAddress',
+      customer: { name: 'Joana Lima', cpf: '12345678909' },
+      draftAddress: a1,
+      product: p13,
+      quantity: 2,
+    };
+    const result = await handlers.confirmAddress?.(state, pick('address:ok'), tools);
+    expect(spy).toHaveBeenCalledWith({ id: 2, tagId: null });
+    expect(result?.state?.product).toBeUndefined();
+    expect(result?.state?.quantity).toBeUndefined();
   });
 });

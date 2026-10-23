@@ -5,6 +5,7 @@ import { RevgasModule } from 'src/integrations/revgas/revgas.module';
 import { ViacepModule } from 'src/integrations/viacep/viacep.module';
 import { WhatsappModule } from 'src/integrations/whatsapp/whatsapp.module';
 import { AddressModule } from '../address/address.module';
+import { AssistantModule } from '../assistant/assistant.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { CustomerModule } from '../customer/customer.module';
 import { OrderModule } from '../order/order.module';
@@ -22,6 +23,7 @@ import { MessagingGateway } from './messaging.gateway';
     CatalogModule,
     OrderModule,
     AddressModule,
+    AssistantModule,
     RevgasModule,
     LlmModule,
     ViacepModule,

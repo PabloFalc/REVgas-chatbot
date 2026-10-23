@@ -144,7 +144,7 @@ describe('summary', () => {
       tools,
     );
     expect(result?.state?.step).toBe('summary');
-    expect(tools.calls).toEqual([]);
+    expect(tools.calls.map(call => call.name)).not.toContain('createSale');
   });
 });
 
