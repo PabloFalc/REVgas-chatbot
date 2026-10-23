@@ -97,18 +97,33 @@ describe('fallback de texto livre nas etapas', () => {
     expect(interpretCalls(fake)).toHaveLength(1);
   });
 
-  it.each(['askCpf', 'askMissingCpf'] as Step[])('%s', async step => {
-    const valid = await run(step, '123.456.789-09');
+  it('askCpf', async () => {
+    const valid = await run('askCpf', '123.456.789-09');
     expect(interpretCalls(valid.fake)).toHaveLength(0);
 
     for (const bad of ['123', 'meu cpf é 123.456.789-00']) {
-      const { fake, out } = await run(step, bad);
+      const { fake, out } = await run('askCpf', bad);
       expect(out?.replies).toEqual([text(msg.invalidCpf)]);
       expect(interpretCalls(fake)).toHaveLength(0);
     }
 
-    const { fake } = await run(step, 'quero no pix');
+    const { fake } = await run('askCpf', 'quero no pix');
     expect(interpretCalls(fake)).toHaveLength(1);
+  });
+
+  it('askCpfPrefix', async () => {
+    const valid = await run('askCpfPrefix', '123');
+    expect(interpretCalls(valid.fake)).toHaveLength(0);
+
+    for (const bad of ['12345678909', 'meu cpf é 123.456.789-00']) {
+      const { fake, out } = await run('askCpfPrefix', bad);
+      expect(out?.replies).toEqual([text(msg.cpfPrefixFormat)]);
+      expect(interpretCalls(fake)).toHaveLength(0);
+    }
+
+    const { fake, out } = await run('askCpfPrefix', 'quero no pix');
+    expect(interpretCalls(fake)).toHaveLength(1);
+    expect(out?.state?.step).toBe('askCpfPrefix');
   });
 
   it.each([

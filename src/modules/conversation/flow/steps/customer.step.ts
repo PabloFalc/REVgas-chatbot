@@ -1,17 +1,13 @@
-import {
-  CpfTakenError,
-  CustomerRejectedError,
-} from 'src/modules/customer/contracts/customer.types';
 import { isValidCpf, onlyDigits } from 'src/utils/cpf';
 import {
   type AskFn,
   type FlowInput,
   type FlowTools,
   type HandleFn,
+  MAX_CPF_ATTEMPTS,
   type OrderState,
   type Step,
   type StepResult,
-  ToolError,
 } from '../flow.types';
 import { freeText, freeTextOr, keepOfferedProduct, looksLikeOrder } from '../free-text';
 import { textOf } from '../input';
@@ -38,6 +34,18 @@ async function withHistory(
   return { ...state, addresses: history.addresses, boughtProductIds: history.productIds };
 }
 
+export async function welcomeKnown(state: OrderState, tools: FlowTools): Promise<StepResult> {
+  const { id, name } = state.customer;
+  if (id === undefined || name === undefined) return nextStep(state, tools);
+  const loaded = await withHistory(state, id, tools);
+  const next = await nextStep(await keepOfferedProduct(loaded, tools), tools);
+  return { state: next.state, replies: [text(msg.welcomeBack(name)), ...next.replies] };
+}
+
+function contactStore(tools: FlowTools): StepResult {
+  return { state: null, replies: [text(msg.identityContactStore(tools.storePhone))] };
+}
+
 export async function start(
   input: FlowInput,
   tools: FlowTools,
@@ -51,21 +59,16 @@ export async function start(
     };
   }
 
-  const welcome = text(msg.welcomeBack(customer.name));
-  const base: OrderState = {
-    step: 'askMissingCpf',
-    customer: { id: customer.id, name: customer.name, tagId: customer.tagId },
+  if (!customer.cpf) return contactStore(tools);
+  if (await tools.isBlocked(input.phone)) return contactStore(tools);
+
+  const state: OrderState = {
+    step: 'askCpfPrefix',
+    customer: { id: customer.id, name: customer.name, cpf: customer.cpf, tagId: customer.tagId },
     ...seed,
   };
-
-  if (!customer.cpf) {
-    return { state: base, replies: [welcome, text(msg.askMissingCpf)] };
-  }
-
-  const known: OrderState = { ...base, customer: { ...base.customer, cpf: customer.cpf } };
-  const loaded = await withHistory(known, customer.id, tools);
-  const next = await nextStep(await keepOfferedProduct(loaded, tools), tools);
-  return { state: next.state, replies: [welcome, ...next.replies] };
+  if (await tools.isVerified(input.phone, customer.id)) return welcomeKnown(state, tools);
+  return { state, replies: [text(msg.askCpfPrefix)] };
 }
 
 const askName: AskFn = async state => ({
@@ -78,9 +81,9 @@ const askCpf: AskFn = async state => ({
   replies: [text(msg.askCpf)],
 });
 
-const askMissingCpf: AskFn = async state => ({
-  state: { ...state, step: 'askMissingCpf' },
-  replies: [text(msg.askMissingCpf)],
+const askCpfPrefix: AskFn = async state => ({
+  state: { ...state, step: 'askCpfPrefix' },
+  replies: [text(msg.askCpfPrefix)],
 });
 
 const handleAskName: HandleFn = async (state, input, tools) => {
@@ -101,37 +104,28 @@ const handleAskCpf: HandleFn = async (state, input, tools) => {
   return nextStep({ ...state, customer: { ...state.customer, cpf: onlyDigits(raw) } }, tools);
 };
 
-const handleAskMissingCpf: HandleFn = async (state, input, tools) => {
+const CPF_PREFIX_LENGTH = 3;
+
+const handleAskCpfPrefix: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
-  const customerId = state.customer.id;
-  if (raw === null || !isValidCpf(raw) || customerId === undefined) {
-    return freeTextOr(state, raw, tools, msg.invalidCpf);
+  const digits = raw === null ? '' : onlyDigits(raw);
+  const { id, cpf } = state.customer;
+  if (digits.length !== CPF_PREFIX_LENGTH || id === undefined || !cpf) {
+    return freeTextOr(state, raw, tools, msg.cpfPrefixFormat);
   }
-  const cpf = onlyDigits(raw);
-  try {
-    await tools.saveCpf(customerId, cpf);
-  } catch (error) {
-    const cause = error instanceof ToolError ? error.cause : error;
-    if (cause instanceof CpfTakenError) {
-      return { state: null, replies: [text(msg.cpfTaken(tools.storePhone))] };
-    }
-    if (cause instanceof CustomerRejectedError) {
-      return { state, replies: [text(msg.invalidCpf)] };
-    }
-    throw error;
+  if (digits === cpf.slice(0, CPF_PREFIX_LENGTH)) {
+    await tools.markVerified(input.phone, id);
+    return welcomeKnown(state, tools);
   }
-  const loaded = await withHistory(
-    { ...state, customer: { ...state.customer, cpf } },
-    customerId,
-    tools,
-  );
-  return nextStep(await keepOfferedProduct(loaded, tools), tools);
+  const attempts = await tools.registerCpfMismatch(input.phone);
+  if (attempts >= MAX_CPF_ATTEMPTS) return contactStore(tools);
+  return { state, replies: [text(msg.cpfPrefixMismatch)] };
 };
 
-export const asks: Partial<Record<Step, AskFn>> = { askName, askCpf, askMissingCpf };
+export const asks: Partial<Record<Step, AskFn>> = { askName, askCpf, askCpfPrefix };
 
 export const handlers: Partial<Record<Step, HandleFn>> = {
   askName: handleAskName,
   askCpf: handleAskCpf,
-  askMissingCpf: handleAskMissingCpf,
+  askCpfPrefix: handleAskCpfPrefix,
 };

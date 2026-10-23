@@ -120,20 +120,6 @@ export class CustomerRepository {
     }
   }
 
-  async saveCpf(customerId: number, cpf: string): Promise<void> {
-    try {
-      await this.revgas.customers.update(customerId, { cpf: digitsOnly(cpf) });
-    } catch (error) {
-      if (error instanceof RevgasDuplicateError) {
-        throw new CpfTakenError(error.message);
-      }
-      if (error instanceof RevgasValidationError) {
-        throw new CustomerRejectedError(error.message);
-      }
-      throw error;
-    }
-  }
-
   async history(customerId: number): Promise<CustomerHistory> {
     const [customer, sales] = await Promise.all([
       this.revgas.customers.get(customerId),

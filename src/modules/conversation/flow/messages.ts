@@ -31,7 +31,11 @@ export const msg = {
   invalidName: 'Preciso do nome completo, com nome e sobrenome. Qual é o seu nome?',
   askCpf: 'Agora seu CPF (só números):',
   invalidCpf: 'Esse CPF não parece válido. Confira e mande de novo (só números).',
-  askMissingCpf: 'Para continuar, preciso do seu CPF (só números):',
+  askCpfPrefix: 'Olá! Para sua segurança, digite os 3 primeiros dígitos do seu CPF.',
+  cpfPrefixMismatch: 'Não confere. Digite os 3 primeiros dígitos do seu CPF.',
+  cpfPrefixFormat: 'Digite só os 3 primeiros dígitos do seu CPF.',
+  identityContactStore: (phone?: string) =>
+    `Não consegui confirmar seus dados por aqui. ${storeContact(phone)}`,
   cpfTaken: (phone?: string) =>
     `Esse CPF já tem cadastro com outro telefone. ${storeContact(phone)}`,
   registerFailed:

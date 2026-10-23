@@ -38,7 +38,7 @@ const ORDER_WORDS = new Set([
 ]);
 
 const NUMERIC_ONLY = /^[\d\s.,\-/R$]*$/i;
-const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askMissingCpf'];
+const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askCpfPrefix'];
 const OTHER_ADDRESS_NOTE = 'entrega em outro endereço';
 
 export interface Catalog {

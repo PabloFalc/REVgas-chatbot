@@ -26,7 +26,7 @@ export const MAX_CPF_ATTEMPTS = 3;
 export type Step =
   | 'askName'
   | 'askCpf'
-  | 'askMissingCpf'
+  | 'askCpfPrefix'
   | 'chooseAddress'
   | 'askNewAddress'
   | 'askAddressField'
@@ -86,8 +86,11 @@ export type HandleFn = (
 export interface FlowTools {
   findCustomer(phone: string): Promise<Customer | null>;
   createCustomer(input: NewCustomer): Promise<Customer>;
-  saveCpf(customerId: number, cpf: string): Promise<void>;
   customerHistory(customerId: number): Promise<CustomerHistory>;
+  isVerified(phone: string, customerId: number): Promise<boolean>;
+  markVerified(phone: string, customerId: number): Promise<void>;
+  registerCpfMismatch(phone: string): Promise<number>;
+  isBlocked(phone: string): Promise<boolean>;
   addressFromCep(cep: string): Promise<AddressDraft | null>;
   addressFromText(text: string): Promise<AddressDraft | null>;
   interpret(text: string, context: InterpretContext): Promise<Interpretation | null>;

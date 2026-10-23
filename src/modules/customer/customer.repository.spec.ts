@@ -122,42 +122,6 @@ describe('CustomerRepository', () => {
     });
   });
 
-  describe('saveCpf', () => {
-    it('updates the customer cpf with digits only', async () => {
-      const { client, repository } = build([seeded({ id: 5001 })]);
-
-      await repository.saveCpf(5001, '111.444.777-35');
-
-      expect((await client.customers.get(5001)).cpf).toBe('11144477735');
-    });
-
-    it('maps RevgasDuplicateError to CpfTakenError', async () => {
-      const { client, repository } = build([seeded({ id: 5001 })]);
-      vi.spyOn(client.customers, 'update').mockRejectedValue(new RevgasDuplicateError('dup', 1));
-
-      await expect(repository.saveCpf(5001, '11144477735')).rejects.toBeInstanceOf(CpfTakenError);
-    });
-
-    it('maps RevgasValidationError to CustomerRejectedError', async () => {
-      const { client, repository } = build([seeded({ id: 5001 })]);
-      vi.spyOn(client.customers, 'update').mockRejectedValue(
-        new RevgasValidationError('invalid', [{ field: 'cpf', message: 'invalid' }]),
-      );
-
-      await expect(repository.saveCpf(5001, '11144477735')).rejects.toBeInstanceOf(
-        CustomerRejectedError,
-      );
-    });
-
-    it('propagates unexpected errors', async () => {
-      const { client, repository } = build([seeded({ id: 5001 })]);
-      const boom = new Error('boom');
-      vi.spyOn(client.customers, 'update').mockRejectedValue(boom);
-
-      await expect(repository.saveCpf(5001, '11144477735')).rejects.toBe(boom);
-    });
-  });
-
   describe('history', () => {
     const saleBase = {
       location: 'Rua B',

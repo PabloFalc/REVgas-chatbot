@@ -141,7 +141,7 @@ describe('runFlow', () => {
 const ALL_STEPS: Step[] = [
   'askName',
   'askCpf',
-  'askMissingCpf',
+  'askCpfPrefix',
   'chooseAddress',
   'askNewAddress',
   'askAddressField',
