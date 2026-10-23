@@ -3,7 +3,7 @@ import { WhatsappRejectedError } from 'src/core/erros/whatsapp/whatsapp.errors';
 import { FakeWhatsappClient } from 'src/integrations/whatsapp/fake-whatsapp.client';
 import { textWebhook, webhookPayload } from 'src/integrations/whatsapp/testing/webhook.testing';
 import { parseWebhook } from 'src/integrations/whatsapp/webhook/webhook.parser';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationRepository } from './conversation.repository';
 import { ConversationService } from './conversation.service';
 import { runFlow } from './flow/flow';
@@ -36,6 +36,8 @@ function setup(whatsapp = new FakeWhatsappClient()) {
     loadOrder: vi.fn(async () => null as OrderState | null),
     saveOrder: vi.fn(async () => undefined),
     clearOrder: vi.fn(async () => undefined),
+    scheduleReminder: vi.fn(async () => undefined),
+    cancelReminder: vi.fn(async () => undefined),
     withPhoneLock: vi.fn(async (_phone: string, work: () => Promise<unknown>) => work()),
   };
   const flowTools = { forPhone: vi.fn(() => createFakeTools()) };
@@ -81,7 +83,10 @@ describe('ConversationService.handle', () => {
       expect.anything(),
       expect.any(Function),
     );
-    expect(repository.saveOrder).toHaveBeenCalledWith('5586999991234', saved);
+    expect(repository.saveOrder).toHaveBeenCalledWith(
+      '5586999991234',
+      expect.objectContaining(saved),
+    );
     expect(repository.clearOrder).not.toHaveBeenCalled();
     expect(whatsapp.sent).toHaveLength(2);
     expect(JSON.stringify(whatsapp.sent[0].body)).toContain('um');
@@ -296,5 +301,47 @@ describe('ConversationService venda criada', () => {
     const other = setup();
     await other.service.handle(parseWebhook(textWebhook('oi', 'wamid.V4')));
     expect(other.logger.info.mock.calls.some(call => call[1] === 'Venda criada')).toBe(false);
+  });
+});
+
+describe('ConversationService lembrete', () => {
+  const now = new Date('2026-10-21T12:00:00-03:00');
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('agenda o lembrete 10 min depois da mensagem', async () => {
+    const { service, repository } = setup();
+    const saved: OrderState = { step: 'chooseAddress', customer: { name: 'Maria' } };
+    runFlowMock.mockResolvedValueOnce({ state: saved, replies: [text('um')] });
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.R1')));
+
+    expect(repository.saveOrder).toHaveBeenCalledWith('5586999991234', {
+      ...saved,
+      lastInboundAt: now.toISOString(),
+    });
+    expect(repository.scheduleReminder).toHaveBeenCalledWith(
+      '5586999991234',
+      new Date(now.getTime() + 600_000),
+    );
+    expect(repository.cancelReminder).not.toHaveBeenCalled();
+  });
+
+  it('pedido encerrado cancela o lembrete', async () => {
+    const { service, repository } = setup();
+    runFlowMock.mockResolvedValueOnce({ state: null, replies: [text('cancelado')] });
+
+    await service.handle(parseWebhook(textWebhook('cancelar', 'wamid.R2')));
+
+    expect(repository.clearOrder).toHaveBeenCalledWith('5586999991234');
+    expect(repository.cancelReminder).toHaveBeenCalledWith('5586999991234');
+    expect(repository.scheduleReminder).not.toHaveBeenCalled();
   });
 });

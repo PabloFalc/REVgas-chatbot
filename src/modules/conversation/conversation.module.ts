@@ -14,6 +14,7 @@ import { ConversationRepository } from './conversation.repository';
 import { ConversationService } from './conversation.service';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
+import { ReminderScheduler } from './reminder.scheduler';
 
 @Module({
   imports: [
@@ -29,6 +30,12 @@ import { MessagingGateway } from './messaging.gateway';
     ViacepModule,
   ],
   controllers: [ConversationController],
-  providers: [ConversationService, ConversationRepository, MessagingGateway, FlowToolsService],
+  providers: [
+    ConversationService,
+    ConversationRepository,
+    MessagingGateway,
+    FlowToolsService,
+    ReminderScheduler,
+  ],
 })
 export class ConversationModule {}

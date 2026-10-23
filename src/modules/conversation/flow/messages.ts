@@ -103,6 +103,7 @@ export const msg = {
   noted: (parts: string[]) => `Anotado: ${parts.join(', ')}.`,
   textOnly: 'Por enquanto só entendo texto e os botões.',
   unavailable: 'Estou com instabilidade agora, tenta de novo em instantes.',
+  reminder: 'Ainda está aí? Seu pedido fica guardado por mais 5 minutos.',
   addressLabel,
   addressFull,
 };

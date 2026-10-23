@@ -74,6 +74,8 @@ export interface OrderState {
   quote?: Quote;
   changeFor?: number | null;
   saleAttemptAt?: string;
+  lastInboundAt?: string;
+  remindedFor?: string;
 }
 
 export interface FlowInput {
