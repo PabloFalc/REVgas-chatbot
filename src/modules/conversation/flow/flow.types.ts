@@ -16,15 +16,19 @@ import type {
 import type {
   Customer,
   CustomerHistory,
+  LastOrder,
   NewCustomer,
 } from 'src/modules/customer/contracts/customer.types';
 import type { SaleOrder } from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
+export const MAX_CPF_ATTEMPTS = 3;
+
 export type Step =
   | 'askName'
   | 'askCpf'
-  | 'askMissingCpf'
+  | 'askCpfPrefix'
+  | 'offerRepeat'
   | 'chooseAddress'
   | 'askNewAddress'
   | 'askAddressField'
@@ -42,11 +46,21 @@ export type Step =
   | 'creatingSale'
   | 'saleFailed';
 
+export interface RepeatOffer {
+  product: Product;
+  quantity: number;
+  payment: PaymentOption;
+  address: Address;
+  quote: Quote;
+}
+
 export interface OrderState {
   step: Step;
   customer: { id?: number; name?: string; cpf?: string; tagId?: number | null };
   addresses?: Address[];
   boughtProductIds?: number[];
+  lastOrder?: LastOrder;
+  repeatOffer?: RepeatOffer;
   draftAddress?: AddressDraft;
   missingField?: AddressField;
   address?: Address;
@@ -60,6 +74,8 @@ export interface OrderState {
   quote?: Quote;
   changeFor?: number | null;
   saleAttemptAt?: string;
+  lastInboundAt?: string;
+  remindedFor?: string;
 }
 
 export interface FlowInput {
@@ -84,8 +100,11 @@ export type HandleFn = (
 export interface FlowTools {
   findCustomer(phone: string): Promise<Customer | null>;
   createCustomer(input: NewCustomer): Promise<Customer>;
-  saveCpf(customerId: number, cpf: string): Promise<void>;
   customerHistory(customerId: number): Promise<CustomerHistory>;
+  isVerified(phone: string, customerId: number): Promise<boolean>;
+  markVerified(phone: string, customerId: number): Promise<void>;
+  registerCpfMismatch(phone: string): Promise<number>;
+  isBlocked(phone: string): Promise<boolean>;
   addressFromCep(cep: string): Promise<AddressDraft | null>;
   addressFromText(text: string): Promise<AddressDraft | null>;
   interpret(text: string, context: InterpretContext): Promise<Interpretation | null>;

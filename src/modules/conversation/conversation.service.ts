@@ -11,6 +11,7 @@ import type { IncomingMessage, Reply } from './contracts/conversation.types';
 import { ConversationRepository } from './conversation.repository';
 import { runFlow } from './flow/flow';
 import type { ToolError } from './flow/flow.types';
+import { REMINDER_AFTER_MS } from './flow/reminder';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
 
@@ -139,8 +140,14 @@ export class ConversationService {
 
     if (result.state === null) {
       await this.conversations.clearOrder(phone);
+      await this.conversations.cancelReminder(phone);
     } else {
-      await this.conversations.saveOrder(phone, result.state);
+      const now = new Date();
+      await this.conversations.saveOrder(phone, {
+        ...result.state,
+        lastInboundAt: now.toISOString(),
+      });
+      await this.conversations.scheduleReminder(phone, new Date(now.getTime() + REMINDER_AFTER_MS));
     }
 
     this.logger.info(

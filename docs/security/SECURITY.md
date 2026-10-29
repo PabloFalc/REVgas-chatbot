@@ -96,6 +96,18 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   / exaustão de conexões.
 - `@fastify/under-pressure` responde `503` acima dos limites de memória (`PRESSURE_MAX_*`).
 
+## Verificação de identidade (CPF)
+
+- Cliente reconhecido pelo telefone só vê endereços e pedidos depois de digitar os 3 primeiros
+  dígitos do CPF. Mitiga o número de telefone que mudou de dono expondo os dados do anterior.
+- **Chave por telefone + id do cliente na RevGás**, validade de 15 dias: se o telefone passar a
+  identificar outro cliente, a verificação anterior não vale.
+- **Bloqueio contra chute:** 3 erros em 1 h bloqueiam o telefone por 1 h (contador e bloqueio no
+  Redis). Só entrada só numérica (dígitos, espaços, pontos ou traços) com exatamente 3 dígitos
+  conta como tentativa; texto de pedido com letras ("2 P13") nunca conta.
+- Cliente sem CPF no cadastro, ou bloqueado, recebe só o telefone da revenda; nada do cadastro é mostrado.
+- Os 3 dígitos digitados nunca vão ao log nem ao prompt da IA (blocos soltos de 3 dígitos são removidos do texto livre; CPFs inteiros são removidos por `removeCpfs` antes de qualquer chamada à IA).
+
 ## Webhook do WhatsApp
 
 - Todo `POST /webhooks/whatsapp` tem o `X-Hub-Signature-256` conferido (HMAC-SHA256 do corpo cru

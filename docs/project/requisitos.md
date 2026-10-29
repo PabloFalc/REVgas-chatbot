@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | RF01 | Receber pedidos pelo WhatsApp | Webhook recebe e responde mensagens (Cloud API oficial da Meta) | Slide "Como funciona?" |
 | RF02 | Identificar o cliente pelo telefone e recuperar cadastro | Telefone normalizado (só dígitos, DDI 55) consultado na API RevGás | Slide do chatbot |
-| RF03 | Cadastrar cliente novo | Coleta nome, CPF (obrigatório) e endereço; cadastra via API. Cliente já cadastrado sem CPF informa o CPF antes de fechar o pedido | Inferido de RF02 |
+| RF03 | Cadastrar cliente novo | Coleta nome, CPF (obrigatório) e endereço; cadastra via API. Cliente já cadastrado sem CPF recebe o telefone da revenda e a conversa termina (o bot não grava CPF em cadastro existente) | Inferido de RF02 |
 | RF04 | Coletar e confirmar produto e quantidade | Produto ativo e com estoque; quantidade inteira entre 1 e o limite | Slide do chatbot |
 | RF05 | Confirmar endereço salvo ou permitir alterar | Botões "Sim" / "Alterar endereço" | Mockup do WhatsApp |
 | RF06 | Coletar forma de pagamento (e troco) | Pix, cartão ou dinheiro; troco ≥ total | Slide do chatbot |
@@ -68,18 +68,27 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
   - IA não entende → reapresenta os botões da etapa atual.
   - API falha ao criar a venda → avisa e oferece "Tentar de novo" (nunca reenvia sozinho).
   - Cliente pede atendente → mensagem fixa com o telefone da revenda.
-- **CPF obrigatório.** Cadastro novo exige CPF válido; cliente já cadastrado sem CPF informa antes de fechar o pedido e o cadastro é atualizado. O CPF nunca vai para o prompt da IA. (RF03, RN03)
+- **CPF obrigatório.** Cadastro novo exige CPF válido; cliente já cadastrado sem CPF recebe o telefone da revenda (decisão de 2026-10-23: o bot não grava CPF em cadastro existente). O CPF nunca vai para o prompt da IA. (RF03, RN03)
 - **Sem limite de quantidade** por enquanto. (RN05)
 - **Sem promoção.** O bot não oferece desconto; pedido de desconto recebe resposta fixa. (RN07)
 - **Endereços do cliente** = endereço do cadastro + endereços das vendas anteriores na RevGás, sem repetir. Cliente cadastrado escolhe um deles ou informa outro (CEP ou texto livre, sempre confirmado). A RevGás guarda um só endereço por cliente; não criamos tabela própria.
-- **Sem verificação de identidade no MVP.** Cliente reconhecido pelo telefone vê os endereços direto. **Risco conhecido:** número de telefone que mudou de dono expõe os endereços do dono anterior. Fica no roadmap (F14).
 
 ## Decisões (2026-10-22)
 
-- **Escopo do MVP:** F01–F05. F03 (pedido em texto livre) e o fallback de intenção estão implementados; F04 e F05 continuam pendentes.
-- **Melhorias futuras, não usadas por enquanto:** F06, F07, F08, F09, F10, F11, F12, F13 e RN13. RF10 também fica para depois.
+- **Escopo do MVP:** F01–F05. F03 (pedido em texto livre) e o fallback de intenção estão implementados; F04 e F05 estavam pendentes (superado em 2026-10-23: F04, F12 e F14 entregues).
+- **Melhorias futuras, não usadas por enquanto:** F06, F07, F08, F09, F10, F11, F12, F13 e RN13 (F12 superado em 2026-10-23: entregue). RF10 também fica para depois.
 - **Texto livre e fallback com resposta fixa.** A IA só interpreta o pedido (produto, quantidade, pagamento, endereço). Dúvida fora do pedido recebe uma resposta fixa com o telefone da revenda; mensagem que a IA não entende recebe "Não entendi."; nos dois casos o bot repete a pergunta da etapa. Não há FAQ com IA.
 - **Texto livre nunca pula o resumo.** A venda só é criada depois do botão "Confirmar".
+
+## Decisões (2026-10-23)
+
+- **F04, F12 e F14 entregues.** F05 é o que falta no MVP.
+- **Verificação de identidade (F14).** Cliente reconhecido pelo telefone digita os 3 primeiros dígitos do CPF antes de ver seus dados. Isso resolve o risco conhecido de 2026-10-21 (telefone que mudou de dono expondo os endereços do dono anterior).
+  - A verificação vale **15 dias**, por telefone + id do cliente na RevGás.
+  - **3 erros** bloqueiam o telefone por **1 h**; entrada que não tem exatamente 3 dígitos não conta como erro.
+  - Cliente cadastrado sem CPF, ou telefone bloqueado, recebe o telefone da revenda e a conversa termina. O bot não pede nem grava CPF de cadastro existente.
+- **Repetir último pedido (F04).** A oferta sai da venda não cancelada mais recente, se tiver 1 produto, 1 pagamento e endereço completo, e só se produto, pagamento e preço ainda forem válidos. Aceitar vai ao resumo (ou à pergunta de troco, se dinheiro); nunca cria a venda.
+- **Lembrete de pedido parado (F12).** Após **10 min** sem mensagem do cliente, uma vez por período parado, o bot repete a pergunta da etapa avisando que o pedido fica guardado. Não renova o TTL de 15 min do pedido e não é enviado durante a criação da venda.
 
 ## Pendências que afetam os requisitos
 

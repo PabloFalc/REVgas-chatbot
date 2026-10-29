@@ -83,3 +83,63 @@ describe('RedisService.deleteIfEquals', () => {
     expect(logger.error).toHaveBeenCalled();
   });
 });
+
+describe('RedisService primitivas novas', () => {
+  function buildWith(redis: Record<string, unknown>) {
+    const logger = { setContext: vi.fn(), error: vi.fn() };
+    return new RedisService(redis as unknown as Redis, logger as unknown as PinoLogger);
+  }
+
+  it('setKeepTtl grava com KEEPTTL e XX', async () => {
+    const set = vi.fn().mockResolvedValue('OK');
+    await buildWith({ set }).setKeepTtl({ prefix: 'p', key: 'k', value: { a: 1 } });
+    expect(set).toHaveBeenCalledWith('p:k', '{"a":1}', 'KEEPTTL', 'XX');
+  });
+
+  it('increment define TTL só na primeira vez', async () => {
+    const incr = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    const expire = vi.fn().mockResolvedValue(1);
+    const service = buildWith({ incr, expire });
+
+    await expect(service.increment({ prefix: 'p', key: 'k', ttl: 3600 })).resolves.toBe(1);
+    expect(expire).toHaveBeenCalledWith('p:k', 3600);
+
+    expire.mockClear();
+    await expect(service.increment({ prefix: 'p', key: 'k', ttl: 3600 })).resolves.toBe(2);
+    expect(expire).not.toHaveBeenCalled();
+  });
+
+  it('scheduleAdd chama zadd', async () => {
+    const zadd = vi.fn().mockResolvedValue(1);
+    await buildWith({ zadd }).scheduleAdd({ set: 's', member: 'm', at: 1000 });
+    expect(zadd).toHaveBeenCalledWith('s', 1000, 'm');
+  });
+
+  it('scheduleRemove chama zrem', async () => {
+    const zrem = vi.fn().mockResolvedValue(1);
+    await buildWith({ zrem }).scheduleRemove({ set: 's', member: 'm' });
+    expect(zrem).toHaveBeenCalledWith('s', 'm');
+  });
+
+  it('scheduleDue converte WITHSCORES em pares', async () => {
+    const zrangebyscore = vi.fn().mockResolvedValue(['5586', '1000', '5587', '2000']);
+    const result = await buildWith({ zrangebyscore }).scheduleDue({
+      set: 's',
+      upTo: 5000,
+      limit: 50,
+    });
+    expect(result).toEqual([
+      { member: '5586', at: 1000 },
+      { member: '5587', at: 2000 },
+    ]);
+    expect(zrangebyscore).toHaveBeenCalledWith('s', '-inf', 5000, 'WITHSCORES', 'LIMIT', 0, 50);
+  });
+
+  it('scheduleClaim devolve true só quando o eval remove', async () => {
+    const evalFn = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    const service = buildWith({ eval: evalFn });
+    await expect(service.scheduleClaim({ set: 's', member: 'm', at: 1000 })).resolves.toBe(true);
+    expect(evalFn).toHaveBeenCalledWith(expect.stringContaining('zscore'), 1, 's', 'm', '1000');
+    await expect(service.scheduleClaim({ set: 's', member: 'm', at: 1000 })).resolves.toBe(false);
+  });
+});

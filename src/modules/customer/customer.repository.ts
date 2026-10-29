@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { RevgasDuplicateError, RevgasValidationError } from '../../core/erros/revgas/revgas.errors';
 import type { RevgasCustomer } from '../../integrations/revgas/customers/customers.schemas';
 import { REVGAS_CLIENT, type RevgasClient } from '../../integrations/revgas/revgas.client';
+import type { RevgasSale } from '../../integrations/revgas/sales/sales.schemas';
 import { normalizeText } from '../../utils/text';
 import type { Address } from '../address/contracts/address.types';
 import {
@@ -9,6 +10,7 @@ import {
   type Customer,
   type CustomerHistory,
   CustomerRejectedError,
+  type LastOrder,
   type NewCustomer,
 } from './contracts/customer.types';
 
@@ -70,6 +72,40 @@ const toAddress = (raw: RawAddress): Address | null => {
   return address;
 };
 
+const saleTime = (sale: RevgasSale): number => {
+  const raw = sale.created_at ?? sale.date;
+  if (typeof raw !== 'string') {
+    return Number.NEGATIVE_INFINITY;
+  }
+  const time = Date.parse(raw.replace(' ', 'T'));
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+};
+
+const newestFirst = (a: RevgasSale, b: RevgasSale): number => {
+  const ta = saleTime(a);
+  const tb = saleTime(b);
+  if (ta === tb) {
+    return b.id - a.id;
+  }
+  return ta > tb ? -1 : 1;
+};
+
+const toLastOrder = (sales: RevgasSale[]): LastOrder | undefined => {
+  const [latest] = sales.filter(sale => sale.status !== 'CANCEL').sort(newestFirst);
+  const products = latest?.products ?? [];
+  const payments = latest?.payments ?? [];
+  const address = latest ? toAddress(latest) : null;
+  if (products.length !== 1 || payments.length !== 1 || !address) {
+    return undefined;
+  }
+  return {
+    productId: products[0].product_id,
+    quantity: products[0].quantity,
+    paymentType: payments[0].payment_type,
+    address,
+  };
+};
+
 const addressKey = (address: Address): string =>
   [address.street, address.number, address.neighborhood].map(normalizeText).join('|');
 
@@ -120,20 +156,6 @@ export class CustomerRepository {
     }
   }
 
-  async saveCpf(customerId: number, cpf: string): Promise<void> {
-    try {
-      await this.revgas.customers.update(customerId, { cpf: digitsOnly(cpf) });
-    } catch (error) {
-      if (error instanceof RevgasDuplicateError) {
-        throw new CpfTakenError(error.message);
-      }
-      if (error instanceof RevgasValidationError) {
-        throw new CustomerRejectedError(error.message);
-      }
-      throw error;
-    }
-  }
-
   async history(customerId: number): Promise<CustomerHistory> {
     const [customer, sales] = await Promise.all([
       this.revgas.customers.get(customerId),
@@ -156,6 +178,7 @@ export class CustomerRepository {
     const productIds = [
       ...new Set(sales.data.flatMap(sale => (sale.products ?? []).map(item => item.product_id))),
     ];
-    return { addresses, productIds };
+    const lastOrder = toLastOrder(sales.data);
+    return lastOrder ? { addresses, productIds, lastOrder } : { addresses, productIds };
   }
 }

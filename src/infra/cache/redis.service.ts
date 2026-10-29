@@ -7,6 +7,9 @@ import { REDIS } from './redis.client';
 const DELETE_IF_EQUALS =
   "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
 
+const CLAIM_IF_SCORE_EQUALS =
+  "if redis.call('zscore', KEYS[1], ARGV[1]) == ARGV[2] then return redis.call('zrem', KEYS[1], ARGV[1]) else return 0 end";
+
 @Injectable()
 export class RedisService implements ICacheClient, OnApplicationShutdown {
   constructor(
@@ -86,6 +89,61 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       this.logger.error({ component: 'cache', err: error, prefix }, 'Cache deleteIfEquals error');
       return false;
     }
+  }
+
+  async setKeepTtl(params: CacheGetParams & { value: unknown }): Promise<void> {
+    const { key, prefix, value } = params;
+    await this.redis.set(this._makePrefix(key, prefix), JSON.stringify(value), 'KEEPTTL', 'XX');
+  }
+
+  async increment(params: CacheGetParams & { ttl: number }): Promise<number> {
+    const { key, prefix, ttl } = params;
+    const keyWithPrefix = this._makePrefix(key, prefix);
+    const count = await this.redis.incr(keyWithPrefix);
+    if (count === 1) {
+      await this.redis.expire(keyWithPrefix, ttl);
+    }
+    return count;
+  }
+
+  async scheduleAdd(params: { set: string; member: string; at: number }): Promise<void> {
+    await this.redis.zadd(params.set, params.at, params.member);
+  }
+
+  async scheduleDue(params: {
+    set: string;
+    upTo: number;
+    limit: number;
+  }): Promise<{ member: string; at: number }[]> {
+    const flat = await this.redis.zrangebyscore(
+      params.set,
+      '-inf',
+      params.upTo,
+      'WITHSCORES',
+      'LIMIT',
+      0,
+      params.limit,
+    );
+    const due: { member: string; at: number }[] = [];
+    for (let i = 0; i < flat.length; i += 2) {
+      due.push({ member: flat[i], at: Number(flat[i + 1]) });
+    }
+    return due;
+  }
+
+  async scheduleClaim(params: { set: string; member: string; at: number }): Promise<boolean> {
+    const result = await this.redis.eval(
+      CLAIM_IF_SCORE_EQUALS,
+      1,
+      params.set,
+      params.member,
+      String(params.at),
+    );
+    return result === 1;
+  }
+
+  async scheduleRemove(params: { set: string; member: string }): Promise<void> {
+    await this.redis.zrem(params.set, params.member);
   }
 
   async clear(prefix: string): Promise<void> {

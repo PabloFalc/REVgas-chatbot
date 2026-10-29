@@ -44,8 +44,11 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
       return phone === FAKE_PHONE ? customer : null;
     },
     createCustomer: record('createCustomer', { ...customer, id: 2 }),
-    saveCpf: record('saveCpf', undefined),
     customerHistory: record('customerHistory', { addresses, productIds: [2] }),
+    isVerified: record('isVerified', true),
+    markVerified: record('markVerified', undefined),
+    registerCpfMismatch: record('registerCpfMismatch', 1),
+    isBlocked: record('isBlocked', false),
     addressFromCep: record('addressFromCep', { ...addresses[0], number: undefined }),
     addressFromText: record('addressFromText', addresses[0]),
     interpret: record('interpret', null as Interpretation | null),

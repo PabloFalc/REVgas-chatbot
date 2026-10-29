@@ -14,9 +14,17 @@ export interface NewCustomer {
   address: Address;
 }
 
+export interface LastOrder {
+  productId: number;
+  quantity: number;
+  paymentType: string;
+  address: Address;
+}
+
 export interface CustomerHistory {
   addresses: Address[];
   productIds: number[];
+  lastOrder?: LastOrder;
 }
 
 export class CpfTakenError extends Error {

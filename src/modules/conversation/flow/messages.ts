@@ -1,7 +1,7 @@
 import type { Address } from 'src/modules/address/contracts/address.types';
 import type { Product } from 'src/modules/catalog/contracts/catalog.types';
 import { formatMoney } from 'src/utils/money';
-import type { OrderState } from './flow.types';
+import type { OrderState, RepeatOffer } from './flow.types';
 
 function storeContact(phone?: string): string {
   return phone ? `Fale com a revenda: ${phone}.` : 'Fale direto com a revenda.';
@@ -27,11 +27,19 @@ export const msg = {
   welcomeNew:
     'Olá! Ainda não te conhecemos. Para fazer seu pedido, preciso de alguns dados.\nQual é o seu nome completo?',
   welcomeBack: (name: string) => `Olá, ${name}! Vamos fazer seu pedido.`,
+  offerRepeat: (offer: RepeatOffer) =>
+    `Quer repetir seu último pedido?\n${offer.quantity}× ${offer.product.name} · ${offer.payment.label}\n${addressLabel(offer.address)}`,
+  repeatOrder: 'Repetir',
+  newOrder: 'Novo pedido',
   askName: 'Qual é o seu nome completo?',
   invalidName: 'Preciso do nome completo, com nome e sobrenome. Qual é o seu nome?',
   askCpf: 'Agora seu CPF (só números):',
   invalidCpf: 'Esse CPF não parece válido. Confira e mande de novo (só números).',
-  askMissingCpf: 'Para continuar, preciso do seu CPF (só números):',
+  askCpfPrefix: 'Olá! Para sua segurança, digite os 3 primeiros dígitos do seu CPF.',
+  cpfPrefixMismatch: 'Não confere. Digite os 3 primeiros dígitos do seu CPF.',
+  cpfPrefixFormat: 'Digite só os 3 primeiros dígitos do seu CPF.',
+  identityContactStore: (phone?: string) =>
+    `Não consegui confirmar seus dados por aqui. ${storeContact(phone)}`,
   cpfTaken: (phone?: string) =>
     `Esse CPF já tem cadastro com outro telefone. ${storeContact(phone)}`,
   registerFailed:
@@ -95,6 +103,7 @@ export const msg = {
   noted: (parts: string[]) => `Anotado: ${parts.join(', ')}.`,
   textOnly: 'Por enquanto só entendo texto e os botões.',
   unavailable: 'Estou com instabilidade agora, tenta de novo em instantes.',
+  reminder: 'Ainda está aí? Seu pedido fica guardado por mais 5 minutos.',
   addressLabel,
   addressFull,
 };
