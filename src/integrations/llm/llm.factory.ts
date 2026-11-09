@@ -51,7 +51,7 @@ export function createEmbeddingClient(
         'Cliente de embedding simulado em produção (LLM_MODE=fake): a busca na base de conhecimento fica desligada',
       );
     }
-    return new FakeEmbeddingClient({ dimensions: config.dimensions, model: config.model });
+    return new FakeEmbeddingClient({ dimensions: config.dimensions });
   }
 
   return new OpenAiCompatibleEmbeddingClient({

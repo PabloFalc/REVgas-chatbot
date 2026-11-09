@@ -52,11 +52,11 @@ const embeddingConfig = (overrides: Partial<EmbeddingConfig> = {}): EmbeddingCon
 });
 
 describe('createEmbeddingClient', () => {
-  it('mode fake → FakeEmbeddingClient com model e dimensions da config', () => {
+  it("mode fake → FakeEmbeddingClient com model 'fake' e a dimensão configurada", () => {
     const client = createEmbeddingClient(embeddingConfig({ dimensions: 64, model: 'm' }));
     expect(client).toBeInstanceOf(FakeEmbeddingClient);
     expect(client.dimensions).toBe(64);
-    expect(client.model).toBe('m');
+    expect(client.model).toBe('fake');
   });
 
   it('mode live → OpenAiCompatibleEmbeddingClient', () => {
