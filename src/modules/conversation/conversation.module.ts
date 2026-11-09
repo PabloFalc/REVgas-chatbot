@@ -8,6 +8,7 @@ import { AddressModule } from '../address/address.module';
 import { AssistantModule } from '../assistant/assistant.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { CustomerModule } from '../customer/customer.module';
+import { HandoffModule } from '../handoff/handoff.module';
 import { OrderModule } from '../order/order.module';
 import { ConversationController } from './conversation.controller';
 import { ConversationRepository } from './conversation.repository';
@@ -28,6 +29,7 @@ import { ReminderScheduler } from './reminder.scheduler';
     RevgasModule,
     LlmModule,
     ViacepModule,
+    HandoffModule,
   ],
   controllers: [ConversationController],
   providers: [
