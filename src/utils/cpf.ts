@@ -24,3 +24,7 @@ const CPF_PATTERN = /(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)/g;
 export function removeCpfs(text: string): string {
   return text.replace(CPF_PATTERN, '');
 }
+
+export function hideCpfs(text: string): string {
+  return text.replace(CPF_PATTERN, '[CPF ocultado]');
+}

@@ -51,4 +51,23 @@ describe('envConfigSchema', () => {
     const env = envConfigSchema.parse({ ...base, REVGAS_ESTABLISHMENT_ID: '42' });
     expect(env.REVGAS_ESTABLISHMENT_ID).toBe(42);
   });
+
+  it('recusa SERVICE_HOURS inválido apontando o campo', () => {
+    const result = envConfigSchema.safeParse({ ...base, SERVICE_HOURS: 'seg 18:00-08:00' });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['SERVICE_HOURS']);
+  });
+
+  it('aceita SERVICE_HOURS válido', () => {
+    const result = envConfigSchema.safeParse({ ...base, SERVICE_HOURS: 'seg-sex 08:00-18:00' });
+    expect(result.success).toBe(true);
+  });
+
+  it('variáveis do Chatwoot: vazio vira indefinido e timeout tem default', () => {
+    const env = envConfigSchema.parse({ ...base, CHATWOOT_MODE: '', CHATWOOT_API_TOKEN: '' });
+    expect(env.CHATWOOT_MODE).toBeUndefined();
+    expect(env.CHATWOOT_API_TOKEN).toBeUndefined();
+    expect(env.CHATWOOT_TIMEOUT_MS).toBe(5000);
+    expect(env.CHATWOOT_URL).toBe('http://localhost:3000');
+  });
 });
