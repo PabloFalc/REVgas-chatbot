@@ -3,6 +3,7 @@ import { WhatsappRejectedError } from 'src/core/erros/whatsapp/whatsapp.errors';
 import { FakeWhatsappClient } from 'src/integrations/whatsapp/fake-whatsapp.client';
 import { textWebhook, webhookPayload } from 'src/integrations/whatsapp/testing/webhook.testing';
 import { parseWebhook } from 'src/integrations/whatsapp/webhook/webhook.parser';
+import type { HandoffService } from 'src/modules/handoff/handoff.service';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationRepository } from './conversation.repository';
 import { ConversationService } from './conversation.service';
@@ -41,6 +42,11 @@ function setup(whatsapp = new FakeWhatsappClient()) {
     withPhoneLock: vi.fn(async (_phone: string, work: () => Promise<unknown>) => work()),
   };
   const flowTools = { forPhone: vi.fn(() => createFakeTools()) };
+  const handoff = {
+    routeFor: vi.fn(async () => 'bot' as 'bot' | 'agent'),
+    forwardToAgent: vi.fn(async () => undefined),
+    recordTurn: vi.fn(async () => undefined),
+  };
   const logger = {
     setContext: vi.fn(),
     debug: vi.fn(),
@@ -52,9 +58,10 @@ function setup(whatsapp = new FakeWhatsappClient()) {
     repository as unknown as ConversationRepository,
     new MessagingGateway(whatsapp),
     flowTools as unknown as FlowToolsService,
+    handoff as unknown as HandoffService,
     logger as unknown as PinoLogger,
   );
-  return { service, repository, flowTools, whatsapp, logger };
+  return { service, repository, flowTools, whatsapp, logger, handoff };
 }
 
 describe('ConversationService.handle', () => {
@@ -343,5 +350,96 @@ describe('ConversationService lembrete', () => {
     expect(repository.clearOrder).toHaveBeenCalledWith('5586999991234');
     expect(repository.cancelReminder).toHaveBeenCalledWith('5586999991234');
     expect(repository.scheduleReminder).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConversationService atendente', () => {
+  it('rota agent: repassa ao atendente sem fluxo, pedido, lembrete nem resposta', async () => {
+    const { service, repository, whatsapp, handoff, logger } = setup();
+    handoff.routeFor.mockResolvedValueOnce('agent');
+
+    await service.handle(parseWebhook(textWebhook('preciso de ajuda', 'wamid.A1')));
+
+    expect(whatsapp.read).toEqual(['wamid.A1']);
+    expect(handoff.forwardToAgent).toHaveBeenCalledWith('5586999991234', {
+      type: 'text',
+      text: 'preciso de ajuda',
+    });
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toEqual([]);
+    expect(repository.saveOrder).not.toHaveBeenCalled();
+    expect(repository.clearOrder).not.toHaveBeenCalled();
+    expect(repository.scheduleReminder).not.toHaveBeenCalled();
+    expect(handoff.recordTurn).not.toHaveBeenCalled();
+    expect(JSON.stringify(logger.info.mock.calls)).not.toContain('preciso de ajuda');
+  });
+
+  it('forwardToAgent rejeitando é logado e não lança', async () => {
+    const { service, handoff, logger } = setup();
+    handoff.routeFor.mockResolvedValueOnce('agent');
+    handoff.forwardToAgent.mockRejectedValueOnce(new Error('desk fora'));
+
+    await expect(
+      service.handle(parseWebhook(textWebhook('oi', 'wamid.A2'))),
+    ).resolves.toBeUndefined();
+
+    expect(logger.warn).toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('turno normal: recordTurn roda depois do envio, com ciclo novo e respostas em texto', async () => {
+    const { service, whatsapp, handoff } = setup();
+    let sentWhenRecorded = -1;
+    handoff.recordTurn.mockImplementationOnce(async () => {
+      sentWhenRecorded = whatsapp.sent.length;
+    });
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.A3')));
+
+    expect(sentWhenRecorded).toBe(1);
+    expect(handoff.recordTurn).toHaveBeenCalledWith({
+      phone: '5586999991234',
+      name: expect.anything(),
+      inbound: { type: 'text', text: 'oi' },
+      sensitive: false,
+      botMessages: ['olá'],
+      newCycle: true,
+      ended: false,
+      saleId: undefined,
+    });
+  });
+
+  it('pedido em askCpf marca o turno como sensível e não é ciclo novo', async () => {
+    const { service, repository, handoff } = setup();
+    repository.loadOrder.mockResolvedValueOnce({ step: 'askCpf', customer: {} });
+
+    await service.handle(parseWebhook(textWebhook('12345678909', 'wamid.A4')));
+
+    expect(handoff.recordTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sensitive: true, newCycle: false }),
+    );
+  });
+
+  it('fim do pedido e venda seguem para o espelho', async () => {
+    const { service, handoff } = setup();
+    runFlowMock.mockResolvedValueOnce({ state: null, replies: [text('ok')], saleId: 9 });
+
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.A5')));
+
+    expect(handoff.recordTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ ended: true, saleId: 9 }),
+    );
+  });
+
+  it('recordTurn rejeitando não impede o envio nem lança', async () => {
+    const { service, whatsapp, handoff, logger } = setup();
+    handoff.recordTurn.mockRejectedValueOnce(new Error('desk fora'));
+
+    await expect(
+      service.handle(parseWebhook(textWebhook('oi', 'wamid.A6'))),
+    ).resolves.toBeUndefined();
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(logger.warn).toHaveBeenCalled();
   });
 });
