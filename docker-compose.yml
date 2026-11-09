@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: revgas-pg
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-docker}

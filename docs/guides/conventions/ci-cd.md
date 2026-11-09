@@ -33,7 +33,7 @@ Jobs (rodam em paralelo):
 |---|---|---|
 | `lint` | `pnpm lint` (Biome) | Não |
 | `unit-tests` | `pnpm test` (Vitest) | **Não** — os `*.spec.ts` mockam tudo |
-| `e2e-tests` | `pnpm db:push` + `pnpm test:e2e` | **Sim** — Postgres 17 + Redis 7 (services) |
+| `e2e-tests` | `pnpm db:migrate` + `pnpm test:e2e` | **Sim** — Postgres 17 (pgvector) + Redis 7 (services) |
 
 - **Env de teste inline** (`env:` no topo): `NODE_ENV=test`, secrets de teste, `DATABASE_URL`
   apontando para o Postgres efêmero etc. **Não são segredos reais** — são serviços locais do
