@@ -5,8 +5,6 @@ import {
   LlmUnavailableError,
   mapLlmError,
 } from '../../core/erros/llm/llm.errors';
-import { isTimeoutError } from '../../utils/guards';
-import { parseJsonOrText } from '../../utils/parse-json';
 import type { LlmClient, LlmLogger } from './llm.client';
 import {
   type ChatCompletion,
@@ -17,6 +15,7 @@ import {
   type LlmTextResult,
   type LlmUsage,
 } from './llm.schemas';
+import { postJson } from './shared/llm-http';
 import { parseLlmObject, toResponseJsonSchema } from './shared/llm-output';
 
 export type OpenAiCompatibleOptions = {
@@ -28,10 +27,6 @@ export type OpenAiCompatibleOptions = {
   fetch?: typeof fetch;
   now?: () => number;
 };
-
-type Outcome =
-  | { kind: 'response'; ok: boolean; status: number; body: unknown }
-  | { kind: 'failure'; timedOut: boolean };
 
 type Completed = {
   content: string;
@@ -119,7 +114,13 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
     body: Record<string, unknown>,
   ): Promise<Completed> {
     const startedAt = this.now();
-    const outcome = await this.post(body, request.timeoutMs ?? this.timeoutMs);
+    const outcome = await postJson({
+      url: this.url,
+      apiKey: this.apiKey,
+      body,
+      timeoutMs: request.timeoutMs ?? this.timeoutMs,
+      fetch: this.fetchFn,
+    });
     const durationMs = this.now() - startedAt;
     const { operation } = request;
 
@@ -233,23 +234,5 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
       },
       'llm request',
     );
-  }
-
-  private async post(body: Record<string, unknown>, timeoutMs: number): Promise<Outcome> {
-    try {
-      const response = await this.fetchFn(this.url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      const parsed = parseJsonOrText(await response.text());
-      return { kind: 'response', ok: response.ok, status: response.status, body: parsed };
-    } catch (error) {
-      return { kind: 'failure', timedOut: isTimeoutError(error) };
-    }
   }
 }

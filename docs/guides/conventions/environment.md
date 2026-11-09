@@ -125,6 +125,20 @@ Chave gratuita em [aistudio.google.com](https://aistudio.google.com) (plano grat
 
 > `live` exige a chave (checagem em `resolveLlmConfig`), então o app sobe em `fake` sem nada configurado. `fake` em produção só loga um aviso e o bot fica só com botões. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
 
+## Embedding (busca semântica da base de conhecimento)
+
+Usa a mesma API compatível com OpenAI do LLM (`POST {URL}/embeddings`). O modo segue `LLM_MODE`.
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `EMBEDDING_API_URL` | Não | vazio = `LLM_API_URL` | URL base da API de embedding. Validada como URL; a barra final é removida. |
+| `EMBEDDING_API_KEY` | Não | vazio = `LLM_API_KEY` | Chave da API de embedding. **Segredo, fica só no servidor**: nunca em log, erro, resposta HTTP ou prompt. |
+| `EMBEDDING_MODEL` | Não | `gemini-embedding-001` | Nome do modelo enviado em cada chamada. Trocar exige reingerir a base (`pnpm kb:ingest`). |
+| `EMBEDDING_DIMENSIONS` | Não | `768` | Tamanho do vetor (inteiro positivo). Se mudar, a coluna do banco precisa de migration e a base deve ser reingerida. |
+| `EMBEDDING_BATCH_SIZE` | Não | `16` | Textos por chamada (1 a 100). Lotes maiores são divididos em chamadas em sequência. |
+
+> Em `live`, é preciso `EMBEDDING_API_KEY` ou `LLM_API_KEY` (checagem em `resolveEmbeddingConfig`). O timeout é o `LLM_TIMEOUT_MS`. Os testes e2e forçam `fake` via `LLM_MODE` (`vitest.config.e2e.ts`).
+
 ## ViaCEP (consulta de CEP)
 
 API pública e gratuita, sem chave. Detalhes em `docs/guides/integrations/viacep.md`.

@@ -18,14 +18,17 @@ IA (`interpretar()`, FAQ, resumo de handoff) ficam no módulo que consome, não 
 
 ```
 src/integrations/llm/
-  shared/        llm.config (modo e variáveis), llm-output (tira cerca de código, JSON.parse, valida no schema)
+  shared/        llm.config e embedding.config (modo e variáveis), llm-http (POST JSON com timeout), llm-output (tira cerca de código, JSON.parse, valida no schema)
   testing/       llm.testing.ts (respostas HTTP prontas; só para testes, fora do build)
   llm.client.ts                    interface LlmClient e token LLM_CLIENT
   llm.schemas.ts                   pedidos/resultados e o envelope da resposta (Zod)
   openai-compatible-llm.client.ts  cliente real (POST /chat/completions)
   fake-llm.client.ts               simulador em memória, programável
-  llm.factory.ts                   createLlmClient
-  llm.module.ts                    LlmModule (provê LLM_CLIENT)
+  embedding.client.ts / embedding.schemas.ts   interface EmbeddingClient, token EMBEDDING_CLIENT, pedido/resultado e envelope
+  openai-compatible-embedding.client.ts        cliente real (POST /embeddings)
+  fake-embedding.client.ts                     simulador determinístico
+  llm.factory.ts                   createLlmClient e createEmbeddingClient
+  llm.module.ts                    LlmModule (provê LLM_CLIENT e EMBEDDING_CLIENT)
 
 src/core/erros/llm/llm.errors.ts   LlmError + subclasses + mapLlmError(status, body)
 scripts/llm.live-check.spec.ts     pnpm llm:check
@@ -43,6 +46,21 @@ Padrão (variável vazia): `live` se houver `LLM_API_KEY`, senão `fake`. Por is
 a IA fica desligada e o bot segue pelos botões. Em produção, `fake` só loga um aviso. Os testes
 e2e forçam `fake` (`vitest.config.e2e.ts`). Variáveis:
 [environment.md](../conventions/environment.md).
+
+## Embeddings
+
+Além do chat, a camada oferece `EmbeddingClient.embed({ operation, input, timeoutMs? })`, que
+transforma textos em vetores para a busca semântica da base de conhecimento (token
+`EMBEDDING_CLIENT`, exportado pelo `LlmModule`). Usa `POST {URL}/embeddings` com `model`, `input` e
+`dimensions`, só com `fetch` e Zod.
+
+- **Modo.** Segue `LLM_MODE`. Vazio: `live` se houver `EMBEDDING_API_KEY` ou `LLM_API_KEY`, senão `fake`. URL e chave caem em `LLM_API_URL`/`LLM_API_KEY` quando as `EMBEDDING_*` não existem. Timeout: `LLM_TIMEOUT_MS`. Variáveis: [environment.md](../conventions/environment.md).
+- **Fake.** `FakeEmbeddingClient` funciona sem programar nada: gera um vetor determinístico por texto (hash de cada palavra, sem acento nem caixa, normalizado), então textos com palavras em comum ficam mais próximos. `queueError` faz só a próxima chamada falhar; `calls` registra `operation` e `input`; `vectorFor(texto)` dá o vetor de um texto. Padrões: modelo `'fake'`, 768 dimensões. Em produção, `fake` só loga um aviso.
+- **Lote.** O cliente real divide a entrada em blocos de `EMBEDDING_BATCH_SIZE`, um POST por bloco, em sequência e sem retry; `embed` aceita qualquer tamanho de entrada e devolve os vetores na ordem dos textos. Entrada vazia devolve `[]` sem chamar a API.
+- **Dimensão.** O pedido leva `dimensions`, mas a documentação de compatibilidade do Gemini não confirma esse parâmetro. Por isso o cliente valida cada vetor: **maior** que `EMBEDDING_DIMENSIONS` é cortado e renormalizado; **menor** vira `LlmResponseError`. Todo vetor devolvido tem norma 1. Vetor todo zero, quantidade de vetores diferente da de textos ou envelope fora do formato também viram `LlmResponseError`.
+- **Erros** são os mesmos do chat (`mapLlmError`): 429 `LlmRateLimitedError`, timeout e falha de rede `LlmUnavailableError`.
+- **Log** (`component: 'llm'`): `operation`, `model`, `status`, `durationMs`, `inputTokens` e `inputs` (a contagem de textos). Nunca o texto nem a chave.
+- **Trocar de modelo** gera vetores incompatíveis com os já guardados: rode `pnpm kb:ingest` de novo. Se a dimensão mudar, a coluna do banco precisa de migration antes.
 
 ## Obter a chave (Google AI Studio)
 

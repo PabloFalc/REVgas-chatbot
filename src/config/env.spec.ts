@@ -51,4 +51,27 @@ describe('envConfigSchema', () => {
     const env = envConfigSchema.parse({ ...base, REVGAS_ESTABLISHMENT_ID: '42' });
     expect(env.REVGAS_ESTABLISHMENT_ID).toBe(42);
   });
+
+  it('recusa EMBEDDING_BATCH_SIZE fora de 1..100 e EMBEDDING_DIMENSIONS inválido', () => {
+    expect(envConfigSchema.safeParse({ ...base, EMBEDDING_BATCH_SIZE: '0' }).success).toBe(false);
+    expect(envConfigSchema.safeParse({ ...base, EMBEDDING_BATCH_SIZE: '101' }).success).toBe(false);
+    expect(envConfigSchema.safeParse({ ...base, EMBEDDING_DIMENSIONS: 'abc' }).success).toBe(false);
+    expect(envConfigSchema.safeParse({ ...base, EMBEDDING_DIMENSIONS: '0' }).success).toBe(false);
+  });
+
+  it('EMBEDDING_* vazios usam os defaults', () => {
+    const env = envConfigSchema.parse({
+      ...base,
+      EMBEDDING_API_URL: '',
+      EMBEDDING_API_KEY: '',
+      EMBEDDING_MODEL: '',
+      EMBEDDING_DIMENSIONS: '',
+      EMBEDDING_BATCH_SIZE: '',
+    });
+    expect(env.EMBEDDING_API_URL).toBeUndefined();
+    expect(env.EMBEDDING_API_KEY).toBeUndefined();
+    expect(env.EMBEDDING_MODEL).toBe('gemini-embedding-001');
+    expect(env.EMBEDDING_DIMENSIONS).toBe(768);
+    expect(env.EMBEDDING_BATCH_SIZE).toBe(16);
+  });
 });

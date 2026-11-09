@@ -92,6 +92,22 @@ export const envConfigSchema = z
       z.coerce.number().int().positive().default(8_000),
     ),
 
+    // EMBEDDING (busca semantica da base de conhecimento; cai nas variaveis LLM_*)
+    EMBEDDING_API_URL: z.preprocess(emptyAsUndefined, z.url().optional()),
+    EMBEDDING_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
+    EMBEDDING_MODEL: z.preprocess(
+      emptyAsUndefined,
+      z.string().min(1).default('gemini-embedding-001'),
+    ),
+    EMBEDDING_DIMENSIONS: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().default(768),
+    ),
+    EMBEDDING_BATCH_SIZE: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().min(1).max(100).default(16),
+    ),
+
     // VIACEP (consulta de CEP, API publica sem chave)
     VIACEP_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'fake']).optional()),
     VIACEP_API_URL: z.preprocess(emptyAsUndefined, z.url().default('https://viacep.com.br/ws')),
