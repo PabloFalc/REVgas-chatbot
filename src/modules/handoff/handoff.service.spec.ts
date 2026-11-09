@@ -431,6 +431,45 @@ describe('HandoffService', () => {
       expect(await service.routeFor(PHONE)).toBe('bot');
       expect(states.size).toBe(0);
     });
+
+    it('mensagem do atendente em active vencido não expira o próprio handoff', async () => {
+      const { service, client, states, threads, id } = await expiredSetup({
+        status: 'active',
+        reason: 'agent',
+        since: minutesAgo(48 * 60),
+        lastAgentAt: minutesAgo(24 * 60 + 1),
+      });
+      await expect(service.markAgentMessage(PHONE, id)).resolves.toEqual({ becameActive: false });
+      const conversation = client.conversations.get(id);
+      expect(conversation?.messages.some(message => message.content === EXPIRED_NOTE)).toBe(false);
+      expect(conversation?.status).toBe('open');
+      expect(states.get(PHONE)).toEqual({
+        status: 'active',
+        conversationId: id,
+        reason: 'agent',
+        since: minutesAgo(48 * 60),
+        lastAgentAt: NOW.toISOString(),
+      });
+      expect(threads.get(PHONE)).toEqual({ conversationId: id });
+    });
+
+    it('mensagem do atendente em queued vencido vira active sem nota de expiração', async () => {
+      const { service, client, states, id } = await expiredSetup({
+        status: 'queued',
+        reason: 'customer_request',
+        since: minutesAgo(72 * 60 + 1),
+      });
+      await expect(service.markAgentMessage(PHONE, id)).resolves.toEqual({ becameActive: true });
+      const conversation = client.conversations.get(id);
+      expect(conversation?.messages.some(message => message.content === EXPIRED_NOTE)).toBe(false);
+      expect(conversation?.status).toBe('open');
+      expect(states.get(PHONE)).toMatchObject({
+        status: 'active',
+        conversationId: id,
+        reason: 'customer_request',
+        lastAgentAt: NOW.toISOString(),
+      });
+    });
   });
 
   describe('endFromDesk', () => {
