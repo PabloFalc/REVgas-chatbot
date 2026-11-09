@@ -9,7 +9,7 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_pgvector_data:/var/lib/postgresql/data
     healthcheck:
       test:
         [
@@ -37,5 +37,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  postgres_pgvector_data:
   redis_data:
