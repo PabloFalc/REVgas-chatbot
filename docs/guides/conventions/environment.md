@@ -139,6 +139,15 @@ Usa a mesma API compatível com OpenAI do LLM (`POST {URL}/embeddings`). O modo 
 
 > Em `live`, é preciso `EMBEDDING_API_KEY` ou `LLM_API_KEY` (checagem em `resolveEmbeddingConfig`). O timeout é o `LLM_TIMEOUT_MS`. Os testes e2e forçam `fake` via `LLM_MODE` (`vitest.config.e2e.ts`).
 
+## Knowledge (base de conhecimento)
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `KNOWLEDGE_DIR` | Não | `knowledge/base` | Pasta dos arquivos `.md` ingeridos por `pnpm kb:ingest` (relativa ao diretório de execução). |
+| `KNOWLEDGE_TOP_K` | Não | `3` | Máximo de trechos enviados à IA por pergunta (1 a 10). |
+| `KNOWLEDGE_MIN_SIMILARITY` | Não | `0.7` | Similaridade mínima (0 a 1) para um trecho valer só pelo vetor. Ainda não calibrado (`pnpm rag:check`). |
+| `KNOWLEDGE_MIN_SIMILARITY_TEXT` | Não | `0.6` | Similaridade mínima (0 a 1) quando o trecho também casa na busca por texto. Não pode ser maior que `KNOWLEDGE_MIN_SIMILARITY`. |
+
 ## ViaCEP (consulta de CEP)
 
 API pública e gratuita, sem chave. Detalhes em `docs/guides/integrations/viacep.md`.

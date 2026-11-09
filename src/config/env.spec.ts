@@ -59,6 +59,22 @@ describe('envConfigSchema', () => {
     expect(envConfigSchema.safeParse({ ...base, EMBEDDING_DIMENSIONS: '0' }).success).toBe(false);
   });
 
+  it('aplica defaults da base de conhecimento e valida faixas', () => {
+    const env = envConfigSchema.parse({ ...base, KNOWLEDGE_DIR: '', KNOWLEDGE_TOP_K: '' });
+    expect(env.KNOWLEDGE_DIR).toBe('knowledge/base');
+    expect(env.KNOWLEDGE_TOP_K).toBe(3);
+    expect(env.KNOWLEDGE_MIN_SIMILARITY).toBe(0.7);
+    expect(env.KNOWLEDGE_MIN_SIMILARITY_TEXT).toBe(0.6);
+    expect(envConfigSchema.safeParse({ ...base, KNOWLEDGE_TOP_K: '0' }).success).toBe(false);
+    expect(envConfigSchema.safeParse({ ...base, KNOWLEDGE_TOP_K: '11' }).success).toBe(false);
+    expect(envConfigSchema.safeParse({ ...base, KNOWLEDGE_MIN_SIMILARITY: '1.5' }).success).toBe(
+      false,
+    );
+    expect(
+      envConfigSchema.safeParse({ ...base, KNOWLEDGE_MIN_SIMILARITY_TEXT: '-0.1' }).success,
+    ).toBe(false);
+  });
+
   it('EMBEDDING_* vazios usam os defaults', () => {
     const env = envConfigSchema.parse({
       ...base,

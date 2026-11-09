@@ -108,6 +108,21 @@ export const envConfigSchema = z
       z.coerce.number().int().min(1).max(100).default(16),
     ),
 
+    // KNOWLEDGE (base de conhecimento; limiares ainda nao calibrados, ver pnpm rag:check)
+    KNOWLEDGE_DIR: z.preprocess(emptyAsUndefined, z.string().min(1).default('knowledge/base')),
+    KNOWLEDGE_TOP_K: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().min(1).max(10).default(3),
+    ),
+    KNOWLEDGE_MIN_SIMILARITY: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().min(0).max(1).default(0.7),
+    ),
+    KNOWLEDGE_MIN_SIMILARITY_TEXT: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().min(0).max(1).default(0.6),
+    ),
+
     // VIACEP (consulta de CEP, API publica sem chave)
     VIACEP_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'fake']).optional()),
     VIACEP_API_URL: z.preprocess(emptyAsUndefined, z.url().default('https://viacep.com.br/ws')),
