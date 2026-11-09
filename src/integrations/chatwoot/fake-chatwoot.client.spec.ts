@@ -47,4 +47,18 @@ describe('FakeChatwootClient', () => {
     client.clear();
     expect(client.contacts).toHaveLength(0);
   });
+
+  it('usa o inboxId configurado como chave de sourceIds', async () => {
+    const client = new FakeChatwootClient({ inboxId: 7 });
+    await client.createContact({
+      name: 'A',
+      identifier: '5586999991234',
+      phoneNumber: '+5586999991234',
+      sourceId: 's1',
+    });
+    const contact = await client.findContact('5586999991234');
+    expect(contact?.sourceIds).toEqual({ 7: 's1' });
+    await client.createContactInbox(contact?.id as number, 's2');
+    expect((await client.findContact('5586999991234'))?.sourceIds).toEqual({ 7: 's2' });
+  });
 });

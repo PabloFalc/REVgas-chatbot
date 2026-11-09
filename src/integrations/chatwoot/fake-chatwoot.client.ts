@@ -20,6 +20,11 @@ export class FakeChatwootClient implements ChatwootClient {
   readonly conversations = new Map<number, FakeChatwootConversation>();
   private nextId = 1;
   private failing = false;
+  private readonly inboxId: number;
+
+  constructor(options: { inboxId?: number } = {}) {
+    this.inboxId = options.inboxId ?? 1;
+  }
 
   failNext(): void {
     this.failing = true;
@@ -45,7 +50,11 @@ export class FakeChatwootClient implements ChatwootClient {
   }): Promise<{ contactId: number; sourceId: string }> {
     this.maybeFail();
     const id = this.nextId++;
-    this.contacts.push({ id, identifier: input.identifier, sourceIds: { 1: input.sourceId } });
+    this.contacts.push({
+      id,
+      identifier: input.identifier,
+      sourceIds: { [this.inboxId]: input.sourceId },
+    });
     return { contactId: id, sourceId: input.sourceId };
   }
 
@@ -55,7 +64,7 @@ export class FakeChatwootClient implements ChatwootClient {
     if (!contact) {
       throw new ChatwootError('not_found', 'Contato não encontrado', 404);
     }
-    contact.sourceIds[1] = sourceId;
+    contact.sourceIds[this.inboxId] = sourceId;
     return { sourceId };
   }
 

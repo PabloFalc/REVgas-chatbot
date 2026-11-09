@@ -16,7 +16,7 @@ export function createChatwootClient(
     return null;
   }
   if (config.mode === 'fake') {
-    return new FakeChatwootClient();
+    return new FakeChatwootClient({ inboxId: config.inboxId });
   }
   return new HttpChatwootClient({
     baseUrl: config.baseUrl,

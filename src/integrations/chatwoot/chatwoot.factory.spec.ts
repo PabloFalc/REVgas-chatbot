@@ -24,6 +24,12 @@ describe('createChatwootClient', () => {
     expect(createChatwootClient({ ...base, mode: 'fake' })).toBeInstanceOf(FakeChatwootClient);
   });
 
+  it('passa o inboxId ao fake', async () => {
+    const client = createChatwootClient({ ...base, mode: 'fake' }) as FakeChatwootClient;
+    await client.createContact({ name: 'A', identifier: 'i', phoneNumber: '+1', sourceId: 's' });
+    expect((await client.findContact('i'))?.sourceIds).toEqual({ 2: 's' });
+  });
+
   it('cria o cliente real', () => {
     expect(createChatwootClient(base)).toBeInstanceOf(HttpChatwootClient);
   });
