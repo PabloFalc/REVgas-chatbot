@@ -30,6 +30,12 @@ describe('loadKnowledgeDocuments', () => {
     ]);
   });
 
+  it('caminho que é um arquivo lança KnowledgeIngestError', async () => {
+    const file = join(dir, 'a.md');
+    await writeFile(file, 'x');
+    await expect(loadKnowledgeDocuments(file)).rejects.toThrow(KnowledgeIngestError);
+  });
+
   it('pasta inexistente lança KnowledgeIngestError', async () => {
     const missing = join(dir, 'nao-existe');
     await expect(loadKnowledgeDocuments(missing)).rejects.toThrow(KnowledgeIngestError);

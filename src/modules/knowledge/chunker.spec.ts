@@ -67,6 +67,13 @@ describe('chunkDocument', () => {
     expect(chunkDocument(doc(crlf))).toEqual(chunkDocument(doc(lf)));
   });
 
+  it('ignora o BOM no início do arquivo', () => {
+    const text = '# R\n\n## Prazo\nAté 40 minutos.';
+    const chunks = chunkDocument(doc(`﻿${text}`));
+    expect(chunks).toEqual(chunkDocument(doc(text)));
+    expect(chunks[0].embeddingText.startsWith('R —')).toBe(true);
+  });
+
   it('hash muda quando o conteúdo muda e é estável entre chamadas', () => {
     const [a] = chunkDocument(doc('# R\n\n## Prazo\nAté 40 minutos.'));
     const [again] = chunkDocument(doc('# R\n\n## Prazo\nAté 40 minutos.'));

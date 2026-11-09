@@ -7,8 +7,12 @@ export async function loadKnowledgeDocuments(dir: string): Promise<KnowledgeDocu
   let entries: string[];
   try {
     entries = await readdir(dir, { recursive: true });
-  } catch {
-    throw new KnowledgeIngestError(`Pasta da base não encontrada: ${dir}`);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      throw new KnowledgeIngestError(`Pasta da base não encontrada: ${dir}`);
+    }
+    throw error;
   }
 
   const sources = entries

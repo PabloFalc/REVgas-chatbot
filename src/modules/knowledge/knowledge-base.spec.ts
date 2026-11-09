@@ -7,10 +7,14 @@ describe('base de conhecimento da revenda', () => {
   const load = async () =>
     chunkDocuments(await loadKnowledgeDocuments(resolve(process.cwd(), 'knowledge/base')));
 
-  it('tem de 10 a 15 trechos', async () => {
-    const chunks = await load();
-    expect(chunks.length).toBeGreaterThanOrEqual(10);
-    expect(chunks.length).toBeLessThanOrEqual(15);
+  it('tem exatamente 13 trechos', async () => {
+    expect(await load()).toHaveLength(13);
+  });
+
+  it('não tem horários', async () => {
+    for (const chunk of await load()) {
+      expect(chunk.content).not.toMatch(/\b\d{1,2}h\b|\b\d{1,2}:\d{2}\b/i);
+    }
   });
 
   it("nenhum trecho tem 'R$', '%' ou 'reais'", async () => {

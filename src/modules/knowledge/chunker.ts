@@ -59,7 +59,7 @@ function splitBody(body: string): string[] {
 }
 
 export function chunkDocument(doc: KnowledgeDocument): KnowledgeChunkDraft[] {
-  const lines = doc.markdown.replace(/\r\n?/g, '\n').split('\n');
+  const lines = doc.markdown.replace(/^﻿/, '').replace(/\r\n?/g, '\n').split('\n');
   const titleIndex = lines.findIndex(line => /^#\s+\S/.test(line));
   const docTitle =
     titleIndex >= 0 ? lines[titleIndex].replace(/^#\s+/, '').trim() : fileTitle(doc.source);
