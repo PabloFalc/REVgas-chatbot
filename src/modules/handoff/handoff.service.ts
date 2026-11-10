@@ -12,7 +12,13 @@ import type {
   HandoffStatus,
   ServiceHoursInfo,
 } from './contracts/handoff.types';
-import { EXPIRED_NOTE, handoffNote, saleNote, WINDOW_CLOSED_NOTE } from './contracts/handoff-note';
+import {
+  EMERGENCY_NOTE,
+  EXPIRED_NOTE,
+  handoffNote,
+  saleNote,
+  WINDOW_CLOSED_NOTE,
+} from './contracts/handoff-note';
 import { DeskGateway } from './desk.gateway';
 import { HandoffRepository } from './handoff.repository';
 
@@ -112,6 +118,9 @@ export class HandoffService {
     const { phone } = request;
     try {
       const state = await this.activeState(phone);
+      if (state && request.reason === 'emergency') {
+        await this.postEmergencyNote(phone, state.conversationId);
+      }
       if (state?.status === 'queued') return outcome('alreadyQueued');
       if (state?.status === 'active') return outcome('active');
       const conversationId = await this.ensureThread(phone);
@@ -151,6 +160,17 @@ export class HandoffService {
       await this.desk.postIncoming(state.conversationId, deskText(inbound, false));
     } catch (error) {
       this.warn(phone, error, 'Falha ao repassar mensagem ao atendente');
+    }
+  }
+
+  async flagEmergency(phone: string): Promise<void> {
+    if (!this.desk.enabled) return;
+    try {
+      const state = await this.activeState(phone);
+      if (!state) return;
+      await this.postEmergencyNote(phone, state.conversationId);
+    } catch (error) {
+      this.warn(phone, error, 'Falha ao avisar a emergência ao atendente');
     }
   }
 
@@ -259,6 +279,14 @@ export class HandoffService {
     await this.repo.clearState(phone);
     await this.repo.clearThread(phone);
     return null;
+  }
+
+  private async postEmergencyNote(phone: string, conversationId: number): Promise<void> {
+    try {
+      await this.desk.postNote(conversationId, EMERGENCY_NOTE);
+    } catch (error) {
+      this.warn(phone, error, 'Falha ao avisar a emergência ao atendente');
+    }
   }
 
   private async resolveStaleThread(phone: string): Promise<void> {

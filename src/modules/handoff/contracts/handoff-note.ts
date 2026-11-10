@@ -7,6 +7,8 @@ export const REASON_LABELS: Record<HandoffReason, string> = {
   emergency: 'Emergência: cliente relatou possível vazamento de gás',
 };
 
+export const EMERGENCY_NOTE = REASON_LABELS.emergency;
+
 export const EXPIRED_NOTE = 'Handoff expirado, o bot voltou a atender.';
 
 export const WINDOW_CLOSED_NOTE =

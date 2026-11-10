@@ -45,6 +45,7 @@ function setup(whatsapp = new FakeWhatsappClient()) {
   const handoff = {
     routeFor: vi.fn(async () => 'bot' as 'bot' | 'agent'),
     forwardToAgent: vi.fn(async () => undefined),
+    flagEmergency: vi.fn(async () => undefined),
     recordTurn: vi.fn(async () => undefined),
     noteWindowClosedFor: vi.fn(async () => undefined),
   };
@@ -416,6 +417,47 @@ describe('ConversationService atendente', () => {
     expect(repository.scheduleReminder).not.toHaveBeenCalled();
     expect(handoff.recordTurn).not.toHaveBeenCalled();
     expect(JSON.stringify(logger.info.mock.calls)).not.toContain('preciso de ajuda');
+  });
+
+  it('rota agent com vazamento: repassa, deixa a nota de emergência e não responde', async () => {
+    const { service, whatsapp, handoff, logger } = setup();
+    handoff.routeFor.mockResolvedValueOnce('agent');
+
+    await service.handle(parseWebhook(textWebhook('tem cheiro de gás aqui', 'wamid.E1')));
+
+    expect(handoff.forwardToAgent).toHaveBeenCalledWith('5586999991234', {
+      type: 'text',
+      text: 'tem cheiro de gás aqui',
+    });
+    expect(handoff.flagEmergency).toHaveBeenCalledWith('5586999991234');
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toEqual([]);
+    expect(JSON.stringify(logger.info.mock.calls)).not.toContain('cheiro');
+  });
+
+  it('rota agent com texto comum não deixa nota de emergência', async () => {
+    const { service, handoff } = setup();
+    handoff.routeFor.mockResolvedValueOnce('agent');
+
+    await service.handle(parseWebhook(textWebhook('pode ser amanhã?', 'wamid.E2')));
+
+    expect(handoff.forwardToAgent).toHaveBeenCalledOnce();
+    expect(handoff.flagEmergency).not.toHaveBeenCalled();
+  });
+
+  it('flagEmergency rejeitando é logado e não lança', async () => {
+    const { service, whatsapp, handoff, logger } = setup();
+    handoff.routeFor.mockResolvedValueOnce('agent');
+    handoff.flagEmergency.mockRejectedValueOnce(new Error('desk fora'));
+
+    await expect(
+      service.handle(parseWebhook(textWebhook('o botijão tá vazando', 'wamid.E3'))),
+    ).resolves.toBeUndefined();
+
+    expect(handoff.forwardToAgent).toHaveBeenCalledOnce();
+    expect(whatsapp.sent).toEqual([]);
+    expect(logger.warn).toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it('forwardToAgent rejeitando é logado e não lança', async () => {

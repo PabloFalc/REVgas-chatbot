@@ -12,6 +12,7 @@ import { maskPhone } from 'src/utils/mask';
 import type { IncomingContent, IncomingMessage, Reply } from './contracts/conversation.types';
 import { ConversationRepository } from './conversation.repository';
 import { WINDOW_CLOSED_CODE } from './desk-events.service';
+import { detectEmergency } from './flow/emergency';
 import { runFlow } from './flow/flow';
 import { CPF_STEPS, type OrderState, type StepResult, type ToolError } from './flow/flow.types';
 import { REMINDER_AFTER_MS } from './flow/reminder';
@@ -102,6 +103,9 @@ export class ConversationService {
       const inbound = toDeskInbound(incoming.content);
       if ((await this.handoff.routeFor(event.from)) === 'agent') {
         await this.forward(event.from, inbound, log);
+        if (inbound.type === 'text' && detectEmergency(inbound.text)) {
+          await this.flagEmergency(event.from, log);
+        }
         return;
       }
       const { replies, before, result } = await this.advance(incoming, log);
@@ -116,6 +120,15 @@ export class ConversationService {
       this.logger.info(log, 'Mensagem repassada ao atendente');
     } catch (error) {
       this.logger.warn({ ...log, error: errorInfo(error) }, 'Falha ao repassar ao atendente');
+    }
+  }
+
+  private async flagEmergency(phone: string, log: object): Promise<void> {
+    try {
+      await this.handoff.flagEmergency(phone);
+      this.logger.info(log, 'Emergência avisada ao atendente');
+    } catch (error) {
+      this.logger.warn({ ...log, error: errorInfo(error) }, 'Falha ao avisar a emergência');
     }
   }
 
