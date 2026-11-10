@@ -50,3 +50,29 @@ export interface IndexedChunk {
   model: string;
   dimensions: number;
 }
+
+export interface AnswerSource {
+  ref: string;
+  title: string;
+  content: string;
+}
+
+export interface DraftAnswer {
+  answer: string | null;
+  sources: string[];
+}
+
+export type AnswerRejection =
+  | 'empty'
+  | 'too_long'
+  | 'no_sources'
+  | 'unknown_source'
+  | 'money'
+  | 'percent'
+  | 'number_not_in_sources';
+
+export type KnowledgeAnswer =
+  | { kind: 'answered'; text: string; sources: string[] }
+  | { kind: 'unknown'; reason: 'no_match' | 'not_in_sources' | 'rejected' | 'unavailable' };
+
+export type SearchOutcome = { status: 'ok'; chunks: RankedChunk[] } | { status: 'unavailable' };
