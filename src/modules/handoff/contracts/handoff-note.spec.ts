@@ -67,7 +67,7 @@ describe('handoffNote', () => {
 
   it('sem resumo', () => {
     expect(handoffNote('customer_request', null)).toBe(
-      'Transferido para atendente\nMotivo: Cliente pediu atendente\nSem pedido em andamento.',
+      'Transferido para atendente\nMotivo: Cliente pediu atendente\nSem pedido em andamento.\nIdentidade não confirmada: confirme com o cliente antes de passar dados do pedido.',
     );
   });
 

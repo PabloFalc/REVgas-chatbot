@@ -15,9 +15,12 @@ export function saleNote(saleId: number): string {
   return `Venda #${saleId} criada pelo bot, saiu da fila.`;
 }
 
+const IDENTITY_UNCONFIRMED_LINE =
+  'Identidade não confirmada: confirme com o cliente antes de passar dados do pedido.';
+
 function summaryLines(summary: HandoffOrderSummary): string[] {
   if (!summary.identityConfirmed) {
-    return ['Identidade não confirmada: confirme com o cliente antes de passar dados do pedido.'];
+    return [IDENTITY_UNCONFIRMED_LINE];
   }
   const lines = [`Etapa: ${summary.stepLabel}`];
   if (summary.customerName) {
@@ -36,7 +39,7 @@ function summaryLines(summary: HandoffOrderSummary): string[] {
 export function handoffNote(reason: HandoffReason, summary: HandoffOrderSummary | null): string {
   const lines = ['Transferido para atendente', `Motivo: ${REASON_LABELS[reason]}`];
   if (!summary) {
-    lines.push('Sem pedido em andamento.');
+    lines.push('Sem pedido em andamento.', IDENTITY_UNCONFIRMED_LINE);
   } else {
     lines.push(...summaryLines(summary));
   }
