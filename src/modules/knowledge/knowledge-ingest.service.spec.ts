@@ -89,6 +89,7 @@ describe('KnowledgeIngestService', () => {
   });
 
   it('modelo diferente do gravado reprocessa tudo', async () => {
+    build(new FakeEmbeddingClient({ model: 'modelo-novo' }));
     await service.ingest([doc(['Um', 'Dois', 'Tres'])]);
     for (const [key, row] of repo.rows) repo.rows.set(key, { ...row, model: 'outro' });
     const report = await service.ingest([doc(['Um', 'Dois', 'Tres'])]);
@@ -121,6 +122,46 @@ describe('KnowledgeIngestService', () => {
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy.mock.calls[0][0]).toMatchObject({ operation: 'kb-ingest', timeoutMs: 30_000 });
     expect(spy.mock.calls[0][0].input).toHaveLength(2);
+  });
+
+  describe('modo fake sobre vetores reais', () => {
+    async function seedLive() {
+      await service.ingest([doc(['Um', 'Dois'])]);
+      for (const [key, row] of repo.rows) repo.rows.set(key, { ...row, model: 'text-embedding-3' });
+      repo.applyCalls.length = 0;
+      fake.clear();
+    }
+
+    it('recusa sem force e não chama embedding nem apply', async () => {
+      await seedLive();
+      const ingest = service.ingest([doc(['Um', 'Dois'])]);
+      await expect(ingest).rejects.toThrow(KnowledgeIngestError);
+      await expect(service.ingest([doc(['Um', 'Dois'])])).rejects.toThrow(
+        'Base indexada com outro modelo; o modo fake substituiria os vetores reais. Use --force para continuar.',
+      );
+      expect(fake.calls).toEqual([]);
+      expect(repo.applyCalls).toEqual([]);
+      expect([...repo.rows.values()].every(row => row.model === 'text-embedding-3')).toBe(true);
+    });
+
+    it('com force substitui os vetores', async () => {
+      await seedLive();
+      const report = await service.ingest([doc(['Um', 'Dois'])], { force: true });
+      expect(report).toMatchObject({ model: 'fake', updated: 2 });
+      expect([...repo.rows.values()].every(row => row.model === 'fake')).toBe(true);
+    });
+
+    it('índice só com vetores fake não precisa de force', async () => {
+      await service.ingest([doc(['Um'])]);
+      await expect(service.ingest([doc(['Um', 'Dois'])])).resolves.toMatchObject({ added: 1 });
+    });
+
+    it('modelo real sobre índice de outro modelo real não precisa de force', async () => {
+      build(new FakeEmbeddingClient({ model: 'text-embedding-4' }));
+      await service.ingest([doc(['Um'])]);
+      for (const [key, row] of repo.rows) repo.rows.set(key, { ...row, model: 'text-embedding-3' });
+      await expect(service.ingest([doc(['Um'])])).resolves.toMatchObject({ updated: 1 });
+    });
   });
 
   it('sem mudanças não chama apply', async () => {

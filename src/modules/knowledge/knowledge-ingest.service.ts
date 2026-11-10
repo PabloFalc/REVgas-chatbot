@@ -15,6 +15,11 @@ export interface IngestReport {
   removed: number;
 }
 
+export interface IngestOptions {
+  force?: boolean;
+}
+
+const FAKE_MODEL = 'fake';
 const INGEST_OPERATION = 'kb-ingest';
 const INGEST_TIMEOUT_MS = 30_000;
 
@@ -27,7 +32,7 @@ export class KnowledgeIngestService {
     private readonly embeddings: EmbeddingGateway,
   ) {}
 
-  async ingest(documents: KnowledgeDocument[]): Promise<IngestReport> {
+  async ingest(documents: KnowledgeDocument[], options: IngestOptions = {}): Promise<IngestReport> {
     if (this.embeddings.dimensions !== KNOWLEDGE_VECTOR_DIMENSIONS) {
       throw new KnowledgeIngestError(
         `O cliente de embedding gera ${this.embeddings.dimensions} dimensões, mas a tabela usa ${KNOWLEDGE_VECTOR_DIMENSIONS}. É preciso uma migration para trocar a dimensão.`,
@@ -42,6 +47,13 @@ export class KnowledgeIngestService {
     const model = this.embeddings.model;
     const dimensions = this.embeddings.dimensions;
     const indexed = await this.repository.listIndex();
+    const replacesLiveVectors =
+      model === FAKE_MODEL && indexed.some(item => item.model !== FAKE_MODEL);
+    if (replacesLiveVectors && !options.force) {
+      throw new KnowledgeIngestError(
+        'Base indexada com outro modelo; o modo fake substituiria os vetores reais. Use --force para continuar.',
+      );
+    }
     const indexedByKey = new Map(indexed.map(item => [item.key, item]));
 
     const changed = chunks.filter(chunk => {

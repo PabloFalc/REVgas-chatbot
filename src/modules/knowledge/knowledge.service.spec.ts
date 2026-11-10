@@ -92,6 +92,17 @@ describe('KnowledgeService', () => {
       expect(warnCalls()).toContainEqual({ component: 'knowledge', reason: 'no_match', chunks: 0 });
     });
 
+    it("índice vazio para o modelo → unknown no_match com log warn reason 'index_empty'", async () => {
+      repo.byVector = [];
+      repo.byText = [];
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'no_match',
+      });
+      expect(llm.calls).toEqual([]);
+      expect(warnCalls()).toEqual([{ component: 'knowledge', reason: 'index_empty', chunks: 0 }]);
+    });
+
     it("embedding falha → unknown unavailable, IA não chamada, log warn reason 'unavailable'", async () => {
       embeddings.queueError(new LlmUnavailableError('timeout'));
       await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
@@ -229,7 +240,7 @@ describe('KnowledgeService', () => {
       expect(llm.calls).toHaveLength(1);
       expect(JSON.stringify(embeddings.calls)).not.toContain('123');
       expect(JSON.stringify(llm.calls)).not.toContain('123');
-      expect(JSON.stringify(repo.queries.map(q => q.textQuery))).not.toContain('123');
+      expect(JSON.stringify(repo.queries.map(q => q.question))).not.toContain('123');
     });
 
     it.each([
@@ -258,7 +269,7 @@ describe('KnowledgeService', () => {
         await service.answerQuestion(`${mention}, vocês entregam no Jóquei?`);
         expect(embeddings.calls[0].input[0]).not.toMatch(/\d/);
         expect(llm.calls[0].messages[1].content).not.toMatch(/\d/);
-        expect(JSON.stringify(repo.queries.map(q => q.textQuery))).not.toMatch(/\d/);
+        expect(JSON.stringify(repo.queries.map(q => q.question))).not.toMatch(/\d/);
         expect(embeddings.calls[0].input[0]).toContain('Jóquei');
       },
     );
@@ -299,22 +310,31 @@ describe('KnowledgeService', () => {
       ]);
     });
 
-    it('manda o vetor, a textQuery e o modelo do embedding ao repositório', async () => {
+    it('manda o vetor, a pergunta higienizada e o modelo do embedding ao repositório', async () => {
       await service.search(QUESTION);
       expect(repo.queries).toEqual([
         {
           embedding: embeddings.vectorFor(QUESTION),
-          textQuery: 'entregam | joquei',
+          question: QUESTION,
           model: 'fake',
           limit: CANDIDATES_PER_LIST,
         },
       ]);
     });
 
-    it('search passa textQuery null quando a pergunta não tem termo útil e limit CANDIDATES_PER_LIST', async () => {
-      await service.search('oi, bom dia');
+    it('search manda a pergunta sem CPF ao repositório com limit CANDIDATES_PER_LIST', async () => {
+      await service.search('meu cpf 123.456.789-09, oi, bom dia');
       expect(repo.queries).toHaveLength(1);
-      expect(repo.queries[0]).toMatchObject({ textQuery: null, limit: CANDIDATES_PER_LIST });
+      expect(repo.queries[0]).toMatchObject({
+        question: 'meu cpf , oi, bom dia',
+        limit: CANDIDATES_PER_LIST,
+      });
+    });
+
+    it("índice vazio → lista vazia com log warn reason 'index_empty'", async () => {
+      repo.byVector = [];
+      await expect(service.search(QUESTION)).resolves.toEqual({ status: 'ok', chunks: [] });
+      expect(warnCalls()).toEqual([{ component: 'knowledge', reason: 'index_empty' }]);
     });
 
     it('falha do repositório → unavailable', async () => {
@@ -342,7 +362,7 @@ describe('KnowledgeService', () => {
     it('limpa CPF antes de embedar', async () => {
       await service.search('cpf 123.456.789-09 entregam no Jóquei');
       expect(JSON.stringify(embeddings.calls)).not.toContain('123');
-      expect(JSON.stringify(repo.queries.map(q => q.textQuery))).not.toContain('123');
+      expect(JSON.stringify(repo.queries.map(q => q.question))).not.toContain('123');
     });
   });
 });

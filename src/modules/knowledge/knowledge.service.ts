@@ -14,7 +14,7 @@ import { EmbeddingGateway } from './embedding.gateway';
 import { CANDIDATES_PER_LIST, fuseCandidates } from './fuse';
 import { KNOWLEDGE_CONFIG, type KnowledgeConfig } from './knowledge.config';
 import { KnowledgeRepository } from './knowledge.repository';
-import { MAX_QUESTION_CHARS, toTextQuery } from './search-query';
+import { MAX_QUESTION_CHARS } from './search-query';
 
 const SEARCH_OPERATION = 'kb-search';
 
@@ -22,7 +22,10 @@ type UnknownReason = Extract<KnowledgeAnswer, { kind: 'unknown' }>['reason'];
 
 type SearchResult =
   | Extract<SearchOutcome, { status: 'ok' }>
+  | { status: 'index_empty' }
   | { status: 'unavailable'; errorName: string };
+
+type LoggedReason = UnknownReason | 'index_empty';
 
 interface UnknownDetails {
   rejection?: AnswerRejection;
@@ -57,6 +60,10 @@ export class KnowledgeService {
 
     const result = await this.searchSanitized(clean);
     if (result.status === 'ok') return result;
+    if (result.status === 'index_empty') {
+      this.logger.warn({ component: 'knowledge', reason: 'index_empty' }, 'Base sem trechos');
+      return { status: 'ok', chunks: [] };
+    }
     this.logger.warn(
       { component: 'knowledge', reason: 'unavailable', errorName: result.errorName },
       'Busca na base indisponível',
@@ -72,6 +79,7 @@ export class KnowledgeService {
     if (result.status === 'unavailable') {
       return this.unknown('unavailable', 0, { errorName: result.errorName });
     }
+    if (result.status === 'index_empty') return this.unknown('no_match', 0, {}, 'index_empty');
     if (result.chunks.length === 0) return this.unknown('no_match', 0);
 
     const sources: AnswerSource[] = result.chunks.map((chunk, index) => ({
@@ -107,10 +115,11 @@ export class KnowledgeService {
       const [embedding] = await this.embeddings.embed([question], SEARCH_OPERATION);
       const { byVector, byText } = await this.repository.findCandidates({
         embedding,
-        textQuery: toTextQuery(question),
+        question,
         model: this.embeddings.model,
         limit: CANDIDATES_PER_LIST,
       });
+      if (byVector.length === 0) return { status: 'index_empty' };
       return { status: 'ok', chunks: fuseCandidates(byVector, byText, this.config) };
     } catch (error) {
       return { status: 'unavailable', errorName: nameOf(error) };
@@ -121,8 +130,12 @@ export class KnowledgeService {
     reason: UnknownReason,
     chunks: number,
     details: UnknownDetails = {},
+    logged: LoggedReason = reason,
   ): KnowledgeAnswer {
-    this.logger.warn({ component: 'knowledge', reason, ...details, chunks }, 'Dúvida sem resposta');
+    this.logger.warn(
+      { component: 'knowledge', reason: logged, ...details, chunks },
+      'Dúvida sem resposta',
+    );
     return { kind: 'unknown', reason };
   }
 }

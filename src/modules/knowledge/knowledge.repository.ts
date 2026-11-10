@@ -5,10 +5,11 @@ import { DRIZZLE } from 'src/infra/database/drizzle-client';
 import type * as schema from 'src/infra/database/schemas/index';
 import { knowledgeChunks } from 'src/infra/database/schemas/knowledge/knowledge-chunks.table';
 import type { Candidate, IndexedChunk, StoredChunk } from './contracts/knowledge.types';
+import { toTextQuery } from './search-query';
 
 export interface CandidateQuery {
   embedding: number[];
-  textQuery: string | null;
+  question: string;
   model: string;
   limit: number;
 }
@@ -81,25 +82,30 @@ export class KnowledgeRepository {
       similarity: sql<number>`1 - (${distance})`,
     };
     const sameModel = eq(knowledgeChunks.embeddingModel, query.model);
+    const textQuery = toTextQuery(query.question);
 
-    const vectorRows = await this.db
+    const vectorSearch = this.db
       .select(columns)
       .from(knowledgeChunks)
       .where(sameModel)
       .orderBy(distance)
       .limit(query.limit);
 
-    let textRows: typeof vectorRows = [];
-    if (query.textQuery) {
-      const tsQuery = sql`to_tsquery('portuguese', ${query.textQuery})`;
+    const textSearch = async (terms: string) => {
+      const tsQuery = sql`to_tsquery('portuguese', ${terms})`;
       const tsVector = sql`to_tsvector('portuguese', ${knowledgeChunks.searchText})`;
-      textRows = await this.db
+      return this.db
         .select(columns)
         .from(knowledgeChunks)
         .where(sql`${sameModel} and ${tsVector} @@ ${tsQuery}`)
         .orderBy(desc(sql`ts_rank_cd(${tsVector}, ${tsQuery})`))
         .limit(query.limit);
-    }
+    };
+
+    const [vectorRows, textRows] = await Promise.all([
+      vectorSearch,
+      textQuery ? textSearch(textQuery) : Promise.resolve([]),
+    ]);
 
     const toCandidate = (row: (typeof vectorRows)[number]): Candidate => ({
       ...row,

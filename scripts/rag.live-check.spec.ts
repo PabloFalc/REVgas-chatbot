@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { env } from '../src/config/env';
-import { db } from '../src/infra/database/drizzle-client';
+import { closeDatabasePool, db } from '../src/infra/database/drizzle-client';
 import { createEmbeddingClient, createLlmClient } from '../src/integrations/llm/llm.factory';
 import { resolveEmbeddingConfig } from '../src/integrations/llm/shared/embedding.config';
 import { resolveLlmConfig } from '../src/integrations/llm/shared/llm.config';
@@ -54,6 +54,10 @@ describe.skipIf(!(env.EMBEDDING_API_KEY ?? env.LLM_API_KEY))('RAG da base de con
       resolve(process.cwd(), 'knowledge/evaluation/questions.json'),
     );
   }, INGEST_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await closeDatabasePool();
+  });
 
   it(
     'responde as perguntas da checagem sem violações',

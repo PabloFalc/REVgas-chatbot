@@ -9,7 +9,6 @@ import { chunkDocuments } from 'src/modules/knowledge/chunker';
 import type { StoredChunk } from 'src/modules/knowledge/contracts/knowledge.types';
 import { KnowledgeRepository } from 'src/modules/knowledge/knowledge.repository';
 import { loadKnowledgeDocuments } from 'src/modules/knowledge/knowledge-files';
-import { toTextQuery } from 'src/modules/knowledge/search-query';
 
 const MODEL = 'fake-e2e';
 
@@ -86,7 +85,7 @@ describe('KnowledgeRepository (e2e)', () => {
   it('findCandidates por vetor traz o trecho mais parecido primeiro e similarity entre 0 e 1', async () => {
     const { byVector } = await repository.findCandidates({
       embedding: embedder.vectorFor('Prazo de entrega'),
-      textQuery: null,
+      question: 'oi, bom dia',
       model: MODEL,
       limit: 5,
     });
@@ -104,7 +103,7 @@ describe('KnowledgeRepository (e2e)', () => {
   it('busca textual acha termo exato sem acento', async () => {
     const vale = await repository.findCandidates({
       embedding: embedder.vectorFor('vale gas'),
-      textQuery: toTextQuery('vale gas'),
+      question: 'vale gas',
       model: MODEL,
       limit: 5,
     });
@@ -112,7 +111,7 @@ describe('KnowledgeRepository (e2e)', () => {
 
     const p45 = await repository.findCandidates({
       embedding: embedder.vectorFor('p45'),
-      textQuery: toTextQuery('p45'),
+      question: 'tem P-45?',
       model: MODEL,
       limit: 5,
     });
@@ -120,10 +119,10 @@ describe('KnowledgeRepository (e2e)', () => {
     expect(typeof p45.byText[0].similarity).toBe('number');
   });
 
-  it('textQuery null não roda a busca textual', async () => {
+  it('pergunta sem termo útil não roda a busca textual', async () => {
     const { byText } = await repository.findCandidates({
       embedding: embedder.vectorFor('vale gas'),
-      textQuery: null,
+      question: 'oi, bom dia?',
       model: MODEL,
       limit: 5,
     });
@@ -133,7 +132,7 @@ describe('KnowledgeRepository (e2e)', () => {
   it('trechos de outro modelo não aparecem', async () => {
     const { byVector, byText } = await repository.findCandidates({
       embedding: embedder.vectorFor('vale gas'),
-      textQuery: 'vale',
+      question: 'vale',
       model: 'fake-e2e-outro',
       limit: 5,
     });
