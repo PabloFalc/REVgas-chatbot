@@ -3,10 +3,12 @@ import { PinoLogger } from 'nestjs-pino';
 import { env } from 'src/config/env';
 import { WhatsappError } from 'src/core/erros/whatsapp/whatsapp.errors';
 import { maskPhone } from 'src/utils/mask';
+import { HandoffService } from '../handoff/handoff.service';
 import { ConversationRepository } from './conversation.repository';
 import { reminderFor } from './flow/reminder';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
+import { replyText } from './reply-text';
 
 const TICK_INTERVAL_MS = 30_000;
 
@@ -28,6 +30,7 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly conversations: ConversationRepository,
     private readonly messaging: MessagingGateway,
     private readonly flowTools: FlowToolsService,
+    private readonly handoff: HandoffService,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(ReminderScheduler.name);
@@ -90,6 +93,7 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
       await this.messaging.send(phone, reply);
     }
     if (result.state) await this.conversations.saveOrderKeepingTtl(phone, result.state);
+    await this.handoff.mirrorOutgoing(phone, result.replies.map(replyText));
     this.logger.info(
       { component: 'reminder', from: maskPhone(phone), step: state.step },
       'Lembrete enviado',

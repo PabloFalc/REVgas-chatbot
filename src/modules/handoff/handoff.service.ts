@@ -115,7 +115,10 @@ export class HandoffService {
       if (state?.status === 'queued') return outcome('alreadyQueued');
       if (state?.status === 'active') return outcome('active');
       const conversationId = await this.ensureThread(phone);
-      await this.desk.postNote(conversationId, hideCpfs(handoffNote(request.reason, request.summary)));
+      await this.desk.postNote(
+        conversationId,
+        hideCpfs(handoffNote(request.reason, request.summary)),
+      );
       await this.desk.setStatus(conversationId, 'open');
       await this.repo.saveState(phone, {
         status: 'queued',
@@ -173,6 +176,19 @@ export class HandoffService {
       }
     } catch (error) {
       this.warn(phone, error, 'Falha ao espelhar a conversa no Chatwoot');
+    }
+  }
+
+  async mirrorOutgoing(phone: string, texts: string[]): Promise<void> {
+    if (!this.desk.enabled) return;
+    try {
+      const thread = await this.repo.getThread(phone);
+      if (!thread) return;
+      for (const text of texts) {
+        await this.desk.postOutgoing(thread.conversationId, hideCpfs(text));
+      }
+    } catch (error) {
+      this.warn(phone, error, 'Falha ao espelhar o lembrete no Chatwoot');
     }
   }
 

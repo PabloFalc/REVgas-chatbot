@@ -217,6 +217,34 @@ describe('HandoffService', () => {
     });
   });
 
+  describe('mirrorOutgoing', () => {
+    it('espelha só quando já existe conversa e não cria conversa', async () => {
+      const { service, client, threads } = setup();
+      await service.mirrorOutgoing(PHONE, ['lembrete']);
+      expect(client.conversations.size).toBe(0);
+      const { id } = await client.createConversation({
+        contactId: 1,
+        sourceId: 's',
+        status: 'pending',
+      });
+      threads.set(PHONE, { conversationId: id });
+      await service.mirrorOutgoing(PHONE, ['a', 'b']);
+      const messages = client.conversations.get(id)?.messages ?? [];
+      expect(messages.map(m => m.content)).toEqual(['a', 'b']);
+      expect(messages.every(m => m.type === 'outgoing' && !m.private)).toBe(true);
+    });
+
+    it('não faz nada com o desk desativado e não lança em falha', async () => {
+      const off = setup({ disabled: true });
+      off.threads.set(PHONE, { conversationId: 1 });
+      await expect(off.service.mirrorOutgoing(PHONE, ['x'])).resolves.toBeUndefined();
+      const { service, client, threads } = setup();
+      threads.set(PHONE, { conversationId: 1 });
+      client.failNext();
+      await expect(service.mirrorOutgoing(PHONE, ['x'])).resolves.toBeUndefined();
+    });
+  });
+
   describe('serviceHours', () => {
     it('sem horário é sempre aberto', () => {
       expect(setup().service.serviceHours()).toEqual({

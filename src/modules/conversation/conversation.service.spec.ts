@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationRepository } from './conversation.repository';
 import { ConversationService } from './conversation.service';
 import { runFlow } from './flow/flow';
-import { type OrderState, ToolError } from './flow/flow.types';
+import { CPF_STEPS, type OrderState, ToolError } from './flow/flow.types';
 import { text } from './flow/replies';
 import { createFakeTools } from './flow/testing/fake-tools';
 import type { FlowToolsService } from './flow-tools';
@@ -460,6 +460,15 @@ describe('ConversationService atendente', () => {
     expect(handoff.recordTurn).toHaveBeenCalledWith(
       expect.objectContaining({ sensitive: true, newCycle: false }),
     );
+  });
+
+  it.each(CPF_STEPS)('pedido em %s marca o turno como sensível', async step => {
+    const { service, repository, handoff } = setup();
+    repository.loadOrder.mockResolvedValueOnce({ step, customer: {} } as OrderState);
+
+    await service.handle(parseWebhook(textWebhook('123', 'wamid.CPF')));
+
+    expect(handoff.recordTurn).toHaveBeenCalledWith(expect.objectContaining({ sensitive: true }));
   });
 
   it('fim do pedido e venda seguem para o espelho', async () => {
