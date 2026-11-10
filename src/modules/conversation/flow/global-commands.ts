@@ -1,11 +1,12 @@
 import { normalizeText } from 'src/utils/text';
+import { detectEmergency } from './emergency';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
-import { HANDOFF_CHOICE, handoff } from './handoff';
+import { HANDOFF_CHOICE, handoff, ORDER_START_CHOICE } from './handoff';
 import { textOf } from './input';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
 import { text as textReply } from './replies';
-import { start } from './steps';
+import { asks, start } from './steps';
 import { cancelAfterFailedSale } from './steps/summary.step';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
@@ -22,12 +23,24 @@ export async function globalCommand(
     return repeatQuestion(state, tools, textReply(msg.textOnly));
   }
 
+  const raw = textOf(input);
+  if (raw !== null && detectEmergency(raw)) {
+    const outcome = await handoff(state, input.phone, 'emergency', tools);
+    return { ...outcome, replies: [textReply(msg.emergency), ...outcome.replies] };
+  }
+
   if (input.content.type === 'choice' && input.content.id === HANDOFF_CHOICE) {
     const reason = state?.step === 'saleFailed' ? 'sale_failed' : 'customer_request';
     return handoff(state, input.phone, reason, tools);
   }
 
-  const raw = textOf(input);
+  if (input.content.type === 'choice' && input.content.id === ORDER_START_CHOICE) {
+    if (!state) return start(input, tools);
+    const ask = asks[state.step];
+    if (!ask) return { state, replies: [] };
+    return ask(state, tools);
+  }
+
   if (raw === null) return null;
   const text = normalizeText(raw);
 

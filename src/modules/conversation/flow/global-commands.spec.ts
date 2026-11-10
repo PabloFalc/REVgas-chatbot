@@ -150,6 +150,46 @@ describe('globalCommand', () => {
     expect(result?.replies).toEqual([text(msg.welcomeNew)]);
   });
 
+  it('emergência sem estado, no meio do pedido e em creatingSale: aviso + handoff, estado igual', async () => {
+    const creating: OrderState = { step: 'creatingSale', customer: {} };
+    for (const current of [null, state, creating]) {
+      const tools = createFakeTools();
+      const result = await globalCommand(current, say('o botijão está vazando!'), tools);
+      expect(result).toEqual({
+        state: current,
+        replies: [text(msg.emergency), text(msg.handoffQueued)],
+      });
+      expect(tools.calls.map(call => call.name)).toEqual(['requestHandoff']);
+      expect(tools.calls[0].args[0]).toMatchObject({ phone: FAKE_PHONE, reason: 'emergency' });
+    }
+  });
+
+  it('emergência vem antes de cancelar e de atendente', async () => {
+    const tools = createFakeTools();
+    const result = await globalCommand(state, say('atendente, vazamento de gás'), tools);
+    expect(result?.replies[0]).toEqual(text(msg.emergency));
+    expect(tools.calls[0].args[0]).toMatchObject({ reason: 'emergency' });
+  });
+
+  it('order:start sem estado começa o pedido', async () => {
+    const result = await globalCommand(
+      null,
+      { phone: '5500000000000', content: { type: 'choice', id: 'order:start' } },
+      createFakeTools(),
+    );
+    expect(result?.replies).toEqual([text(msg.welcomeNew)]);
+  });
+
+  it('order:start com estado repete a pergunta da etapa', async () => {
+    asks.askName = async current => ({ state: current, replies: [question] });
+    const result = await globalCommand(
+      state,
+      { phone: FAKE_PHONE, content: { type: 'choice', id: 'order:start' } },
+      createFakeTools(),
+    );
+    expect(result).toEqual({ state, replies: [question] });
+  });
+
   it('texto comum e botão não são comandos globais', async () => {
     const tools = createFakeTools();
     expect(await globalCommand(state, say('Maria da Silva'), tools)).toBeNull();

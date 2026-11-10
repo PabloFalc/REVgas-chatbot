@@ -32,6 +32,12 @@ const STEP_LABELS: Record<Step, string> = {
   saleFailed: 'Falha ao criar a venda',
 };
 
+export const ORDER_START_CHOICE = 'order:start';
+
+export function orderStartButton(): ReplyOption {
+  return { id: ORDER_START_CHOICE, title: msg.orderStart };
+}
+
 export function handoffButton(): ReplyOption {
   return { id: HANDOFF_CHOICE, title: msg.talkToAgent };
 }

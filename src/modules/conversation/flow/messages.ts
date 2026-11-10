@@ -107,6 +107,9 @@ export const msg = {
   cancelled: 'Pedido cancelado. É só mandar mensagem quando quiser pedir.',
   talkToStore: (phone?: string) => storeContact(phone),
   talkToAgent: 'Falar com atendente',
+  orderStart: 'Fazer pedido',
+  emergency:
+    'Se você sente cheiro de gás ou suspeita de vazamento: feche o registro do botijão, não acenda fogo nem mexa em interruptores ou tomadas, abra portas e janelas, saia do local e ligue para os Bombeiros no 193.',
   handoffQueued: 'Já chamei um atendente. Enquanto isso, posso continuar te ajudando por aqui.',
   handoffAlreadyQueued: 'Você já está na fila, um atendente vai te chamar.',
   handoffClosed: (opening: Opening | null) =>
