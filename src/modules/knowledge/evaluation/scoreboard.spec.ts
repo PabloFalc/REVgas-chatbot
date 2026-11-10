@@ -117,4 +117,23 @@ describe('formatScoreboard', () => {
     const board = scoreRun([result(offTopic, answered('bolo'))]);
     expect(formatScoreboard(board)).toContain('o1');
   });
+
+  it('emergency e price roteadas corretamente passam sem ficar pendentes', () => {
+    const emergency: EvalQuestion = { id: 'e1', group: 'emergency', question: 'cheiro de gas' };
+    const board = scoreRun([
+      { question: emergency, retrievedTitles: [], answer: null, routedCorrectly: true },
+      { question: price, retrievedTitles: [], answer: null, routedCorrectly: true },
+    ]);
+    expect(board.groups.emergency).toEqual({ total: 1, passed: 1, pending: 0 });
+    expect(board.groups.price).toEqual({ total: 1, passed: 1, pending: 0 });
+    expect(board.violations).toEqual([]);
+  });
+
+  it('emergency e price roteadas errado viram violação', () => {
+    const board = scoreRun([
+      { question: price, retrievedTitles: [], answer: null, routedCorrectly: false },
+    ]);
+    expect(board.groups.price).toEqual({ total: 1, passed: 0, pending: 0 });
+    expect(board.violations).toEqual(['p1']);
+  });
 });

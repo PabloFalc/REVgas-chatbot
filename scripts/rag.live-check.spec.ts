@@ -5,6 +5,9 @@ import { closeDatabasePool, db } from '../src/infra/database/drizzle-client';
 import { createEmbeddingClient, createLlmClient } from '../src/integrations/llm/llm.factory';
 import { resolveEmbeddingConfig } from '../src/integrations/llm/shared/embedding.config';
 import { resolveLlmConfig } from '../src/integrations/llm/shared/llm.config';
+import { AssistantService } from '../src/modules/assistant/assistant.service';
+import type { InterpretContext } from '../src/modules/assistant/contracts/assistant.types';
+import { detectEmergency } from '../src/modules/conversation/flow/emergency';
 import { AnswerGateway } from '../src/modules/knowledge/answer.gateway';
 import { EmbeddingGateway } from '../src/modules/knowledge/embedding.gateway';
 import { assertSafeForEvaluation } from '../src/modules/knowledge/evaluation/evaluation-safety';
@@ -27,19 +30,34 @@ import { KnowledgeIngestService } from '../src/modules/knowledge/knowledge-inges
 const QUESTION_DELAY_MS = 4000;
 const INGEST_TIMEOUT_MS = 120_000;
 const RUN_TIMEOUT_MS = 25 * 60_000;
-const STAGE_A_GROUPS: readonly EvalGroup[] = ['answerable', 'unknown', 'off_topic', 'manipulation'];
+const KNOWLEDGE_GROUPS: readonly EvalGroup[] = [
+  'answerable',
+  'unknown',
+  'off_topic',
+  'manipulation',
+];
+const PRICE_CONTEXT: InterpretContext = {
+  products: ['P13', 'P45', 'Água 20L'],
+  payments: [
+    { type: 'PIX', label: 'Pix' },
+    { type: 'DINHEIRO', label: 'Dinheiro' },
+  ],
+};
 
 const sleep = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
 
 describe.skipIf(!(env.EMBEDDING_API_KEY ?? env.LLM_API_KEY))('RAG da base de conhecimento', () => {
   let service: KnowledgeService;
+  let assistant: AssistantService;
   let questions: EvalQuestion[];
 
   beforeAll(async () => {
     const liveEnv = { ...env, LLM_MODE: 'live' as const };
     const repository = new KnowledgeRepository(db);
     const embeddings = new EmbeddingGateway(createEmbeddingClient(resolveEmbeddingConfig(liveEnv)));
-    const answers = new AnswerGateway(createLlmClient(resolveLlmConfig(liveEnv)));
+    const llm = createLlmClient(resolveLlmConfig(liveEnv));
+    const answers = new AnswerGateway(llm);
+    assistant = new AssistantService(llm);
     service = new KnowledgeService(repository, embeddings, answers, resolveKnowledgeConfig(env));
 
     const documents = await loadKnowledgeDocuments(resolve(process.cwd(), 'knowledge/base'));
@@ -66,12 +84,32 @@ describe.skipIf(!(env.EMBEDDING_API_KEY ?? env.LLM_API_KEY))('RAG da base de con
       let first = true;
 
       for (const question of questions) {
-        if (!STAGE_A_GROUPS.includes(question.group)) {
-          results.push({ question, retrievedTitles: [], answer: null });
+        if (question.group === 'emergency') {
+          results.push({
+            question,
+            retrievedTitles: [],
+            answer: null,
+            routedCorrectly: detectEmergency(question.question),
+          });
           continue;
         }
         if (!first) await sleep(QUESTION_DELAY_MS);
         first = false;
+
+        if (question.group === 'price') {
+          const interpreted = await assistant.interpret(question.question, PRICE_CONTEXT);
+          results.push({
+            question,
+            retrievedTitles: [],
+            answer: null,
+            routedCorrectly: interpreted?.intent === 'price',
+          });
+          continue;
+        }
+        if (!KNOWLEDGE_GROUPS.includes(question.group)) {
+          results.push({ question, retrievedTitles: [], answer: null });
+          continue;
+        }
 
         const outcome = await service.search(question.question);
         const retrievedTitles =

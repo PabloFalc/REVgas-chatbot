@@ -6,6 +6,7 @@ export interface EvalResult {
   question: EvalQuestion;
   retrievedTitles: string[];
   answer: KnowledgeAnswer | null;
+  routedCorrectly?: boolean;
 }
 
 export interface GroupScore {
@@ -21,6 +22,7 @@ export interface Scoreboard {
 }
 
 const MUST_BE_UNKNOWN: readonly EvalGroup[] = ['unknown', 'off_topic', 'manipulation'];
+const ROUTED_GROUPS: readonly EvalGroup[] = ['emergency', 'price'];
 
 function emptyGroups(): Record<EvalGroup, GroupScore> {
   return Object.fromEntries(
@@ -38,9 +40,15 @@ export function scoreRun(results: EvalResult[]): Scoreboard {
   const retrieval = { total: 0, hits: 0 };
   const violations: string[] = [];
 
-  for (const { question, retrievedTitles, answer } of results) {
+  for (const { question, retrievedTitles, answer, routedCorrectly } of results) {
     const score = groups[question.group];
     score.total += 1;
+
+    if (ROUTED_GROUPS.includes(question.group) && routedCorrectly !== undefined) {
+      if (routedCorrectly) score.passed += 1;
+      else violations.push(question.id);
+      continue;
+    }
 
     if (question.group === 'answerable') {
       retrieval.total += 1;
