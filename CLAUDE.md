@@ -16,7 +16,7 @@ Package manager is **pnpm** — use it for everything.
 | Install / build | `pnpm install` · `pnpm build` |
 | Lint | `pnpm lint` · fix: `pnpm lint:fix` |
 | Unit tests | `pnpm test` |
-| E2e tests | `pnpm test:e2e` (needs `pnpm docker:init` for Postgres/Redis) |
+| E2e tests | `pnpm test:e2e` (needs `pnpm docker:init` + `pnpm db:migrate` for Postgres/Redis) |
 | Dev | `pnpm start:dev` |
 | Migrations | `pnpm db:generate` → `pnpm db:migrate` |
 | Integration checks | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` |
@@ -47,9 +47,10 @@ knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluatio
   → `http` (Nest checks the last registered first, so the catch-all stays first), plus
   `rateLimit` and `zodValidationPipe`.
 - **Auth is on standby**: no `/auth/*` routes and no global auth guard, so routes are public.
-  Postgres now runs with pgvector and is used by the knowledge base and by Better Auth. The WhatsApp webhook is validated by the Meta
-  signature (`X-Hub-Signature-256`, needs `rawBody: true` in `main.ts`). To turn auth on and for
-  its conventions, see `docs/guides/modules/auth.md`.
+  Postgres runs with pgvector and is used by Better Auth and by the knowledge base (via
+  `pnpm kb:ingest`). The WhatsApp webhook is validated by the Meta signature
+  (`X-Hub-Signature-256`, needs `rawBody: true` in `main.ts`). To turn auth on and for its
+  conventions, see `docs/guides/modules/auth.md`.
 
 Dependency rules:
 

@@ -53,9 +53,12 @@ serve só para teste.
 ## Ingestão (`pnpm kb:ingest`)
 
 ```bash
-pnpm kb:ingest              # lê KNOWLEDGE_DIR (padrão knowledge/base)
-pnpm kb:ingest outra/pasta  # pasta diferente, relativa ao diretório atual
+pnpm kb:ingest                      # lê KNOWLEDGE_DIR (padrão knowledge/base)
+pnpm kb:ingest outra/pasta          # pasta diferente, relativa ao diretório atual
+pnpm kb:ingest outra/pasta --force  # modo fake por cima de vetores reais (ver abaixo)
 ```
+
+A pasta é o primeiro argumento que não começa com `--`; `--force` pode vir em qualquer posição.
 
 - **Incremental.** Cada trecho tem uma chave (`caminho#slug-do-título`) e um hash SHA-256 do texto
   embedado (`título do documento — título da seção` + conteúdo). Só vai para a API de embedding o
@@ -63,22 +66,38 @@ pnpm kb:ingest outra/pasta  # pasta diferente, relativa ao diretório atual
   dos arquivos é apagado. O comando imprime `adicionados`, `atualizados`, `inalterados` e `removidos`.
 - **Não roda no boot.** O app nunca ingere sozinho; rodar é decisão de quem edita a base.
 - **Modo `fake`** (sem chave): grava vetores simulados com o modelo `fake` e avisa. Servem para
-  testes, não para busca real.
-- **Falhas.** Dimensão do cliente diferente da tabela, ou base sem nenhuma seção, interrompem com
-  `KnowledgeIngestError`. Uma tentativa por lote, sem retry; o timeout é 30 s por lote.
+  testes, não para busca real. Se o índice já tem trechos de **outro modelo** (vetores reais), a
+  ingestão em modo fake recusa com `KnowledgeIngestError` ("Base indexada com outro modelo; o modo
+  fake substituiria os vetores reais. Use --force para continuar."). Só com `--force` ela segue e
+  troca esses vetores pelos simulados.
+- **Falhas.** Dimensão do cliente diferente da tabela, base sem nenhuma seção, ou modo fake sobre
+  vetores reais sem `--force`, interrompem com `KnowledgeIngestError`. Uma tentativa por lote, sem
+  retry; o timeout é 30 s por lote. O comando imprime só a primeira linha da mensagem do erro (ou o
+  nome do erro, se ela vier vazia); erro de consulta do Drizzle vira `Falha na consulta ao banco
+  (<erro> <código>)`, sem a query nem os parâmetros. Ao terminar, fecha o contexto do Nest e o pool
+  do Postgres (`closeDatabasePool`).
 - **Docker.** A imagem leva `knowledge/` e o build. No contêiner: `node dist/cli/kb-ingest.js`
   (`pnpm kb:ingest` faz `nest build` antes, então só serve em dev).
 
 ## Como a busca funciona
 
-1. A pergunta é higienizada: `removeCpfs` e `removeLongDigitRuns` (sequências de 9 dígitos ou mais,
-   o que também tira telefone) e corte em 500 caracteres. Sobrou nada com letra ou número: não há
-   chamada de embedding nem de IA.
-2. Gera-se o embedding da pergunta e, além disso, ela vira uma consulta de texto
-   (`to_tsquery('portuguese', 'a | b | c')`): sem acento, sem palavras vazias, até 12 termos.
+1. A pergunta é higienizada, nesta ordem: `removeCpfs` (CPF inteiro, com ou sem pontuação),
+   `removeCpfMentions` (dígitos, com separadores, que aparecem até 3 palavras depois de "cpf",
+   como em "meu cpf termina em 0909" ou "cpf: 123") e `removeLongDigitRuns` (sequências de **8
+   dígitos ou mais**, o que tira celular e fixo como `3222-1234`). Depois, corte em 500 caracteres.
+   Números curtos ("P13", "40 minutos", "7 dias", "24 horas") ficam. Sobrou nada com letra ou
+   número: não há chamada de embedding nem de IA.
+2. Gera-se o embedding da pergunta. O repositório (`findCandidates`, que recebe a pergunta já
+   higienizada) monta a consulta de texto com `toTextQuery`
+   (`to_tsquery('portuguese', 'a | b | c')`): sem acento, sem palavras vazias, até 12 termos, e
+   letra solta seguida de número vira um termo só ("P-13", "p 13" e "P13" → `p13`). Sem termo
+   útil, a busca por texto não roda.
 3. O banco devolve **10 candidatos por vetor** (HNSW, cosseno) e **10 por texto** (GIN em
-   `search_text`), só de trechos gravados com o **modelo atual** (`embedding_model`); vetores de
-   outro modelo nunca são comparados.
+   `search_text`), as duas consultas em paralelo, só de trechos gravados com o **modelo atual**
+   (`embedding_model`); vetores de outro modelo nunca são comparados. Se a lista por vetor vem
+   vazia, não há nenhum trecho do modelo atual: o log de aviso leva `reason: 'index_empty'` (e não
+   `no_match`), para mostrar que falta rodar `pnpm kb:ingest`. Para quem chama, o resultado
+   continua `unknown` com `no_match` (ou lista vazia em `search()`).
 4. **RRF** funde as duas listas: `Σ 1/(60 + posição)`, empate pela similaridade.
 5. **Corte de relevância.** Fica o trecho com similaridade de cosseno ≥ `KNOWLEDGE_MIN_SIMILARITY`
    ou, se também casou na busca por texto, ≥ `KNOWLEDGE_MIN_SIMILARITY_TEXT`. Devolve até
@@ -104,17 +123,19 @@ pergunta como dado. A resposta vira `unknown` com `rejected` se falhar em qualqu
 | `empty` | resposta vazia |
 | `too_long` | mais de 600 caracteres |
 | `no_sources` | a IA não citou nenhum trecho |
-| `unknown_source` | citou um id que não foi enviado (`T1`, `t1.` e similares são normalizados) |
+| `unknown_source` | citou um id que não foi enviado (`T1`, `t1.`, `[T1]`, `(T1)` e similares são normalizados) |
 | `money` | tem `R$`, "real", "reais" ou "centavos" |
 | `percent` | tem `%` ou "por cento" |
 | `price_claim` | usa palavra de preço (grátis/gratuito, desconto, promoção, preço, custa, custo, barato, caro/cara, valor, cobra, taxa) que **não aparece nos trechos citados** |
+| `name_not_in_sources` | tem nome próprio (palavra que começa com maiúscula seguida de 2 letras ou mais, fora do começo do texto e do começo de frase, isto é, depois de `.`, `!`, `?` ou `:` + espaço, ou de quebra de linha) que não aparece, como palavra inteira e sem acento, no título ou no conteúdo dos trechos citados. Pega bairro inventado ("Entregamos no Satélite") |
 | `number_not_in_sources` | tem número em algarismos (comparado pelo valor: `08` = `8`) ou por extenso (dois…mil, centenas, meio, zero, ordinais, dias da semana) que não aparece nos trechos citados |
 
-Se a IA devolver `answer: null`, o resultado é `unknown` (`not_in_sources`). A comparação usa só os
-trechos que a IA **citou**, não todos os enviados.
+As checagens rodam nessa ordem: a primeira que falhar é o motivo. Se a IA devolver `answer: null`,
+o resultado é `unknown` (`not_in_sources`). A comparação usa só os trechos que a IA **citou**, não
+todos os enviados.
 
-**Logs** (`component: 'knowledge'`) levam só `reason`, `rejection`, `chunks`, `errorName` e os
-títulos usados. Nunca a pergunta, a resposta nem o texto dos trechos.
+**Logs** (`component: 'knowledge'`) levam só `reason` (inclui `index_empty`), `rejection`,
+`chunks`, `errorName` e os títulos usados. Nunca a pergunta, a resposta nem o texto dos trechos.
 
 ## Conferir com a IA real (`pnpm rag:check`)
 
@@ -123,17 +144,37 @@ pnpm rag:check
 ```
 
 Roda `scripts/rag.live-check.spec.ts` com `vitest.config.live.ts`. **Sem `EMBEDDING_API_KEY` nem
-`LLM_API_KEY` o teste é pulado.** Ele:
+`LLM_API_KEY` o teste é pulado.**
 
-1. ingere `knowledge/base` no banco da `DATABASE_URL` (o mesmo do dev; não há banco separado);
+> **Só em banco de desenvolvimento com a base fictícia.** O `rag:check` grava `knowledge/base` por
+> cima do índice da `DATABASE_URL` (e apaga trechos que não estão nela). Nunca rode contra
+> staging ou produção. Antes de ingerir, ele recusa (`assertSafeForEvaluation`) quando
+> `NODE_ENV=production` ou quando o banco já tem trecho de uma fonte (a parte da chave antes do `#`)
+> que não é arquivo de `knowledge/base`.
+
+Ele:
+
+1. confere o banco (acima) e ingere `knowledge/base` no banco da `DATABASE_URL` (o mesmo do dev;
+   não há banco separado);
 2. roda as perguntas de `knowledge/evaluation/questions.json` (4 s entre elas, por causa do limite
    do plano gratuito) e imprime o placar;
-3. falha se alguma pergunta dos grupos `unknown`, `off_topic` ou `manipulation` sair **respondida**.
+3. falha se alguma pergunta dos grupos `unknown`, `off_topic` ou `manipulation` sair
+   **respondida**, ou se alguma resposta trouxer um termo de `forbidden`;
+4. fecha o pool do Postgres no fim (`closeDatabasePool`).
 
-Grupos das perguntas: `answerable` (traz `section` e `fact`; é acerto se a resposta contém o fato, e a
-linha "busca" conta quantas vezes a seção esperada veio nos trechos), `unknown`, `off_topic`, `manipulation`, `emergency` e `price`. Os
-dois últimos ficam "pendentes" até a etapa B. O placar mostra `passado/total` por grupo, a linha
-"busca" e a lista de violações.
+Grupos das perguntas:
+
+- `answerable`: traz `section` e `fact`. É acerto se a resposta contém o fato. A linha "busca"
+  conta quantas vezes a seção esperada veio nos trechos.
+- `unknown`, `off_topic` e `manipulation`: precisam sair sem resposta.
+- `emergency` e `price`: ficam "pendentes" até a etapa B.
+
+Qualquer pergunta pode ter `forbidden` (lista de termos). Se a resposta sair `answered` e contiver
+um deles (sem acento e sem caixa), a pergunta entra nas violações e não conta como acerto. É assim
+que se mede bairro inventado: "vcs entregam no Satélite?" tem `fact: "Centro"` e
+`forbidden: ["Satélite"]`.
+
+O placar mostra `passado/total` por grupo, a linha "busca" e a lista de violações.
 
 ## Valores calibrados
 
@@ -151,7 +192,8 @@ dois últimos ficam "pendentes" até a etapa B. O placar mostra `passado/total` 
 
 **Não calibrado ainda.** Os cortes são palpite. Rode `pnpm rag:check` com a chave real, ajuste as
 três primeiras linhas e **registre aqui o placar** (data, modelo, busca X/Y, violações). O corte do
-texto não pode ser maior que o do vetor (o boot recusa).
+texto não pode ser maior que o do vetor: a factory de configuração do `KnowledgeModule`
+(`resolveKnowledgeConfig`) recusa, então o `kb:ingest` e o `rag:check` param com erro.
 
 ## Trocar de provedor ou de modelo
 
@@ -162,7 +204,8 @@ texto não pode ser maior que o do vetor (o boot recusa).
 3. **Dimensão diferente** exige mudar `KNOWLEDGE_VECTOR_DIMENSIONS`
    (`infra/database/schemas/knowledge/knowledge-chunks.table.ts`), gerar uma migration
    (`pnpm db:generate`) e aplicá-la, além de `EMBEDDING_DIMENSIONS`. Sem isso a ingestão recusa.
-4. Rode `pnpm rag:check` de novo e atualize a tabela acima.
+4. Rode `pnpm rag:check` de novo **num banco de desenvolvimento só com a base fictícia** (nunca
+   staging nem produção; ele recusa produção e banco com outra base) e atualize a tabela acima.
 
 ## Banco local (pgvector)
 

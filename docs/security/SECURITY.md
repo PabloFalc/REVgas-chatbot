@@ -134,18 +134,29 @@ Camadas que protegem as respostas da IA sobre a base ([knowledge.md](../guides/m
 Já entregues (etapa A, módulo ainda não ligado ao fluxo):
 
 - **Corte de relevância:** só entram trechos com similaridade mínima; sem trecho, a IA nem é chamada.
-- **Pergunta higienizada:** CPF (`removeCpfs`) e qualquer sequência de 9 dígitos ou mais (inclui
-  telefone) saem do texto, que é cortado em 500 caracteres antes do embedding e do prompt.
+- **Pergunta higienizada:** CPF (`removeCpfs`), dígitos que vêm até 3 palavras depois de "cpf"
+  (`removeCpfMentions`, pega pedaço de CPF como "meu cpf termina em 0909") e qualquer sequência de
+  8 dígitos ou mais (`removeLongDigitRuns`, inclui celular e fixo) saem do texto, que é cortado em
+  500 caracteres antes do embedding e do prompt.
 - **Trechos e pergunta como dado:** vão escapados em `<trecho>`, com regras fixas mandando ignorar
   ordens dentro deles; a IA responde `{ answer, sources }` validado por Zod.
 - **Checagens de saída:** a resposta é descartada se estiver vazia, passar de 600 caracteres, não
   citar trechos ou citar id inexistente, tiver `R$`/"reais"/"centavos" ou `%`/"por cento", usar
-  palavra de preço que não está nos trechos citados, ou trouxer número (algarismo ou por extenso)
-  que não está neles. A base não guarda valores, porcentagens, horários nem formas de pagamento.
+  palavra de preço que não está nos trechos citados, trouxer nome próprio (palavra com maiúscula
+  fora do começo de frase, como um bairro inventado: `name_not_in_sources`) que não está neles,
+  ou trouxer número (algarismo ou por extenso) que não está neles. A base não guarda valores,
+  porcentagens, horários nem formas de pagamento.
 - **Falha vira "não sei":** Postgres, embedding ou IA fora do ar nunca lançam; o resultado é
   `unknown` com log de aviso. Uma tentativa por chamada, sem retry.
 - **Sem texto do cliente no log:** só motivo, rejeição, quantidade de trechos e nome do erro.
-- **Isolamento por modelo:** a busca só compara vetores do modelo de embedding atual.
+- **Isolamento por modelo:** a busca só compara vetores do modelo de embedding atual. Índice sem
+  trecho do modelo atual gera aviso `index_empty` no log.
+- **Vetores reais protegidos:** `kb:ingest` em modo fake recusa sobrescrever índice com vetores de
+  outro modelo sem `--force`, e o CLI não imprime query nem parâmetros do Drizzle.
+- **`rag:check` só em dev:** recusa `NODE_ENV=production` e banco com trecho de fonte fora da base
+  fictícia, para nunca sobrescrever a base real de staging ou produção.
+- **Medição de invenção:** as perguntas da checagem podem ter `forbidden`; resposta que traz um
+  desses termos (por exemplo um bairro fora da lista) conta como violação.
 
 Planejado (etapa B, ainda não existe):
 
