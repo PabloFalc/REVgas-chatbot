@@ -101,6 +101,10 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
           `${OFFENSE_PREFIX}:${phone}`,
         ]),
       );
+      for (const phone of phones) {
+        const keys = await redis.keys(`handoff:*${phone}*`);
+        if (keys.length > 0) await redis.del(...keys);
+      }
     }
     await app.close();
   }, 30000);
@@ -116,7 +120,15 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
 
     await vi.waitFor(() => expect(whatsapp.sent.length).toBeGreaterThanOrEqual(2));
     expect(bodyOf(whatsapp.sent[0])).toContain(msg.emergency);
-    expect(bodyOf(whatsapp.sent[1])).not.toContain(msg.emergency);
+    const second = bodyOf(whatsapp.sent[1]);
+    expect(
+      [
+        msg.handoffQueued,
+        msg.handoffAlreadyQueued,
+        msg.talkToStore(),
+        'Estamos fechados agora',
+      ].some(text => second.includes(text)),
+    ).toBe(true);
     expect(llm.calls).toHaveLength(0);
   });
 
@@ -124,8 +136,17 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
     const phone = newPhone();
     await send('oi', phone);
     await vi.waitFor(() => expect(whatsapp.sent.length).toBeGreaterThan(0));
-    const before = await redis.get(`${ORDER_PREFIX}:${phone}`);
-    expect(before).toContain('askName');
+    whatsapp.clear();
+    await send('Maria Silva', phone);
+    await vi.waitFor(() => expect(bodyOf(whatsapp.sent[0])).toContain(msg.askCpf));
+    const saved = async () => {
+      const raw = await redis.get(`${ORDER_PREFIX}:${phone}`);
+      const { lastInboundAt: _volatile, ...order } = JSON.parse(raw ?? '{}');
+      return order;
+    };
+    const before = await saved();
+    expect(before.step).toBe('askCpf');
+    expect(before.customer.name).toBe('Maria Silva');
     whatsapp.clear();
     programQuestion();
 
@@ -136,9 +157,8 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
     expect(whatsapp.sent[0].type).toBe('buttons');
     expect(first).toContain(msg.notKnown);
     expect(first).toContain('handoff:request');
-    expect(whatsapp.sent.slice(1).map(bodyOf).join(' ')).toContain(msg.askName);
-    const after = await redis.get(`${ORDER_PREFIX}:${phone}`);
-    expect(after).toContain('askName');
+    expect(whatsapp.sent.slice(1).map(bodyOf).join(' ')).toContain(msg.askCpf);
+    expect(await saved()).toEqual(before);
   });
 
   it('primeira mensagem que é dúvida oferece "Fazer pedido" e não salva pedido', async () => {
@@ -148,6 +168,8 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
     await send('vocês entregam domingo?', phone);
 
     await vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1));
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(whatsapp.sent).toHaveLength(1);
     expect(whatsapp.sent[0].type).toBe('buttons');
     expect(bodyOf(whatsapp.sent[0])).toContain('order:start');
     expect(bodyOf(whatsapp.sent[0])).toContain(msg.orderStart);
