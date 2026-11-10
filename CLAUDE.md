@@ -39,13 +39,13 @@ src/
                 parse-json, iso-datetime. Check here before writing a new helper.
   modules/      conversation/ (webhook + order flow), customer/, catalog/, order/, address/,
                 assistant/ (LLM interpretation of free text), handoff/ (queue to a human
-                agent via Chatwoot), knowledge/ (RAG over the base, not wired into the flow
-                yet), auth/ (on standby)
+                agent via Chatwoot), knowledge/ (RAG over the base, answers questions in the
+                flow), auth/ (on standby)
 knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluation/ (rag:check questions)
 ```
 
 - `AppModule` = `CoreModule` + `RoutesModule` + `InfraModule`. `RoutesModule` imports only
-  `ConversationModule`, which also hosts the Chatwoot webhook route (`POST /webhooks/chatwoot`,
+  `ConversationModule` (which imports `KnowledgeModule`), which also hosts the Chatwoot webhook route (`POST /webhooks/chatwoot`,
   validated by `X-Chatwoot-Signature`).
 - `CoreModule` registers the global filters in the order `unexpected` → `betterAuth` → `drizzle`
   → `http` (Nest checks the last registered first, so the catch-all stays first), plus

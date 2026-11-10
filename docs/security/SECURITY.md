@@ -135,7 +135,7 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 
 Camadas que protegem as respostas da IA sobre a base ([knowledge.md](../guides/modules/knowledge.md)).
 
-Já entregues (etapa A, módulo ainda não ligado ao fluxo):
+Respostas da base (módulo ligado ao fluxo):
 
 - **Corte de relevância:** só entram trechos com similaridade mínima; sem trecho, a IA nem é chamada.
 - **Pergunta higienizada:** CPF (`removeCpfs`), dígitos que vêm até 3 palavras depois de "cpf"
@@ -162,13 +162,31 @@ Já entregues (etapa A, módulo ainda não ligado ao fluxo):
 - **Medição de invenção:** as perguntas da checagem podem ter `forbidden`; resposta que traz um
   desses termos (por exemplo um bairro fora da lista) conta como violação.
 
-Planejado (etapa B, ainda não existe):
+Guard rails do fluxo (entregues, etapa B):
 
-- Emergência de gás (vazamento, cheiro) tratada antes de qualquer comando ou IA, com texto fixo e
-  encaminhamento ao atendente.
-- Recusa de assunto fora do escopo e tratamento de ofensa com texto fixo.
-- Limite de chamadas de IA por telefone por hora.
-- Preço informado só pelo código (nunca pela IA) e ligação do módulo ao fluxo.
+- **Emergência de gás sem IA:** vazamento ou cheiro de gás (`flow/emergency.ts`, frases mais regra de
+  proximidade entre palavra de gás e de vazamento) é tratado antes de qualquer comando, em qualquer
+  etapa e sem pedido em andamento. Resposta: texto fixo de segurança (Bombeiros, 193) e fila do
+  atendente com o motivo `emergency`.
+- **Só `order` altera o pedido:** dúvida, preço, fora do assunto e ofensa nunca chamam
+  `applyInterpretation`; texto de cliente não muda produto, quantidade nem pagamento por essas
+  intenções.
+- **Preço só pelo código:** a IA apenas classifica a pergunta; o texto vem do acordo base da RevGás.
+  A base não guarda valores e as checagens de saída descartam `R$` e `%`.
+- **Horário e pagamento pelo código:** `SERVICE_HOURS` e as formas ativas da RevGás, nunca a base
+  nem a IA.
+- **Recusa e ofensa com texto fixo:** fora do assunto recebe recusa fixa; ofensa recebe texto fixo e,
+  da 2ª vez, a oferta de atendente. O atendente só entra por toque no botão.
+- **Cliente travado:** 3 "não entendi" seguidos oferecem o atendente. Contadores no Redis, fora do
+  estado do pedido, sem texto do cliente.
+- **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora; interpretar custa 1,
+  responder dúvida custa 2), contado no Redis. Acima do limite o bot segue sem IA, com log de aviso e
+  telefone mascarado. Falha do Redis no limitador deixa a chamada passar (aviso no log), para não
+  derrubar o atendimento.
+- **Produto que não vendemos:** o item citado pela IA é limpo (só letras, números, espaço e hífen,
+  até 30 caracteres) antes de ir na resposta.
+- Os cortes de relevância da busca ainda não foram calibrados (ver
+  [knowledge.md](../guides/modules/knowledge.md#valores-calibrados)).
 
 ## Webhook do Chatwoot
 

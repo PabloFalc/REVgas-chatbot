@@ -10,9 +10,12 @@ Ela oferece duas operações:
 A integração não conhece o domínio e nunca importa `src/modules/`. Prompts e regras de negócio da
 IA (`interpretar()`, FAQ, resumo de handoff) ficam no módulo que consome, não aqui.
 
-> **Estado atual:** a camada está pronta, mas nenhum módulo a usa ainda; o fluxo do WhatsApp não
-> chama a IA. A IA nunca decide preço, total nem cria venda, e o fluxo não depende dela: se ela
-> falhar ou demorar, o bot volta para os botões.
+> **Estado atual:** dois módulos usam a camada. O `AssistantService` interpreta o texto livre e
+> classifica a intenção (`order`, `question`, `price`, `handoff`, `off_topic`, `offense`, `other`); o
+> `KnowledgeModule` redige respostas de dúvidas só com trechos da base
+> ([knowledge.md](../modules/knowledge.md)). A IA nunca decide preço, total nem cria venda, e o
+> fluxo não depende dela: se ela falhar, demorar ou o telefone passar de `AI_CALLS_PER_PHONE_HOUR`
+> por hora, o bot volta para os botões.
 
 ## Estrutura
 

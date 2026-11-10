@@ -4,9 +4,15 @@ Módulo que guarda o texto da revenda (bairros, prazo, troca de botijão, segura
 trechos certos para uma pergunta e deixa a IA responder **só com eles**. Usa embeddings
 ([llm.md](../integrations/llm.md)) e Postgres com pgvector.
 
-> **Estado atual (etapa A):** o módulo está pronto e testado, mas **não está ligado ao app**:
-> `RoutesModule` não o importa e o fluxo do WhatsApp não chama `KnowledgeService`. Hoje ele é usado
-> pelo `pnpm kb:ingest` e pelo `pnpm rag:check`. A ligação ao fluxo é a etapa B.
+> **Estado atual (etapa B):** o módulo está ligado ao fluxo. `ConversationModule` importa o
+> `KnowledgeModule` e `flow-tools.ts` expõe `answerQuestion(texto)`, usado quando a IA classifica a
+> mensagem como dúvida de assunto geral (`question` com `topic: 'general'`). Horário, forma de
+> pagamento e preço **não** passam pela base: o código responde (ver
+> [fluxo.md](../../project/fluxo.md#dúvidas-preço-e-guard-rails)). Sem resposta (`unknown`), o bot
+> diz "Não tenho essa informação. Quer falar com um atendente?" e oferece o botão de atendente.
+> Cada `answerQuestion` custa 2 no limite de IA por telefone (`AI_CALLS_PER_PHONE_HOUR`); acima do
+> limite o resultado é `unknown` com `unavailable`. O módulo também é usado pelo `pnpm kb:ingest` e
+> pelo `pnpm rag:check`. A ingestão continua manual: o app não ingere no boot.
 
 ## O que é e onde fica
 
@@ -40,7 +46,7 @@ serve só para teste.
 - Um `##` por assunto: cada seção vira um trecho. Texto antes do primeiro `##` (fora o `#` do
   título) vira um trecho com o título do documento.
 - **Sem R$, sem porcentagem, sem horário de funcionamento e sem lista de formas de pagamento.**
-  Preço vem do ERP, horário e pagamento serão respondidos pelo código (etapa B). A checagem de
+  Preço vem do ERP, horário e pagamento são respondidos pelo código. A checagem de
   saída descarta respostas com esses dados, então escrevê-los na base só gera "não sei".
 - Use os termos que o cliente usa ("botijão", "vale-gás", "troco", "P13"). A busca por texto
   depende da palavra exata.
@@ -167,7 +173,8 @@ Grupos das perguntas:
 - `answerable`: traz `section` e `fact`. É acerto se a resposta contém o fato. A linha "busca"
   conta quantas vezes a seção esperada veio nos trechos.
 - `unknown`, `off_topic` e `manipulation`: precisam sair sem resposta.
-- `emergency` e `price`: ficam "pendentes" até a etapa B.
+- `emergency`: passa se `detectEmergency` (detector do fluxo, sem IA) devolve verdadeiro para a pergunta.
+- `price`: passa se `interpret` (cliente da IA real) classifica a pergunta como `price`.
 
 Qualquer pergunta pode ter `forbidden` (lista de termos). Se a resposta sair `answered` e contiver
 um deles (sem acento e sem caixa), a pergunta entra nas violações e não conta como acerto. É assim

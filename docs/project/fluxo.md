@@ -68,10 +68,21 @@ escolhido e o fluxo retoma dali.
 
 ### Comandos globais
 
-Valem em qualquer etapa (`global-commands.ts`): `cancelar` apaga o estado (bloqueado em
-`creatingSale`); `atendente`/`humano`/`falar com alguem` e o botão "Falar com atendente" (id `handoff:request`) pedem o handoff (ver [Handoff para atendente](#handoff-para-atendente));
+Valem em qualquer etapa (`global-commands.ts`), nesta ordem: **emergência de gás** (ver
+[Emergência de gás](#emergência-de-gás)), que vem antes de tudo; `cancelar` apaga o estado
+(bloqueado em `creatingSale`); `atendente`/`humano`/`falar com alguem` e o botão "Falar com atendente" (id `handoff:request`) pedem o handoff (ver [Handoff para atendente](#handoff-para-atendente));
+o botão "Fazer pedido" (id `order:start`) inicia o pedido (sem estado) ou repete a pergunta da etapa (com estado);
 `desconto`/`promoção` responde que o preço é o da tabela e repete a pergunta; mensagem que não é
 texto/botão/lista (áudio, imagem) pede texto e repete a pergunta. O estado não muda, exceto no cancelar.
+
+## Emergência de gás
+
+Mensagem que fala de vazamento ou cheiro de gás (`flow/emergency.ts`, `detectEmergency`) é tratada
+**antes de qualquer outro comando e sem IA**, em qualquer etapa e também sem pedido em andamento.
+
+- **Detecção:** texto normalizado (sem acento e sem diferenciar maiúsculas). Vale frase como "vazamento", "vazando", "cheiro de gás", "gás escapando", e também a palavra de gás (`gás`, `glp`, `botijão`) a até 4 palavras de um termo de vazamento ("sinto cheiro forte no botijão"). "O gás acabou", "gás de cozinha" e "botijão vazio" não disparam.
+- **Resposta:** texto fixo de segurança (feche o registro, não acenda fogo nem mexa em interruptores ou tomadas, abra portas e janelas, saia do local e ligue para os Bombeiros no 193), seguido da resposta do handoff com o motivo `emergency`.
+- **Pedido:** o estado não muda. O botão de atendente não é preciso: o cliente já entra na fila (ou recebe o telefone da revenda, se não houver Chatwoot).
 
 ## Verificação de identidade
 
@@ -129,29 +140,56 @@ telefone, separado do pedido (que expira em 15 min).
 ## Texto livre e fallback
 
 A IA (`interpret`) só é chamada quando a etapa não entendeu a mensagem. Botões, listas e
-palavras-chave funcionam sem IA, e os comandos globais vêm antes de tudo. Código em
-`flow/free-text.ts`; o serviço de IA fica em `src/modules/assistant/`.
+palavras-chave funcionam sem IA, e os comandos globais (inclusive a emergência) vêm antes de tudo.
+Código em `flow/free-text.ts` e `flow/intent.ts`; o serviço de IA fica em `src/modules/assistant/`.
 
 | Situação | Comportamento |
 | --- | --- |
 | Botão, lista ou palavra-chave que a etapa entende | Igual antes. Sem IA |
-| Comandos globais (cancelar, atendente, desconto) | Antes de tudo. Sem IA |
+| Comandos globais (emergência, cancelar, atendente, desconto) | Antes de tudo. Sem IA |
 | Etapa de botão recebe texto que não entende | IA |
-| `askName` | Texto com dígito ou palavra de pedido → IA; senão, validação de nome de sempre |
-| `askCpf`, `askCpfPrefix`, `askQuantity`, `askChangeAmount` | Primeiro a validação de sempre; se falhar e o texto não for só números e pontuação, mas tiver palavra de pedido → IA; senão, o erro de sempre |
-| Primeira mensagem (sem estado) | Com dígito ou palavra de pedido → IA antes do `start`; senão ("oi") → `start` sem IA |
+| `askName` | Texto com dígito, palavra de pedido ou `?` → IA; senão, validação de nome de sempre |
+| `askCpf`, `askCpfPrefix`, `askQuantity`, `askChangeAmount` | Primeiro a validação de sempre; se falhar e o texto não for só números e pontuação, mas tiver ao menos 2 letras seguidas → IA; senão, o erro de sempre |
+| Primeira mensagem (sem estado) | Só cumprimento (`oi`, `ola`, `bom dia`, `boa tarde`, `boa noite`, `opa`, `eai`, `e ai`, `menu`) → `start` sem IA; texto com 2 letras seguidas → IA antes do `start` |
 | `askNewAddress`, `askAddressField`, `searchProduct` | Sem mudança (já recebem texto livre) |
 | `creatingSale`, `saleFailed` | Nunca chama a IA |
 
 O que a IA devolve e como vira pedido:
 
-- Saída validada com Zod: `intent` (`order`, `question` ou `other`), `products`, `quantity`, `payment`, `address`, `newAddress` e `confidence`.
+- Saída validada com Zod: `intent`, `topic`, `unknownProduct`, `products`, `quantity`, `payment`, `address`, `newAddress` e `confidence`. As intenções são `order`, `question`, `price`, `handoff`, `off_topic`, `offense` e `other`; `topic` (`hours`, `payments` ou `general`) só vem em `question`; `unknownProduct` é o item pedido que não está no catálogo.
+- **Só `order` altera o pedido.** As outras intenções são respondidas pelo roteamento abaixo e o estado não muda ("quanto tá o P13?" não põe o P13 no pedido).
 - Confiança abaixo de 0,6 ou falha da IA (`null`) → "Não entendi." e repete a pergunta. O estado não muda.
 - Produto e pagamento só entram se existirem em `listProducts` / `listPaymentOptions`. Preço, total e troco nunca vêm da IA.
 - Vários produtos que batem → `pickProduct` com a lista filtrada; quantidade e pagamento ditos são mantidos.
 - O que o cliente disser **substitui** o que já estava no pedido. O bot responde "Anotado: ..." com o que mudou e `nextStep` pergunta só o que falta.
 - Endereço: o texto vira rascunho pelo caminho de sempre (confirmação); "outro endereço" sem texto apaga o endereço e mostra `chooseAddress` ou `askNewAddress`.
-- Dúvida sem campo válido → resposta fixa com o telefone da revenda e repete a pergunta. Mensagem sem relação com o pedido → "Não entendi."
+- Mensagem sem relação com o pedido que a IA não classifica (`other`) → "Não entendi." Dúvidas, preços e o resto seguem o roteamento da próxima seção.
+
+### Dúvidas, preço e guard rails
+
+`routeIntent` (`flow/intent.ts`) responde pela intenção. Com pedido em andamento, a resposta vem
+seguida da pergunta da etapa, e o estado não muda. Sem pedido, a resposta sai numa única mensagem
+com o botão "Fazer pedido" (id `order:start`); nenhum pedido é criado nem lembrete agendado.
+
+| Intenção | Resposta | Quem responde |
+| --- | --- | --- |
+| `question`, assunto `hours` | "Nosso horário de atendimento: ..." + "Estamos abertos agora." ou "Estamos fechados agora." Sem `SERVICE_HOURS`: "Não tenho o horário..." + oferta de atendente | Código (`SERVICE_HOURS`), nunca a IA nem a base |
+| `question`, assunto `payments` | "Aceitamos: Pix, Dinheiro e Cartão de crédito." (formas ativas na RevGás) | Código |
+| `question`, assunto `general` | Resposta a partir da base de conhecimento ([knowledge.md](../guides/modules/knowledge.md)). Sem resposta: "Não tenho essa informação. Quer falar com um atendente?" + botão "Falar com atendente" | Base + IA, com checagens de saída |
+| `price` | "Preços de hoje:" + uma linha por produto (`- P13: R$ 110,00` ou `- P13: a partir de R$ 105,00`) + "O total aparece no resumo do pedido." Se o cliente citou produtos do catálogo, só eles. Sem preço: "Não consegui consultar os preços agora..." + oferta | Código, só acordo base da RevGás (nunca o acordo do cliente); a IA só classifica |
+| `handoff` | Entra na fila (motivo `customer_request`) | Handoff |
+| `off_topic` | "Sou o assistente da revenda: posso te ajudar com pedidos e dúvidas sobre gás e entrega." | Texto fixo |
+| `offense` | 1ª vez: "Vamos manter a conversa respeitosa. Posso te ajudar com seu pedido de gás." Da 2ª em diante, o mesmo texto com o botão "Falar com atendente" | Texto fixo |
+| `order` com produto que não vendemos | "Não temos {item}. Temos: P13, P45, Água 20L." (só letras, números, espaço e hífen, até 30 caracteres) | Código |
+
+- **Oferta de atendente:** o botão "Falar com atendente" (`handoff:request`) vem junto da resposta, antes da pergunta da etapa. Só o toque no botão aceita; "sim" digitado não.
+- **Cliente travado:** 3 "Não entendi" seguidos viram "Não estou conseguindo entender. Quer falar com um atendente?" com o botão. O contador fica no Redis (TTL 15 min), fora do pedido, e zera quando uma mensagem é entendida.
+- **Ofensas:** contador por telefone no Redis (TTL 1 h), fora do pedido.
+- **Texto guiado:** quando a IA não entende em `askCpf`, `askCpfPrefix`, `askQuantity` ou `askChangeAmount`, o bot mostra o texto de ajuda da etapa (por exemplo, "Mande a quantidade...") em vez de "Não entendi.", até chegar ao 3º seguido.
+- **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora). `interpret` custa 1 e responder dúvida custa 2. Passou do limite, o bot segue sem IA (como se ela estivesse fora do ar). Se o Redis do limitador falhar, a chamada passa. Ver [environment.md](../guides/conventions/environment.md).
+- **A base nunca informa** preço, porcentagem, horário de funcionamento nem formas de pagamento; essas respostas vêm do código.
+
+**Primeira mensagem só com dúvida.** Se a primeira mensagem é uma dúvida (ou preço, fora do assunto etc.), o bot responde e mostra o botão "Fazer pedido". Não cria pedido nem pede identificação até o cliente tocar.
 
 **Identificação primeiro.** Na primeira mensagem, o que foi dito fica guardado (produto, quantidade, pagamento e
 endereço como texto pendente) e o `start` segue: cliente novo dá nome e CPF; cadastrado confirma os 3 primeiros dígitos do CPF. A saudação (boas-vindas) vem primeiro, depois o "Anotado: ..." e a pergunta seguinte. Em `askName`, texto com palavra de pedido vale como nome só quando a IA responde com confiança que não é pedido nem pergunta e o texto é um nome válido; com a IA fora do ar ou incerta, o bot diz "Não entendi" e pede o nome de novo. Texto
@@ -165,9 +203,10 @@ cliente fica conhecido, o produto guardado é conferido de novo com a lista dele
 - **Pedido de atendente:** de qualquer estado, entra na fila do Chatwoot (ver [Handoff para atendente](#handoff-para-atendente)); o pedido em andamento não muda. Em `saleFailed` o motivo é `sale_failed`; nas demais, `customer_request`.
 - **Falha ao criar a venda (`saleFailed`):** dois botões, "Tentar de novo" e "Falar com atendente".
 - **Pedido de desconto:** resposta fixa ("o preço é o da tabela"); o estado não muda.
-- **Dúvida no meio do fluxo:** resposta fixa com o telefone da revenda e repete a pergunta; o estado não muda. FAQ com IA é melhoria futura.
+- **Dúvida no meio do fluxo:** respondida pela base ou pelo código e a pergunta da etapa é repetida; o estado não muda (ver [Dúvidas, preço e guard rails](#dúvidas-preço-e-guard-rails)). Sem resposta, oferece o atendente.
+- **Emergência de gás:** texto de segurança e fila do atendente, em qualquer etapa (ver [Emergência de gás](#emergência-de-gás)).
 - **Expiração e lembrete:** o estado no Redis tem TTL de 15 min; se o cliente sumir, o carrinho expira. Aos 10 min sem mensagem, o bot manda um lembrete (ver [Lembrete de pedido parado](#lembrete-de-pedido-parado)).
-- **Fallback da IA:** se a IA falhar, demorar ou não entender, o bot diz "Não entendi." e repete a pergunta com os botões do estado atual.
+- **Fallback da IA:** se a IA falhar, demorar, passar do limite por telefone ou não entender, o bot diz "Não entendi." e repete a pergunta com os botões do estado atual (3 seguidos oferecem o atendente).
 
 ## Observações sobre o fluxo
 
