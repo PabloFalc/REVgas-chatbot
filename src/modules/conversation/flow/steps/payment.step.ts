@@ -11,14 +11,17 @@ import { buttons, list, text } from '../replies';
 const BUTTON_LIMIT = 3;
 const CHANGE_FILLERS = new Set(['reais', 'real', 'pra', 'para', 'troco', 'de', 'o', 'os', 'e']);
 
+const MONEY_TEXT = /^\s*(?:r\$)?[\s\d.,]*$/i;
+const MONEY_TOKEN = /^\d[\d.,]*$/;
+
 function parseChange(raw: string): number | null {
-  const direct = parseMoney(raw);
-  if (direct !== null) return direct;
+  if (MONEY_TEXT.test(raw)) return parseMoney(raw);
   const words = normalizeText(raw)
     .replace(/r\$/g, ' ')
     .split(/\s+/)
     .filter(word => word && !CHANGE_FILLERS.has(word));
-  return words.length > 0 ? parseMoney(words.join(' ')) : null;
+  if (words.length !== 1 || !MONEY_TOKEN.test(words[0])) return null;
+  return parseMoney(words[0]);
 }
 
 const choosePayment: AskFn = async (state, tools) => {
