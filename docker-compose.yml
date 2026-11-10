@@ -36,6 +36,77 @@ services:
       retries: 5
     restart: unless-stopped
 
+  chatwoot-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: revgas-chatwoot-pg
+    profiles: ['chatwoot']
+    env_file: docker/chatwoot.env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: chatwoot
+    volumes:
+      - chatwoot_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d chatwoot']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  chatwoot-redis:
+    image: redis:7-alpine
+    container_name: revgas-chatwoot-redis
+    profiles: ['chatwoot']
+    command: redis-server --appendonly yes
+    volumes:
+      - chatwoot_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  chatwoot-rails:
+    image: chatwoot/chatwoot:v4.19.1-ce
+    container_name: revgas-chatwoot-rails
+    profiles: ['chatwoot']
+    env_file: docker/chatwoot.env
+    entrypoint: docker/entrypoints/rails.sh
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    ports:
+      - '127.0.0.1:3000:3000'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - chatwoot_storage:/app/storage
+    depends_on:
+      chatwoot-postgres:
+        condition: service_healthy
+      chatwoot-redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  chatwoot-sidekiq:
+    image: chatwoot/chatwoot:v4.19.1-ce
+    container_name: revgas-chatwoot-sidekiq
+    profiles: ['chatwoot']
+    env_file: docker/chatwoot.env
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - chatwoot_storage:/app/storage
+    depends_on:
+      chatwoot-postgres:
+        condition: service_healthy
+      chatwoot-redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
+  chatwoot_pg_data:
+  chatwoot_redis_data:
+  chatwoot_storage:

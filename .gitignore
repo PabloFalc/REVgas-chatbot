@@ -56,3 +56,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Documentacao privada da API RevGas (nunca commitar)
 docs/project/private/
+
+# Segredos do Chatwoot local (nunca commitar)
+docker/chatwoot.env
