@@ -148,7 +148,9 @@ O estado fica no Redis, por telefone, separado do pedido (que expira em 15 min).
   só para o Chatwoot e o bot não responde. Mensagens não suportadas viram `[cliente enviou áudio]`
   etc.
 - **Mensagem do atendente → WhatsApp:** `*Maria (atendente):* texto`. Notas internas não vão ao
-  cliente. Se a Meta recusar por janela de 24 h (código 131047), o bot deixa uma nota avisando.
+  cliente. Se a Meta recusar por janela de 24 h (código 131047), o bot deixa uma nota avisando. A
+  recusa chega tanto na resposta do envio quanto, de forma assíncrona, como status `failed` do
+  webhook do WhatsApp; nos dois casos a nota vai para a conversa em `queued` ou `active`.
 - **Venda criada pelo bot em `queued`:** resolve a conversa com a nota "Venda #N criada pelo bot,
   saiu da fila." e apaga o estado. "Cancelar" não tira o cliente da fila.
 - **Expiração:** preguiçosa, conferida quando o cliente escreve ou o handoff é consultado (sem
@@ -161,6 +163,7 @@ O estado fica no Redis, por telefone, separado do pedido (que expira em 15 min).
 
 - Toda mensagem do cliente e toda resposta do bot são copiadas para a conversa do telefone: as do
   cliente como entrada, as do bot como saída (token do Agent Bot). Botões e listas viram texto.
+  O lembrete de pedido parado também é espelhado, mas só se a conversa já existir (não cria conversa).
 - **Uma conversa por ciclo.** Enquanto só o bot atende, ela fica `pending`. Quando o pedido termina
   sem handoff (venda criada, cancelado, expirado), o bot a resolve; a próxima mensagem abre outra.
   Nunca postamos em conversa resolvida (no v4.19.1 isso a reabriria como `open`).

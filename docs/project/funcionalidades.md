@@ -14,11 +14,11 @@
 | F02 | Identificação e cadastro automático | Reconhece o cliente pelo telefone; cadastra se for novo | RF02, RF03 |
 | F03 | Pedido em texto livre | "manda 2 botijão, pago no pix" → IA extrai tudo e o bot só pergunta o que faltou. **Entregue** (2026-10-22), junto com o fallback de intenção | RF04–RF06 |
 | F04 | Repetir último pedido | Cliente conhecido recebe botão com último pedido e endereço; fecha em 2 toques (pula para o resumo, ou para a pergunta de troco se o pagamento for dinheiro). **Entregue** (2026-10-23) | RF02, RF07 |
-| F07 | Handoff para atendente | Transfere a conversa para a fila do Chatwoot com resumo; o bot segue atendendo até o atendente falar. **Entregue** (2026-11-09) | RF11 |
 | F05 | Status do pedido | Nº da venda, entregador a caminho e tempo estimado; consulta "meu gás chegou?". **Pendente** | RF09 |
+| F07 | Handoff para atendente | Transfere a conversa para a fila do Chatwoot com resumo; o bot segue atendendo até o atendente falar. **Entregue** (2026-11-09) | RF11 |
 
 > **Decisão de escopo (2026-10-22):** o MVP é F01–F05. F03 e o fallback de intenção estão
-> implementados; F04 e F05 estavam pendentes. F06, F07, F08, F09, F10, F11, F12, F13 e a RN13
+> implementados; F04 e F05 estavam pendentes. F06, F07 (entregue em 2026-11-09), F08, F09, F10, F11, F12, F13 e a RN13
 > (salvar venda e conversas no Postgres) viraram melhorias futuras (F04 e F12 foram entregues em
 > 2026-10-23, junto com F14, na decisão abaixo).
 > Ver [requisitos.md](requisitos.md#decisões-2026-10-22).

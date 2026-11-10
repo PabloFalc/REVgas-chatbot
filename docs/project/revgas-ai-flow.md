@@ -200,7 +200,7 @@ As respostas abaixo decidem o escopo; levem a lista impressa para o encontro ap�
 
 - [x] O preço muda por cliente, bairro ou forma de pagamento? Sim: acordos por cliente, categoria e forma de pagamento (2026-10-19)
 - [x] O bot pode oferecer promoção? Não (2026-10-21)
-- [x] Quem recebe o handoff? Handoff fora do MVP (2026-10-21)
+- [x] Quem recebe o handoff? Handoff fora do MVP (2026-10-21) — superado em 2026-11-09: handoff via Chatwoot (F07)
 - [x] CPF é obrigatório no cadastro? Sim (2026-10-21)
 - [ ] Qual a prioridade entre acordos de preço sobrepostos?
 

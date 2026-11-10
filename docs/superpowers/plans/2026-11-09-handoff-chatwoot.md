@@ -100,7 +100,7 @@ telefone, do pedido e do WhatsApp), então o `RoutesModule` continua importando 
 - `flow/handoff.ts`: `handoff(state, phone, reason, tools): Promise<StepResult>` (resposta pronta),
   `HANDOFF_CHOICE = 'handoff:request'`, `handoffButton(): ReplyOption`.
 - `HandoffReason` é união de literais em `modules/handoff/contracts/handoff.types.ts`; motivo novo =
-  adicionar o literal e o rótulo em `REASON_LABELS` (`handoff-note.ts`), que o compilador cobra.
+  adicionar o literal e o rótulo em `REASON_LABELS` (`src/modules/handoff/contracts/handoff-note.ts`), que o compilador cobra.
 - `src/utils/service-hours.ts`: `parseServiceHours`, `isOpenAt`, `nextOpening`, `SERVICE_TIME_ZONE`.
 
 ## Review Focus
