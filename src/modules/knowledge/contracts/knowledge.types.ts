@@ -69,6 +69,7 @@ export type AnswerRejection =
   | 'unknown_source'
   | 'money'
   | 'percent'
+  | 'price_claim'
   | 'number_not_in_sources';
 
 export type KnowledgeAnswer =

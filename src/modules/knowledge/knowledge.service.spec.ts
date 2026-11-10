@@ -100,8 +100,15 @@ describe('KnowledgeService', () => {
       });
       expect(llm.calls).toEqual([]);
       expect(repo.queries).toEqual([]);
-      expect(warnCalls()).toContainEqual(
-        expect.objectContaining({ component: 'knowledge', reason: 'unavailable' }),
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        {
+          component: 'knowledge',
+          reason: 'unavailable',
+          chunks: 0,
+          errorName: 'LlmUnavailableError',
+        },
+        'Dúvida sem resposta',
       );
     });
 
@@ -113,6 +120,9 @@ describe('KnowledgeService', () => {
       });
       expect(llm.calls).toEqual([]);
       expect(allLogs()).not.toContain('Jóquei');
+      expect(warnCalls()).toEqual([
+        { component: 'knowledge', reason: 'unavailable', chunks: 0, errorName: 'Error' },
+      ]);
     });
 
     it('IA devolve answer null → not_in_sources', async () => {
@@ -134,11 +144,14 @@ describe('KnowledgeService', () => {
         kind: 'unknown',
         reason: 'unavailable',
       });
-      expect(warnCalls()).toContainEqual({
-        component: 'knowledge',
-        reason: 'unavailable',
-        chunks: 2,
-      });
+      expect(warnCalls()).toEqual([
+        {
+          component: 'knowledge',
+          reason: 'unavailable',
+          chunks: 2,
+          errorName: 'LlmRateLimitedError',
+        },
+      ]);
     });
 
     it('erro inesperado da IA não escapa → unavailable', async () => {
@@ -148,6 +161,19 @@ describe('KnowledgeService', () => {
       await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
         kind: 'unknown',
         reason: 'unavailable',
+      });
+      expect(warnCalls()).toEqual([
+        { component: 'knowledge', reason: 'unavailable', chunks: 2, errorName: 'Error' },
+      ]);
+    });
+
+    it('fontes com o mesmo título aparecem uma vez em sources', async () => {
+      repo.byVector = [BAIRROS, { ...BAIRROS, id: 'c3', content: 'Também no Centro.' }];
+      llm.queueObject({ answer: 'Entregamos no Jóquei e no Centro.', sources: ['T1', 'T2'] });
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'answered',
+        text: 'Entregamos no Jóquei e no Centro.',
+        sources: ['Bairros atendidos'],
       });
     });
 
@@ -207,6 +233,24 @@ describe('KnowledgeService', () => {
     });
 
     it.each([
+      '123 456 789 09',
+      '123.456.789/09',
+      'cpf 123.456.789',
+      '1234567890',
+      '123456789012',
+      '(86) 99999-1234',
+      '86 99999 1234',
+    ])('CPF ou telefone %s não vai ao embedding nem ao prompt', async digits => {
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion(`meu número ${digits}, vocês entregam no Jóquei?`);
+      expect(embeddings.calls).toHaveLength(1);
+      expect(llm.calls).toHaveLength(1);
+      const sent = JSON.stringify([embeddings.calls, llm.calls[0].messages[1]]);
+      expect(sent).not.toMatch(/\d{3}/);
+      expect(sent).toContain('Jóquei');
+    });
+
+    it.each([
       ['vazia', ''],
       ['só espaços', '   '],
       ["só '?'", '?'],
@@ -263,9 +307,9 @@ describe('KnowledgeService', () => {
     it('falha do repositório → unavailable', async () => {
       repo.error = new Error('db fora');
       await expect(service.search(QUESTION)).resolves.toEqual({ status: 'unavailable' });
-      expect(warnCalls()).toContainEqual(
-        expect.objectContaining({ component: 'knowledge', reason: 'unavailable' }),
-      );
+      expect(warnCalls()).toEqual([
+        { component: 'knowledge', reason: 'unavailable', errorName: 'Error' },
+      ]);
     });
 
     it('falha do embedding → unavailable', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidCpf, onlyDigits, removeCpfs } from './cpf';
+import { isValidCpf, onlyDigits, removeCpfs, removeLongDigitRuns } from './cpf';
 
 describe('isValidCpf', () => {
   it('aceita CPF válido com ou sem pontuação', () => {
@@ -26,5 +26,37 @@ describe('removeCpfs', () => {
     expect(result).not.toContain('123.456.789-09');
     expect(result).not.toContain('12345678909');
     expect(result).toContain('casa 120');
+  });
+});
+
+describe('removeLongDigitRuns', () => {
+  it.each([
+    ['123 456 789 09'],
+    ['123.456.789/09'],
+    ['cpf 123.456.789'],
+    ['1234567890'],
+    ['123456789012'],
+    ['86 99999 1234'],
+    ['123-456 789.09'],
+  ])('remove os dígitos de %s', text => {
+    expect(removeLongDigitRuns(`meu ${text}, entregam?`)).not.toMatch(/\d/);
+  });
+
+  it('remove o telefone com DDD entre parênteses', () => {
+    const result = removeLongDigitRuns('fone (86) 99999-1234 ok');
+    expect(result).not.toContain('99999');
+    expect(result).not.toContain('1234');
+    expect(result).toContain('ok');
+  });
+
+  it('preserva números curtos', () => {
+    expect(removeLongDigitRuns('botijão P13 em 40 minutos, troca em 7 dias')).toBe(
+      'botijão P13 em 40 minutos, troca em 7 dias',
+    );
+  });
+
+  it('respeita o mínimo de dígitos informado', () => {
+    expect(removeLongDigitRuns('casa 120 456', 7)).toBe('casa 120 456');
+    expect(removeLongDigitRuns('casa 120 456', 6)).toBe('casa ');
   });
 });

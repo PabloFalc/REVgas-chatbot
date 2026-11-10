@@ -24,3 +24,9 @@ const CPF_PATTERN = /(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)/g;
 export function removeCpfs(text: string): string {
   return text.replace(CPF_PATTERN, '');
 }
+
+const DIGIT_RUN_PATTERN = /\d+(?:[\s./-]+\d+)*/g;
+
+export function removeLongDigitRuns(text: string, minDigits = 9): string {
+  return text.replace(DIGIT_RUN_PATTERN, run => (onlyDigits(run).length >= minDigits ? '' : run));
+}

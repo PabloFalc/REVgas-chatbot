@@ -23,15 +23,19 @@ const answerSchema = z.object({
   sources: z.array(z.string()),
 });
 
+function escapeText(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function escapeAttribute(value: string): string {
-  return value.replace(/"/g, '&quot;');
+  return escapeText(value).replace(/"/g, '&quot;');
 }
 
 export function buildAnswerPrompt(sources: AnswerSource[]): string {
   const blocks = sources
     .map(
       source =>
-        `<trecho id="${source.ref}" titulo="${escapeAttribute(source.title)}">${source.content}</trecho>`,
+        `<trecho id="${source.ref}" titulo="${escapeAttribute(source.title)}">${escapeText(source.content)}</trecho>`,
     )
     .join('\n');
   return `${RULES}\n\nTrechos da base de conhecimento:\n${blocks}`;
