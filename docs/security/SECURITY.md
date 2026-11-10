@@ -167,7 +167,11 @@ Guard rails do fluxo (entregues, etapa B):
 - **Emergência de gás sem IA:** vazamento ou cheiro de gás (`flow/emergency.ts`, frases mais regra de
   proximidade entre palavra de gás e de vazamento) é tratado antes de qualquer comando, em qualquer
   etapa e sem pedido em andamento. Resposta: texto fixo de segurança (Bombeiros, 193) e fila do
-  atendente com o motivo `emergency`.
+  atendente com o motivo `emergency`; se o cliente já está na fila (`queued`), o bot também deixa a
+  nota interna "Emergência: cliente relatou possível vazamento de gás" no Chatwoot.
+  **Decisão do usuário (2026-11-10):** com o atendente no controle (`active`) o bot fica em
+  silêncio: não manda o texto de segurança, repassa a mensagem e deixa a mesma nota interna. Falha
+  do Chatwoot vira aviso no log e não impede o repasse.
 - **Só `order` altera o pedido:** dúvida, preço, fora do assunto e ofensa nunca chamam
   `applyInterpretation`; texto de cliente não muda produto, quantidade nem pagamento por essas
   intenções.
@@ -180,9 +184,10 @@ Guard rails do fluxo (entregues, etapa B):
 - **Cliente travado:** 3 "não entendi" seguidos oferecem o atendente. Contadores no Redis, fora do
   estado do pedido, sem texto do cliente.
 - **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora; interpretar custa 1,
-  responder dúvida custa 2), contado no Redis. Acima do limite o bot segue sem IA, com log de aviso e
-  telefone mascarado. Falha do Redis no limitador deixa a chamada passar (aviso no log), para não
-  derrubar o atendimento.
+  ler endereço em texto livre custa 1, responder dúvida custa 2), contado no Redis. Acima do limite
+  o bot segue sem IA, com log de aviso e telefone mascarado. Falha do Redis no limitador deixa a
+  chamada passar (aviso no log só com o telefone mascarado e o nome do erro, nunca os argumentos do
+  comando, que levam a chave com o telefone), para não derrubar o atendimento.
 - **Produto que não vendemos:** o item citado pela IA é limpo (só letras, números, espaço e hífen,
   até 30 caracteres) antes de ir na resposta.
 - Os cortes de relevância da busca ainda não foram calibrados (ver

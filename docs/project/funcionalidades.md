@@ -20,9 +20,10 @@
 | F13 | RAG sobre a base | Busca híbrida (vetor + texto, fusão RRF) no Postgres com pgvector, corte de relevância e checagens de saída. **Entregue** (2026-11-10) | RF10 |
 
 > **Decisão de escopo (2026-10-22):** o MVP é F01–F05. F03 e o fallback de intenção estão
-> implementados; F04 e F05 estavam pendentes. F06 e F13 (entregues em 2026-11-10), F07 (entregue em 2026-11-09), F08, F09, F10, F11, F12 e a RN13
-> (salvar venda e conversas no Postgres) viraram melhorias futuras (F04 e F12 foram entregues em
-> 2026-10-23, junto com F14, na decisão abaixo).
+> implementados; F04 e F05 estavam pendentes. F06, F07, F08, F09, F10, F11, F12, F13 e a RN13
+> (salvar venda e conversas no Postgres) viraram melhorias futuras. Depois disso, F04, F12 e F14
+> foram entregues em 2026-10-23 (decisão abaixo), F07 em 2026-11-09 e F06 e F13 em 2026-11-10; F05
+> continua pendente.
 > Ver [requisitos.md](requisitos.md#decisões-2026-10-22).
 
 > **Decisão de escopo (2026-10-23):** F04 (repetir último pedido), F12 (lembrete de pedido parado

@@ -45,8 +45,8 @@ knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluatio
 ```
 
 - `AppModule` = `CoreModule` + `RoutesModule` + `InfraModule`. `RoutesModule` imports only
-  `ConversationModule` (which imports `KnowledgeModule`), which also hosts the Chatwoot webhook route (`POST /webhooks/chatwoot`,
-  validated by `X-Chatwoot-Signature`).
+  `ConversationModule` (which imports `KnowledgeModule`), which also hosts the Chatwoot webhook
+  route (`POST /webhooks/chatwoot`, validated by `X-Chatwoot-Signature`).
 - `CoreModule` registers the global filters in the order `unexpected` → `betterAuth` → `drizzle`
   → `http` (Nest checks the last registered first, so the catch-all stays first), plus
   `rateLimit` and `zodValidationPipe`.

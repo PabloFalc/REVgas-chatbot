@@ -47,7 +47,7 @@ O estado do pedido (`OrderState.step`) vive no Redis por 15 min. Os valores de `
 | `askQuantity` | Quantidade digitada | Texto numérico |
 | `choosePayment` | Formas de pagamento (≤ 3 em botões) | Botão / lista (`pay:<TYPE>`) |
 | `askNeedsChange` | Dinheiro: precisa de troco? | Botão (`change:no\|yes`) |
-| `askChangeAmount` | Dinheiro: troco para quanto (≥ total) | Texto numérico |
+| `askChangeAmount` | Dinheiro: troco para quanto (acima do total; um valor só, "200 300" não vale) | Texto numérico |
 | `summary` | Itens, endereço, pagamento e total vindo da API | Botão (`summary:confirm\|fix`) |
 | `chooseCorrection` | O que corrigir | Botão (`fix:product\|address\|payment`) |
 | `creatingSale` | Cria a venda (único POST, sem retry automático) | — |
@@ -78,11 +78,14 @@ texto/botão/lista (áudio, imagem) pede texto e repete a pergunta. O estado nã
 ## Emergência de gás
 
 Mensagem que fala de vazamento ou cheiro de gás (`flow/emergency.ts`, `detectEmergency`) é tratada
-**antes de qualquer outro comando e sem IA**, em qualquer etapa e também sem pedido em andamento.
+**antes de qualquer outro comando e sem IA**, em qualquer etapa e também sem pedido em andamento,
+**exceto com o atendente no controle** (handoff `active`, ver abaixo).
 
 - **Detecção:** texto normalizado (sem acento e sem diferenciar maiúsculas). Vale frase como "vazamento", "vazando", "cheiro de gás", "gás escapando", e também a palavra de gás (`gás`, `glp`, `botijão`) a até 4 palavras de um termo de vazamento ("sinto cheiro forte no botijão"). "O gás acabou", "gás de cozinha" e "botijão vazio" não disparam.
 - **Resposta:** texto fixo de segurança (feche o registro, não acenda fogo nem mexa em interruptores ou tomadas, abra portas e janelas, saia do local e ligue para os Bombeiros no 193), seguido da resposta do handoff com o motivo `emergency`.
 - **Pedido:** o estado não muda. O botão de atendente não é preciso: o cliente já entra na fila (ou recebe o telefone da revenda, se não houver Chatwoot).
+- **Já na fila (`queued`):** o texto de segurança e a resposta "Você já está na fila..." vão ao cliente como acima, e o bot também deixa a nota interna "Emergência: cliente relatou possível vazamento de gás" na conversa do Chatwoot.
+- **Atendente no controle (`active`), decisão do usuário (2026-11-10):** o bot continua em silêncio. Ele não manda o texto de segurança: repassa a mensagem ao atendente como sempre e deixa a nota interna "Emergência: cliente relatou possível vazamento de gás" na conversa (`HandoffService.flagEmergency`). Falha do Chatwoot vira aviso no log e não impede o repasse. É a exceção ao "em qualquer etapa" desta seção.
 
 ## Verificação de identidade
 
@@ -133,7 +136,7 @@ telefone, separado do pedido (que expira em 15 min).
 
 - **Entrada na fila:** nota interna com o resumo (motivo, etapa, produto, quantidade, endereço, pagamento, total, nome; nunca CPF). Antes da verificação de identidade a nota não leva nome, endereço nem pedido. A resposta ao cliente é só o texto do handoff ("Já chamei um atendente...", "Você já está na fila..."); fora do horário (`SERVICE_HOURS`) o bot diz quando abre e pede que o cliente mande "oi" quando abrirmos.
 - **Em `queued`** o bot segue o fluxo normal. Se ele cria a venda, a conversa é resolvida e o cliente sai da fila. "Cancelar" não tira da fila.
-- **Em `active`** o pedido e o lembrete são apagados; mensagens do cliente vão só ao Chatwoot (não suportadas viram `[cliente enviou áudio]`); as do atendente chegam como `*Maria (atendente):* ...`.
+- **Em `active`** o pedido e o lembrete são apagados; mensagens do cliente vão só ao Chatwoot (não suportadas viram `[cliente enviou áudio]`); as do atendente chegam como `*Maria (atendente):* ...`. Mensagem de vazamento não recebe o texto de segurança: vai ao atendente com uma nota interna de emergência (ver [Emergência de gás](#emergência-de-gás)).
 - **Espelho:** todas as mensagens do cliente e do bot são copiadas para uma conversa do Chatwoot por ciclo, depois do envio ao WhatsApp e sem nunca atrasar a resposta. CPF vira `[CPF ocultado]`.
 - **Chatwoot indisponível ou desligado:** volta ao telefone da revenda (`STORE_PHONE`).
 
@@ -163,13 +166,17 @@ O que a IA devolve e como vira pedido:
 - Vários produtos que batem → `pickProduct` com a lista filtrada; quantidade e pagamento ditos são mantidos.
 - O que o cliente disser **substitui** o que já estava no pedido. O bot responde "Anotado: ..." com o que mudou e `nextStep` pergunta só o que falta.
 - Endereço: o texto vira rascunho pelo caminho de sempre (confirmação); "outro endereço" sem texto apaga o endereço e mostra `chooseAddress` ou `askNewAddress`.
-- Mensagem sem relação com o pedido que a IA não classifica (`other`) → "Não entendi." Dúvidas, preços e o resto seguem o roteamento da próxima seção.
+- Mensagem que a IA classifica como `other` (sem relação com o pedido e fora das outras intenções) → "Não entendi." Dúvidas, preços e o resto seguem o roteamento da próxima seção.
+- Quem quer comprar e também pergunta o preço ou o total ("quero 2 P13, quanto fica no pix?") é `order`: o pedido segue e o total aparece no resumo.
 
 ### Dúvidas, preço e guard rails
 
 `routeIntent` (`flow/intent.ts`) responde pela intenção. Com pedido em andamento, a resposta vem
 seguida da pergunta da etapa, e o estado não muda. Sem pedido, a resposta sai numa única mensagem
-com o botão "Fazer pedido" (id `order:start`); nenhum pedido é criado nem lembrete agendado.
+com o botão "Fazer pedido" (id `order:start`); nenhum pedido é criado nem lembrete agendado. Se a
+resposta passa de 1024 caracteres (limite do corpo de botões do WhatsApp, por exemplo uma lista de
+preços longa), ela vai em texto e os botões seguem numa mensagem curta ("Quer fazer um pedido?", ou
+"Quer falar com um atendente ou fazer um pedido?" quando oferece o atendente).
 
 | Intenção | Resposta | Quem responde |
 | --- | --- | --- |
@@ -177,16 +184,16 @@ com o botão "Fazer pedido" (id `order:start`); nenhum pedido é criado nem lemb
 | `question`, assunto `payments` | "Aceitamos: Pix, Dinheiro e Cartão de crédito." (formas ativas na RevGás) | Código |
 | `question`, assunto `general` | Resposta a partir da base de conhecimento ([knowledge.md](../guides/modules/knowledge.md)). Sem resposta: "Não tenho essa informação. Quer falar com um atendente?" + botão "Falar com atendente" | Base + IA, com checagens de saída |
 | `price` | "Preços de hoje:" + uma linha por produto (`- P13: R$ 110,00` ou `- P13: a partir de R$ 105,00`) + "O total aparece no resumo do pedido." Se o cliente citou produtos do catálogo, só eles. Sem preço: "Não consegui consultar os preços agora..." + oferta | Código, só acordo base da RevGás (nunca o acordo do cliente); a IA só classifica |
-| `handoff` | Entra na fila (motivo `customer_request`) | Handoff |
+| `handoff` | Entra na fila (motivo `customer_request`; em `saleFailed`, `sale_failed`) | Handoff |
 | `off_topic` | "Sou o assistente da revenda: posso te ajudar com pedidos e dúvidas sobre gás e entrega." | Texto fixo |
 | `offense` | 1ª vez: "Vamos manter a conversa respeitosa. Posso te ajudar com seu pedido de gás." Da 2ª em diante, o mesmo texto com o botão "Falar com atendente" | Texto fixo |
-| `order` com produto que não vendemos | "Não temos {item}. Temos: P13, P45, Água 20L." (só letras, números, espaço e hífen, até 30 caracteres) | Código |
+| `order` com produto que não vendemos | "Não temos {item}. Temos: P13, P45, Água 20L." (só letras, números, espaço e hífen, até 30 caracteres). Se outro produto da mesma mensagem foi aceito ("quero P13 e carvão"), o pedido segue e o aviso vem antes: "Não temos carvão. Anotado: Botijão P13." | Código |
 
 - **Oferta de atendente:** o botão "Falar com atendente" (`handoff:request`) vem junto da resposta, antes da pergunta da etapa. Só o toque no botão aceita; "sim" digitado não.
 - **Cliente travado:** 3 "Não entendi" seguidos viram "Não estou conseguindo entender. Quer falar com um atendente?" com o botão. O contador fica no Redis (TTL 15 min), fora do pedido, e zera quando uma mensagem é entendida.
 - **Ofensas:** contador por telefone no Redis (TTL 1 h), fora do pedido.
 - **Texto guiado:** quando a IA não entende em `askCpf`, `askCpfPrefix`, `askQuantity` ou `askChangeAmount`, o bot mostra o texto de ajuda da etapa (por exemplo, "Mande a quantidade...") em vez de "Não entendi.", até chegar ao 3º seguido.
-- **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora). `interpret` custa 1 e responder dúvida custa 2. Passou do limite, o bot segue sem IA (como se ela estivesse fora do ar). Se o Redis do limitador falhar, a chamada passa. Ver [environment.md](../guides/conventions/environment.md).
+- **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora). `interpret` custa 1, ler endereço em texto livre (`addressFromText`) custa 1 e responder dúvida custa 2. Passou do limite, o bot segue sem IA (como se ela estivesse fora do ar; no endereço, pede o endereço de novo). Se o Redis do limitador falhar, a chamada passa. Ver [environment.md](../guides/conventions/environment.md).
 - **A base nunca informa** preço, porcentagem, horário de funcionamento nem formas de pagamento; essas respostas vêm do código.
 
 **Primeira mensagem só com dúvida.** Se a primeira mensagem é uma dúvida (ou preço, fora do assunto etc.), o bot responde e mostra o botão "Fazer pedido". Não cria pedido nem pede identificação até o cliente tocar.
@@ -204,7 +211,7 @@ cliente fica conhecido, o produto guardado é conferido de novo com a lista dele
 - **Falha ao criar a venda (`saleFailed`):** dois botões, "Tentar de novo" e "Falar com atendente".
 - **Pedido de desconto:** resposta fixa ("o preço é o da tabela"); o estado não muda.
 - **Dúvida no meio do fluxo:** respondida pela base ou pelo código e a pergunta da etapa é repetida; o estado não muda (ver [Dúvidas, preço e guard rails](#dúvidas-preço-e-guard-rails)). Sem resposta, oferece o atendente.
-- **Emergência de gás:** texto de segurança e fila do atendente, em qualquer etapa (ver [Emergência de gás](#emergência-de-gás)).
+- **Emergência de gás:** texto de segurança e fila do atendente, em qualquer etapa; com o atendente no controle (`active`), só repasse e nota interna (ver [Emergência de gás](#emergência-de-gás)).
 - **Expiração e lembrete:** o estado no Redis tem TTL de 15 min; se o cliente sumir, o carrinho expira. Aos 10 min sem mensagem, o bot manda um lembrete (ver [Lembrete de pedido parado](#lembrete-de-pedido-parado)).
 - **Fallback da IA:** se a IA falhar, demorar, passar do limite por telefone ou não entender, o bot diz "Não entendi." e repete a pergunta com os botões do estado atual (3 seguidos oferecem o atendente).
 

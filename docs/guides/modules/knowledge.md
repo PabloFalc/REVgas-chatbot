@@ -174,7 +174,9 @@ Grupos das perguntas:
   conta quantas vezes a seção esperada veio nos trechos.
 - `unknown`, `off_topic` e `manipulation`: precisam sair sem resposta.
 - `emergency`: passa se `detectEmergency` (detector do fluxo, sem IA) devolve verdadeiro para a pergunta.
-- `price`: passa se `interpret` (cliente da IA real) classifica a pergunta como `price`.
+- `price`: passa se `interpret` (cliente da IA real) devolve a intenção esperada. Ela é
+  `expectedIntent` (opcional, `price` ou `order`, padrão `price`): compra com pergunta de preço
+  ("quero 2 P13, quanto fica no pix?") espera `order`.
 
 Qualquer pergunta pode ter `forbidden` (lista de termos). Se a resposta sair `answered` e contiver
 um deles (sem acento e sem caixa), a pergunta entra nas violações e não conta como acerto. É assim
