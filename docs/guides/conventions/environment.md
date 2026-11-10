@@ -163,6 +163,7 @@ Usa a mesma API compatível com OpenAI do LLM (`POST {URL}/embeddings`). O modo 
 
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
+| `AI_CALLS_PER_PHONE_HOUR` | Não | `30` | Máximo de chamadas de IA por telefone em 1 hora (mínimo 1). Interpretar mensagem custa 1 e responder dúvida custa 2. Acima disso o bot segue sem IA. |
 | `KNOWLEDGE_DIR` | Não | `knowledge/base` | Pasta dos arquivos `.md` ingeridos por `pnpm kb:ingest` (relativa ao diretório de execução). |
 | `KNOWLEDGE_TOP_K` | Não | `3` | Máximo de trechos enviados à IA por pergunta (1 a 10). |
 | `KNOWLEDGE_MIN_SIMILARITY` | Não | `0.7` | Similaridade mínima (0 a 1) para um trecho valer só pelo vetor. Ainda não calibrado (`pnpm rag:check`). |

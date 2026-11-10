@@ -162,7 +162,9 @@ export class ConversationService {
     log: object,
   ): Promise<{ replies: Reply[]; before: OrderState | null; result: StepResult }> {
     const phone = incoming.from;
-    const tools = this.flowTools.forPhone(state => this.conversations.saveOrder(phone, state));
+    const tools = this.flowTools.forPhone(phone, state =>
+      this.conversations.saveOrder(phone, state),
+    );
     const before = await this.conversations.loadOrder(phone);
     const result = await runFlow(
       before,

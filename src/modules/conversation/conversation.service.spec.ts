@@ -117,9 +117,11 @@ describe('ConversationService.handle', () => {
     await service.handle(parseWebhook(textWebhook('oi', 'wamid.LK')));
 
     expect(repository.withPhoneLock).toHaveBeenCalledWith('5586999991234', expect.any(Function));
-    const [save] = flowTools.forPhone.mock.calls[0] as unknown as [
+    const [phone, save] = flowTools.forPhone.mock.calls[0] as unknown as [
+      string,
       (state: OrderState) => Promise<void>,
     ];
+    expect(phone).toBe('5586999991234');
     await save({ step: 'askName', customer: {} });
     expect(repository.saveOrder).toHaveBeenCalledWith('5586999991234', {
       step: 'askName',

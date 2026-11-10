@@ -6,7 +6,13 @@ import type { RevgasEstablishment } from 'src/integrations/revgas/establishments
 import type { RevgasPaymentType } from 'src/integrations/revgas/payment-types/payment-types.schemas';
 import type { RevgasProduct } from 'src/integrations/revgas/products/products.schemas';
 import { REVGAS_CLIENT, type RevgasClient } from 'src/integrations/revgas/revgas.client';
-import type { PaymentOption, PriceCustomer, Product, Quote } from './contracts/catalog.types';
+import type {
+  BasePrice,
+  PaymentOption,
+  PriceCustomer,
+  Product,
+  Quote,
+} from './contracts/catalog.types';
 import { paymentLabel } from './payment-labels';
 import { pickDeal } from './price';
 
@@ -61,6 +67,27 @@ export class CatalogRepository {
     if (!deal) return null;
     const unitPrice = deal.suggested_value;
     return { unitPrice, total: Math.round(unitPrice * quantity * 100) / 100 };
+  }
+
+  async basePrices(): Promise<BasePrice[]> {
+    const [products, paymentOptions] = await Promise.all([
+      this.listProducts({}),
+      this.listPaymentOptions(),
+    ]);
+    const result: BasePrice[] = [];
+    for (const product of products) {
+      const quotes = await Promise.all(
+        paymentOptions.map(option => this.quote({}, product.id, option.type, 1)),
+      );
+      const prices = quotes.flatMap(item => (item ? [item.unitPrice] : []));
+      if (prices.length === 0) continue;
+      result.push({
+        product,
+        minPrice: Math.min(...prices),
+        varies: new Set(prices).size > 1,
+      });
+    }
+    return result;
   }
 
   private activeTypes(paymentTypes: RevgasPaymentType[]): string[] {

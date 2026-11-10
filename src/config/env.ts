@@ -109,6 +109,11 @@ export const envConfigSchema = z
       z.coerce.number().int().min(1).max(100).default(16),
     ),
 
+    AI_CALLS_PER_PHONE_HOUR: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().min(1).default(30),
+    ),
+
     // KNOWLEDGE (base de conhecimento; limiares ainda nao calibrados, ver pnpm rag:check)
     KNOWLEDGE_DIR: z.preprocess(emptyAsUndefined, z.string().min(1).default('knowledge/base')),
     KNOWLEDGE_TOP_K: z.preprocess(

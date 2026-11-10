@@ -212,6 +212,45 @@ describe('CatalogRepository', () => {
     });
   });
 
+  describe('basePrices', () => {
+    const payments = [payment(1, 'PIX'), payment(2, 'MONEY')];
+
+    it('uses the lowest base price and flags when it varies by payment type', async () => {
+      const { repository } = build({
+        paymentTypes: payments,
+        products: [product(1, 'P13'), product(2, 'Água'), product(3, 'Sem preço')],
+        deals: [
+          deal(1, 1, 'PIX', 105),
+          deal(2, 1, 'MONEY', 110),
+          deal(3, 2, 'PIX', 8),
+          deal(4, 2, 'MONEY', 8),
+        ],
+      });
+
+      expect(await repository.basePrices()).toEqual([
+        { product: { id: 2, name: 'Água' }, minPrice: 8, varies: false },
+        { product: { id: 1, name: 'P13' }, minPrice: 105, varies: true },
+      ]);
+    });
+
+    it('ignores customer and tag deals', async () => {
+      const special = (id: number, value: number, extra: Partial<RevgasDeal>) =>
+        ({ ...deal(id, 1, 'PIX', value), ...extra }) as RevgasDeal;
+      const { repository } = build({
+        products: [product(1, 'P13')],
+        deals: [
+          deal(1, 1, 'PIX', 110),
+          special(2, 50, { type: 'CUSTOMER', customer_id: 9, is_default: false }),
+          special(3, 60, { type: 'TAG', tag_id: 4, is_default: false }),
+        ],
+      });
+
+      expect(await repository.basePrices()).toEqual([
+        { product: { id: 1, name: 'P13' }, minPrice: 110, varies: false },
+      ]);
+    });
+  });
+
   describe('cache', () => {
     it('does not call RevGás again on the second call', async () => {
       const {

@@ -252,6 +252,37 @@ describe('ConversationRepository (identidade)', () => {
   });
 });
 
+describe('ConversationRepository (contadores de conversa)', () => {
+  const phone = '5586999991234';
+
+  it('registerMisunderstood conta com TTL de 900 s e resetMisunderstood zera', async () => {
+    const { repository, cache } = setupIdentity();
+    await expect(repository.registerMisunderstood(phone)).resolves.toBe(1);
+    await expect(repository.registerMisunderstood(phone)).resolves.toBe(2);
+    expect(cache.increment).toHaveBeenCalledWith({
+      prefix: 'conversation:misunderstood',
+      key: phone,
+      ttl: 900,
+    });
+    await repository.resetMisunderstood(phone);
+    expect(cache.delete).toHaveBeenCalledWith({
+      prefix: 'conversation:misunderstood',
+      key: phone,
+    });
+  });
+
+  it('registerOffense conta com TTL de 3600 s', async () => {
+    const { repository, cache } = setupIdentity();
+    await expect(repository.registerOffense(phone)).resolves.toBe(1);
+    await expect(repository.registerOffense(phone)).resolves.toBe(2);
+    expect(cache.increment).toHaveBeenCalledWith({
+      prefix: 'conversation:offense',
+      key: phone,
+      ttl: 3_600,
+    });
+  });
+});
+
 describe('ConversationRepository (estado e agenda)', () => {
   const phone = '5586999991234';
 

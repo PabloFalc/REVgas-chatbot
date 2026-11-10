@@ -59,6 +59,18 @@ describe('envConfigSchema', () => {
     expect(envConfigSchema.safeParse({ ...base, EMBEDDING_DIMENSIONS: '0' }).success).toBe(false);
   });
 
+  it('limite de IA por telefone tem default 30 e recusa valor menor que 1', () => {
+    expect(
+      envConfigSchema.parse({ ...base, AI_CALLS_PER_PHONE_HOUR: '' }).AI_CALLS_PER_PHONE_HOUR,
+    ).toBe(30);
+    expect(
+      envConfigSchema.parse({ ...base, AI_CALLS_PER_PHONE_HOUR: '5' }).AI_CALLS_PER_PHONE_HOUR,
+    ).toBe(5);
+    expect(envConfigSchema.safeParse({ ...base, AI_CALLS_PER_PHONE_HOUR: '0' }).success).toBe(
+      false,
+    );
+  });
+
   it('aplica defaults da base de conhecimento e valida faixas', () => {
     const env = envConfigSchema.parse({ ...base, KNOWLEDGE_DIR: '', KNOWLEDGE_TOP_K: '' });
     expect(env.KNOWLEDGE_DIR).toBe('knowledge/base');

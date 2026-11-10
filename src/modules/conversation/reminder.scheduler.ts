@@ -83,7 +83,7 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
     if (!state) return this.skipped(phone, 'expired');
     if (state.step === 'creatingSale') return this.skipped(phone, 'creatingSale');
 
-    const tools = this.flowTools.forPhone(next =>
+    const tools = this.flowTools.forPhone(phone, next =>
       this.conversations.saveOrderKeepingTtl(phone, next),
     );
     const result = await reminderFor(state, tools);

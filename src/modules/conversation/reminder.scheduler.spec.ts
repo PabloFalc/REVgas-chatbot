@@ -78,9 +78,11 @@ describe('ReminderScheduler.tick', () => {
       'Lembrete enviado',
     );
 
-    const [save] = flowTools.forPhone.mock.calls[0] as unknown as [
+    const [forPhone, save] = flowTools.forPhone.mock.calls[0] as unknown as [
+      string,
       (state: OrderState) => Promise<void>,
     ];
+    expect(forPhone).toBe(PHONE);
     await save({ step: 'choosePayment', customer: {} });
     expect(repository.saveOrderKeepingTtl).toHaveBeenLastCalledWith(PHONE, {
       step: 'choosePayment',

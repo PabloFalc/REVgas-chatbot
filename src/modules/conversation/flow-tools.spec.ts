@@ -1,12 +1,17 @@
+import type { PinoLogger } from 'nestjs-pino';
 import { describe, expect, it, vi } from 'vitest';
 import type { AddressService } from '../address/address.service';
+import type { AiUsageRepository } from '../assistant/ai-usage.repository';
 import type { AssistantService } from '../assistant/assistant.service';
 import type { CatalogRepository } from '../catalog/catalog.repository';
 import type { CustomerRepository } from '../customer/customer.repository';
 import type { HandoffService } from '../handoff/handoff.service';
+import type { KnowledgeService } from '../knowledge/knowledge.service';
 import type { OrderRepository } from '../order/order.repository';
 import type { ConversationRepository } from './conversation.repository';
 import { FlowToolsService } from './flow-tools';
+
+const PHONE = '5586999991234';
 
 function setup() {
   const customers = {
@@ -18,6 +23,9 @@ function setup() {
     listProducts: vi.fn(async () => []),
     listPaymentOptions: vi.fn(),
     quote: vi.fn(),
+    basePrices: vi.fn(async () => [
+      { product: { id: 1, name: 'P13' }, minPrice: 105, varies: true },
+    ]),
   };
   const orders = { createSale: vi.fn(async () => 7), findRecentSale: vi.fn(async () => null) };
   const addresses = { fromCep: vi.fn(async () => null), fromText: vi.fn(async () => null) };
@@ -27,7 +35,15 @@ function setup() {
     markVerified: vi.fn(async () => undefined),
     registerCpfMismatch: vi.fn(async () => 2),
     isBlocked: vi.fn(async () => false),
+    registerMisunderstood: vi.fn(async () => 2),
+    resetMisunderstood: vi.fn(async () => undefined),
+    registerOffense: vi.fn(async () => 3),
   };
+  const knowledge = {
+    answerQuestion: vi.fn(async () => ({ kind: 'answered', text: 'ok', sources: ['a'] })),
+  };
+  const aiUsage = { consume: vi.fn(async () => true) };
+  const logger = { setContext: vi.fn(), warn: vi.fn() };
   const handoff = {
     requestHandoff: vi.fn(async () => ({ status: 'queued', open: true, nextOpening: null })),
     serviceHours: vi.fn(() => ({ open: true, nextOpening: null, windows: [] })),
@@ -40,14 +56,29 @@ function setup() {
     assistant as unknown as AssistantService,
     conversations as unknown as ConversationRepository,
     handoff as unknown as HandoffService,
+    knowledge as unknown as KnowledgeService,
+    aiUsage as unknown as AiUsageRepository,
+    logger as unknown as PinoLogger,
   );
-  return { service, customers, catalog, orders, addresses, assistant, conversations, handoff };
+  return {
+    service,
+    customers,
+    catalog,
+    orders,
+    addresses,
+    assistant,
+    conversations,
+    handoff,
+    knowledge,
+    aiUsage,
+    logger,
+  };
 }
 
 describe('FlowToolsService.forPhone', () => {
   it('liga requestHandoff e serviceHours ao HandoffService', async () => {
     const { service, handoff } = setup();
-    const tools = service.forPhone(async () => undefined);
+    const tools = service.forPhone(PHONE, async () => undefined);
     const request = { phone: '5586999991234', reason: 'customer_request' as const, summary: null };
     await expect(tools.requestHandoff(request)).resolves.toMatchObject({ status: 'queued' });
     await expect(tools.serviceHours()).resolves.toMatchObject({ open: true });
@@ -57,7 +88,7 @@ describe('FlowToolsService.forPhone', () => {
 
   it('delega cada ferramenta ao repositório ou serviço correspondente', async () => {
     const { service, customers, catalog, orders, addresses } = setup();
-    const tools = service.forPhone(async () => undefined);
+    const tools = service.forPhone(PHONE, async () => undefined);
     const customer = { id: 1, tagId: null };
 
     await tools.findCustomer('5586999991234');
@@ -77,7 +108,7 @@ describe('FlowToolsService.forPhone', () => {
 
   it('ferramentas de identidade delegam ao repositório da conversa', async () => {
     const { service, conversations } = setup();
-    const tools = service.forPhone(async () => undefined);
+    const tools = service.forPhone(PHONE, async () => undefined);
     const phone = '5586999991234';
 
     await expect(tools.isVerified(phone, 1)).resolves.toBe(true);
@@ -93,7 +124,7 @@ describe('FlowToolsService.forPhone', () => {
 
   it('interpret delega ao assistente com os mesmos argumentos', async () => {
     const { service, assistant } = setup();
-    const tools = service.forPhone(async () => undefined);
+    const tools = service.forPhone(PHONE, async () => undefined);
     const context = { products: ['Botijão P13'], payments: [{ type: 'PIX', label: 'Pix' }] };
 
     await tools.interpret('2 botijões', context);
@@ -104,11 +135,73 @@ describe('FlowToolsService.forPhone', () => {
   it('checkpoint grava pelo save recebido e now devolve uma data', async () => {
     const { service } = setup();
     const save = vi.fn(async () => undefined);
-    const tools = service.forPhone(save);
+    const tools = service.forPhone(PHONE, save);
 
     await tools.checkpoint({ step: 'askName', customer: {} });
 
     expect(save).toHaveBeenCalledWith({ step: 'askName', customer: {} });
     expect(tools.now()).toBeInstanceOf(Date);
+  });
+
+  it('expõe o telefone e liga contadores e preço base ao telefone da conversa', async () => {
+    const { service, conversations, catalog } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    expect(tools.phone).toBe(PHONE);
+    await expect(tools.registerMisunderstood()).resolves.toBe(2);
+    await tools.resetMisunderstood();
+    await expect(tools.registerOffense()).resolves.toBe(3);
+    await expect(tools.basePrices()).resolves.toHaveLength(1);
+
+    expect(conversations.registerMisunderstood).toHaveBeenCalledWith(PHONE);
+    expect(conversations.resetMisunderstood).toHaveBeenCalledWith(PHONE);
+    expect(conversations.registerOffense).toHaveBeenCalledWith(PHONE);
+    expect(catalog.basePrices).toHaveBeenCalledOnce();
+  });
+
+  it('interpret consome 1 e, dentro do limite, chama o assistente', async () => {
+    const { service, aiUsage, assistant } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await tools.interpret('x', { products: [], payments: [] });
+
+    expect(aiUsage.consume).toHaveBeenCalledWith(PHONE, 1);
+    expect(assistant.interpret).toHaveBeenCalledOnce();
+  });
+
+  it('interpret acima do limite devolve null sem chamar o assistente e avisa sem o telefone cru', async () => {
+    const { service, aiUsage, assistant, logger } = setup();
+    aiUsage.consume.mockResolvedValueOnce(false);
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await expect(tools.interpret('x', { products: [], payments: [] })).resolves.toBeNull();
+
+    expect(assistant.interpret).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
+  });
+
+  it('answerQuestion consome 2 e delega ao KnowledgeService', async () => {
+    const { service, aiUsage, knowledge } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await expect(tools.answerQuestion('vocês entregam?')).resolves.toMatchObject({
+      kind: 'answered',
+    });
+
+    expect(aiUsage.consume).toHaveBeenCalledWith(PHONE, 2);
+    expect(knowledge.answerQuestion).toHaveBeenCalledWith('vocês entregam?');
+  });
+
+  it('answerQuestion acima do limite devolve unavailable sem chamar o KnowledgeService', async () => {
+    const { service, aiUsage, knowledge } = setup();
+    aiUsage.consume.mockResolvedValueOnce(false);
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await expect(tools.answerQuestion('x')).resolves.toEqual({
+      kind: 'unknown',
+      reason: 'unavailable',
+    });
+    expect(knowledge.answerQuestion).not.toHaveBeenCalled();
   });
 });
