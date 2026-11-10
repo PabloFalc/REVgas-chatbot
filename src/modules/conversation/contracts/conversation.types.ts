@@ -1,7 +1,7 @@
 export type IncomingContent =
   | { type: 'text'; text: string }
   | { type: 'choice'; id: string; title?: string }
-  | { type: 'unsupported' };
+  | { type: 'unsupported'; originalType?: string };
 
 export interface IncomingMessage {
   id: string;

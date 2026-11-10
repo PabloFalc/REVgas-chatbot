@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isValidCpf, onlyDigits, removeCpfMentions, removeCpfs, removeLongDigitRuns } from './cpf';
+import {
+  hideCpfs,
+  isValidCpf,
+  onlyDigits,
+  removeCpfMentions,
+  removeCpfs,
+  removeLongDigitRuns,
+} from './cpf';
 
 describe('isValidCpf', () => {
   it('aceita CPF válido com ou sem pontuação', () => {
@@ -111,5 +118,16 @@ describe('removeCpfs → removeCpfMentions → removeLongDigitRuns', () => {
 
   it.each(['P13', '40 minutos', '7 dias', '24 horas'])('%j sobrevive', text => {
     expect(clean(`tem ${text}?`)).toBe(`tem ${text}?`);
+  });
+});
+
+describe('hideCpfs', () => {
+  it('troca CPFs por marcador', () => {
+    expect(hideCpfs('meu cpf é 123.456.789-09 ok')).toBe('meu cpf é [CPF ocultado] ok');
+    expect(hideCpfs('12345678909')).toBe('[CPF ocultado]');
+  });
+
+  it('não altera texto sem CPF', () => {
+    expect(hideCpfs('rua 123 nº 45')).toBe('rua 123 nº 45');
   });
 });

@@ -1,5 +1,6 @@
 import { normalizeText } from 'src/utils/text';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
+import { HANDOFF_CHOICE, handoff } from './handoff';
 import { textOf } from './input';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
@@ -21,6 +22,11 @@ export async function globalCommand(
     return repeatQuestion(state, tools, textReply(msg.textOnly));
   }
 
+  if (input.content.type === 'choice' && input.content.id === HANDOFF_CHOICE) {
+    const reason = state?.step === 'saleFailed' ? 'sale_failed' : 'customer_request';
+    return handoff(state, input.phone, reason, tools);
+  }
+
   const raw = textOf(input);
   if (raw === null) return null;
   const text = normalizeText(raw);
@@ -32,7 +38,7 @@ export async function globalCommand(
   }
 
   if (STORE.some(word => text.includes(word))) {
-    return { state, replies: [textReply(msg.talkToStore(tools.storePhone))] };
+    return handoff(state, input.phone, 'customer_request', tools);
   }
 
   if (DISCOUNT.some(word => text.includes(word))) {

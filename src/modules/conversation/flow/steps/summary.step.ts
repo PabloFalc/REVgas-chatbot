@@ -10,6 +10,7 @@ import {
   ToolError,
 } from '../flow.types';
 import { freeText } from '../free-text';
+import { handoffButton } from '../handoff';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -65,7 +66,7 @@ const creatingSale: AskFn = async state => ({
 
 const saleFailed: AskFn = async state => ({
   state: { ...state, step: 'saleFailed' },
-  replies: [buttons(msg.saleFailed, [{ id: 'retry:sale', title: msg.retry }])],
+  replies: [buttons(msg.saleFailed, [{ id: 'retry:sale', title: msg.retry }, handoffButton()])],
 });
 
 async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResult> {

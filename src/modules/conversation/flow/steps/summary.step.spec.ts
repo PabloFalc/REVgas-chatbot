@@ -105,7 +105,7 @@ describe('summary', () => {
     const reply = result?.replies[0];
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
     expect(reply.body).toBe(msg.saleFailed);
-    expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale']);
+    expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale', 'handoff:request']);
   });
 
   it('venda rejeitada pelo ERP encerra o pedido sem tentar de novo', async () => {
@@ -231,7 +231,7 @@ describe('creatingSale', () => {
     expect(result?.state?.step).toBe('saleFailed');
     const reply = result?.replies[0];
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
-    expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale']);
+    expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale', 'handoff:request']);
     expect(tools.calls).toEqual([]);
   });
 

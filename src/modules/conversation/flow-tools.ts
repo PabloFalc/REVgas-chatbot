@@ -4,6 +4,7 @@ import { AddressService } from '../address/address.service';
 import { AssistantService } from '../assistant/assistant.service';
 import { CatalogRepository } from '../catalog/catalog.repository';
 import { CustomerRepository } from '../customer/customer.repository';
+import { HandoffService } from '../handoff/handoff.service';
 import { OrderRepository } from '../order/order.repository';
 import { ConversationRepository } from './conversation.repository';
 import type { FlowTools, OrderState } from './flow/flow.types';
@@ -17,6 +18,7 @@ export class FlowToolsService {
     private readonly addresses: AddressService,
     private readonly assistant: AssistantService,
     private readonly conversations: ConversationRepository,
+    private readonly handoff: HandoffService,
   ) {}
 
   forPhone(save: (state: OrderState) => Promise<void>): FlowTools {
@@ -38,6 +40,8 @@ export class FlowToolsService {
       createSale: order => this.orders.createSale(order),
       findRecentSale: (order, since) => this.orders.findRecentSale(order, since),
       checkpoint: save,
+      requestHandoff: request => this.handoff.requestHandoff(request),
+      serviceHours: async () => this.handoff.serviceHours(),
       storePhone: env.STORE_PHONE,
       now: () => new Date(),
     };

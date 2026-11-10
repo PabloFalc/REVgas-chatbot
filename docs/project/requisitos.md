@@ -18,7 +18,7 @@
 | RF08 | Criar a venda no ERP RevGás via API | Uma confirmação = uma venda; ID da venda retornado e salvo | Foco do grupo |
 | RF09 | Informar status (entregador a caminho, tempo estimado) | Cliente recebe nº da venda e previsão | Mockup do WhatsApp |
 | RF10 | Responder dúvidas fora do menu com IA sobre FAQ curto | **Melhoria futura** (decisão de 2026-10-22). Hoje: resposta fixa com o telefone da revenda e volta ao pedido | Tabela de técnicas |
-| ~~RF11~~ | ~~Transferir para atendente humano com resumo~~ | **Fora do escopo** (decisão de 2026-10-21). Pedido de atendente → mensagem fixa com o telefone da revenda | Human Handoff |
+| RF11 | Transferir para atendente humano com resumo | **De volta ao escopo** (decisão de 2026-11-09, F07). Pedido de atendente ou falha da venda → fila no Chatwoot com nota de resumo; o atendente responde pelo mesmo WhatsApp. Sem o Chatwoot configurado: telefone da revenda | Human Handoff |
 
 ## Requisitos não funcionais
 
@@ -64,19 +64,23 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 
 ## Decisões (2026-10-21)
 
-- **Sem atendente humano.** RF11 fica fora do escopo. Sem handoff, cada situação tem uma resposta fixa:
+- **Sem atendente humano (superado em 2026-11-09: RF11 voltou com o Chatwoot, F07).** Na época, cada situação tinha uma resposta fixa:
   - IA não entende → reapresenta os botões da etapa atual.
   - API falha ao criar a venda → avisa e oferece "Tentar de novo" (nunca reenvia sozinho).
-  - Cliente pede atendente → mensagem fixa com o telefone da revenda.
+  - Cliente pede atendente → mensagem fixa com o telefone da revenda (hoje só com `CHATWOOT_MODE=off` ou Chatwoot fora do ar).
 - **CPF obrigatório.** Cadastro novo exige CPF válido; cliente já cadastrado sem CPF recebe o telefone da revenda (decisão de 2026-10-23: o bot não grava CPF em cadastro existente). O CPF nunca vai para o prompt da IA. (RF03, RN03)
 - **Sem limite de quantidade** por enquanto. (RN05)
 - **Sem promoção.** O bot não oferece desconto; pedido de desconto recebe resposta fixa. (RN07)
 - **Endereços do cliente** = endereço do cadastro + endereços das vendas anteriores na RevGás, sem repetir. Cliente cadastrado escolhe um deles ou informa outro (CEP ou texto livre, sempre confirmado). A RevGás guarda um só endereço por cliente; não criamos tabela própria.
 
+## Decisões (2026-11-09)
+
+- **RF11 e F07 entregues com o Chatwoot.** O handoff vai para a fila do Chatwoot (caixa do tipo API) com nota de resumo, sem CPF; o bot segue atendendo na fila e se cala quando o atendente fala. Fora do horário o cliente fica na fila. Todas as conversas são espelhadas no Chatwoot. Ver [chatwoot.md](../guides/integrations/chatwoot.md) e [fluxo.md](fluxo.md#handoff-para-atendente).
+
 ## Decisões (2026-10-22)
 
 - **Escopo do MVP:** F01–F05. F03 (pedido em texto livre) e o fallback de intenção estão implementados; F04 e F05 estavam pendentes (superado em 2026-10-23: F04, F12 e F14 entregues).
-- **Melhorias futuras, não usadas por enquanto:** F06, F07, F08, F09, F10, F11, F12, F13 e RN13 (F12 superado em 2026-10-23: entregue). RF10 também fica para depois.
+- **Melhorias futuras, não usadas por enquanto:** F06, F08, F09, F10, F11, F12, F13 e RN13 (F12 superado em 2026-10-23: entregue; F07 entregue em 2026-11-09). RF10 também fica para depois.
 - **Texto livre e fallback com resposta fixa.** A IA só interpreta o pedido (produto, quantidade, pagamento, endereço). Dúvida fora do pedido recebe uma resposta fixa com o telefone da revenda; mensagem que a IA não entende recebe "Não entendi."; nos dois casos o bot repete a pergunta da etapa. Não há FAQ com IA.
 - **Texto livre nunca pula o resumo.** A venda só é criada depois do botão "Confirmar".
 

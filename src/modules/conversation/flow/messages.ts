@@ -1,6 +1,7 @@
 import type { Address } from 'src/modules/address/contracts/address.types';
 import type { Product } from 'src/modules/catalog/contracts/catalog.types';
 import { formatMoney } from 'src/utils/money';
+import type { Opening } from 'src/utils/service-hours';
 import type { OrderState, RepeatOffer } from './flow.types';
 
 function storeContact(phone?: string): string {
@@ -15,12 +16,22 @@ function addressFull(address: Address): string {
   return `${addressLabel(address)}, ${address.city}/${address.state}`;
 }
 
-function paymentLine(state: OrderState): string {
+export function paymentLine(state: OrderState): string {
   const label = state.payment?.label ?? '';
   if (state.payment?.type === 'MONEY' && state.changeFor) {
     return `${label} (troco para ${formatMoney(state.changeFor)})`;
   }
   return label;
+}
+
+const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+
+function openingWhen(opening: Opening): string {
+  const [hours, minutes] = opening.time.split(':');
+  const time = `${Number(hours)}h${minutes === '00' ? '' : minutes}`;
+  if (opening.inDays === 0) return `hoje às ${time}`;
+  if (opening.inDays === 1) return `amanhã às ${time}`;
+  return `${WEEKDAYS[opening.weekday]} às ${time}`;
 }
 
 export const msg = {
@@ -95,6 +106,13 @@ export const msg = {
   saleInProgress: 'Estou registrando seu pedido, só um instante.',
   cancelled: 'Pedido cancelado. É só mandar mensagem quando quiser pedir.',
   talkToStore: (phone?: string) => storeContact(phone),
+  talkToAgent: 'Falar com atendente',
+  handoffQueued: 'Já chamei um atendente. Enquanto isso, posso continuar te ajudando por aqui.',
+  handoffAlreadyQueued: 'Você já está na fila, um atendente vai te chamar.',
+  handoffClosed: (opening: Opening | null) =>
+    opening
+      ? `Estamos fechados agora. Abrimos ${openingWhen(opening)}. Quando abrirmos, mande um "oi" aqui que um atendente te responde.`
+      : 'Estamos fechados agora. Quando abrirmos, mande um "oi" aqui que um atendente te responde.',
   noDiscount: 'O preço é o da tabela da revenda.',
   offTopic: (phone?: string) =>
     `Essa dúvida eu não consigo responder por aqui. ${storeContact(phone)}`,

@@ -19,6 +19,11 @@ import type {
   LastOrder,
   NewCustomer,
 } from 'src/modules/customer/contracts/customer.types';
+import type {
+  HandoffOutcome,
+  HandoffRequest,
+  ServiceHoursInfo,
+} from 'src/modules/handoff/contracts/handoff.types';
 import type { SaleOrder } from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
@@ -45,6 +50,8 @@ export type Step =
   | 'chooseCorrection'
   | 'creatingSale'
   | 'saleFailed';
+
+export const CPF_STEPS: readonly Step[] = ['askCpf', 'askCpfPrefix'];
 
 export interface RepeatOffer {
   product: Product;
@@ -119,6 +126,8 @@ export interface FlowTools {
   createSale(order: SaleOrder): Promise<number>;
   findRecentSale(order: SaleOrder, since: Date): Promise<number | null>;
   checkpoint(state: OrderState): Promise<void>;
+  requestHandoff(request: HandoffRequest): Promise<HandoffOutcome>;
+  serviceHours(): Promise<ServiceHoursInfo>;
   storePhone?: string;
   now(): Date;
 }

@@ -37,3 +37,7 @@ const CPF_MENTION_PATTERN =
 export function removeCpfMentions(text: string): string {
   return text.replace(CPF_MENTION_PATTERN, '$1');
 }
+
+export function hideCpfs(text: string): string {
+  return text.replace(CPF_PATTERN, '[CPF ocultado]');
+}

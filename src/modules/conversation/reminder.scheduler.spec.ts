@@ -1,5 +1,6 @@
 import type { PinoLogger } from 'nestjs-pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { HandoffService } from '../handoff/handoff.service';
 import type { ConversationRepository } from './conversation.repository';
 import type { OrderState } from './flow/flow.types';
 import { createFakeTools, FAKE_NOW } from './flow/testing/fake-tools';
@@ -32,6 +33,7 @@ function setup(phones = [PHONE]) {
   };
   const messaging = { send: vi.fn(async (_to: string, _reply: unknown) => undefined) };
   const flowTools = { forPhone: vi.fn(() => createFakeTools()) };
+  const handoff = { mirrorOutgoing: vi.fn(async () => undefined) };
   const logger = {
     setContext: vi.fn(),
     debug: vi.fn(),
@@ -43,9 +45,10 @@ function setup(phones = [PHONE]) {
     repository as unknown as ConversationRepository,
     messaging as unknown as MessagingGateway,
     flowTools as unknown as FlowToolsService,
+    handoff as unknown as HandoffService,
     logger as unknown as PinoLogger,
   );
-  return { scheduler, repository, messaging, flowTools, logger };
+  return { scheduler, repository, messaging, flowTools, handoff, logger };
 }
 
 afterEach(() => {
@@ -84,6 +87,22 @@ describe('ReminderScheduler.tick', () => {
       customer: {},
     });
     expect(repository.saveOrder).not.toHaveBeenCalled();
+  });
+
+  it('espelha o texto do lembrete no atendimento depois de enviar', async () => {
+    const { scheduler, messaging, handoff } = setup();
+    let sentWhenMirrored = -1;
+    handoff.mirrorOutgoing.mockImplementationOnce(async () => {
+      sentWhenMirrored = messaging.send.mock.calls.length;
+    });
+
+    await scheduler.tick();
+
+    expect(sentWhenMirrored).toBe(2);
+    expect(handoff.mirrorOutgoing).toHaveBeenCalledWith(PHONE, [
+      'Ainda está aí? Seu pedido fica guardado por mais 5 minutos.',
+      expect.any(String),
+    ]);
   });
 
   it('claim falso não faz nada', async () => {

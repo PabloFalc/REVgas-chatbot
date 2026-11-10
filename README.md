@@ -61,6 +61,7 @@ pnpm start:dev          # API em http://localhost:3100 — docs em /docs
 | Migrations | `pnpm db:generate` → `pnpm db:migrate` |
 | Drizzle Studio | `pnpm db:studio` |
 | Infra local | `pnpm docker:init` / `pnpm docker:stop` |
+| Chatwoot local (handoff) | `pnpm chatwoot:prepare` · `pnpm chatwoot:up` · `pnpm chatwoot:stop` (ver [chatwoot.md](./docs/guides/integrations/chatwoot.md)) |
 
 > **Commits:** `git commit` direto, seguindo conventional commits (`feat:`, `fix:`, `chore:`…).
 
@@ -82,7 +83,7 @@ tests/         e2e (Vitest + supertest) e helpers
 
 Planejado (ver [specs.md](./docs/project/specs.md#estrutura-de-pastas)): `modules/` ganha
 `conversation`, `customer`, `catalog`, `order`, `assistant`, `handoff` e `metrics`; `integrations/` reúne
-os clientes externos (`revgas`, `whatsapp`, `llm`).
+os clientes externos (`revgas`, `whatsapp`, `chatwoot`, `llm`).
 
 ---
 
@@ -103,6 +104,8 @@ antes de mexer no código correspondente.
 
 - **[auth.md](./docs/guides/modules/auth.md)** — autenticação do painel (Better Auth, só token
   Bearer): status standby e como ligar, `AuthGuard`, fluxos de email e rotas.
+- **[chatwoot.md](./docs/guides/integrations/chatwoot.md)** — handoff para atendente via Chatwoot:
+  Docker local, configuração da caixa e dos tokens, webhook, estados do handoff e limitações.
 - **[email-service.md](./docs/guides/services/email-service.md)** — `EmailService` (Resend),
   standby, modo log-only em dev/test e templates.
 - **[api-doc.md](./docs/guides/conventions/api-doc.md)** — o decorator `@ApiDoc` (Swagger +
