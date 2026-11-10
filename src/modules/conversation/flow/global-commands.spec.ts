@@ -164,6 +164,22 @@ describe('globalCommand', () => {
     }
   });
 
+  it.each([
+    ['fila fechada', { status: 'queued', open: false, nextOpening: null }],
+    ['já na fila', { status: 'alreadyQueued', open: true, nextOpening: null }],
+    ['já ativo', { status: 'active', open: true, nextOpening: null }],
+    ['indisponível', { status: 'unavailable', open: true, nextOpening: null }],
+  ] as const)(
+    'emergência com handoff %s mantém msg.emergency como primeira resposta',
+    async (_n, outcome) => {
+      const tools = createFakeTools({ requestHandoff: async () => outcome as never });
+      const result = await globalCommand(state, say('cheiro de gás'), tools);
+      expect(result?.replies[0]).toEqual(text(msg.emergency));
+      expect(result?.replies.length).toBeGreaterThan(1);
+      expect(result?.state).toEqual(state);
+    },
+  );
+
   it('emergência vem antes de cancelar e de atendente', async () => {
     const tools = createFakeTools();
     const result = await globalCommand(state, say('atendente, vazamento de gás'), tools);
