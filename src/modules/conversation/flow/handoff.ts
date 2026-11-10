@@ -66,6 +66,10 @@ export function handoffSummary(state: OrderState | null): HandoffOrderSummary | 
   };
 }
 
+export function requestReasonFor(state: OrderState | null): HandoffReason {
+  return state?.step === 'saleFailed' ? 'sale_failed' : 'customer_request';
+}
+
 export async function handoff(
   state: OrderState | null,
   phone: string,

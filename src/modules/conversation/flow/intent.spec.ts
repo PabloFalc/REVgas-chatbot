@@ -255,6 +255,14 @@ describe('routeIntent com pedido em andamento', () => {
     expect(out).toEqual({ state: paying, replies: [text(msg.handoffQueued)] });
   });
 
+  it('pedir atendente pela IA em saleFailed usa o motivo sale_failed', async () => {
+    const tools = createFakeTools();
+    const spy = vi.spyOn(tools, 'requestHandoff');
+    const failed: OrderState = { ...paying, step: 'saleFailed' };
+    await routeIntent(failed, result({ intent: 'handoff' }), 'quero falar com alguém', tools);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ reason: 'sale_failed' }));
+  });
+
   it('produto que não vende lista o catálogo do cliente', async () => {
     const tools = createFakeTools();
     const spy = vi.spyOn(tools, 'listProducts');
@@ -427,6 +435,31 @@ describe('routeIntent sem pedido em andamento', () => {
         ]),
       ],
     });
+  });
+
+  it('resposta acima do limite dos botões vai em texto e os botões vêm em seguida', async () => {
+    const many: BasePrice[] = Array.from({ length: 40 }, (_, index) => ({
+      product: { id: index + 10, name: `Produto de nome bem comprido número ${index}` },
+      minPrice: 100 + index,
+      varies: false,
+    }));
+    const tools = createFakeTools({ basePrices: async () => many });
+    const out = await route(result({ intent: 'price' }), tools);
+    const body = msg.prices(many);
+    expect(body.length).toBeGreaterThan(1024);
+    expect(out).toEqual({
+      state: null,
+      replies: [text(body), buttons(msg.wantToOrder, [orderBtn])],
+    });
+  });
+
+  it('resposta no limite dos botões continua numa mensagem só', async () => {
+    const answer = 'a'.repeat(1024);
+    const tools = createFakeTools({
+      answerQuestion: async () => ({ kind: 'answered', text: answer, sources: ['T1'] }),
+    });
+    const out = await route(result({ intent: 'question', topic: 'general' }), tools);
+    expect(out?.replies).toEqual([buttons(answer, [orderBtn])]);
   });
 
   it('pedido devolve null', async () => {

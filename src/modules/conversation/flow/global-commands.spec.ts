@@ -92,6 +92,13 @@ describe('globalCommand', () => {
     expect(tools.calls[0].args[0]).toMatchObject({ reason: 'sale_failed' });
   });
 
+  it('"atendente" digitado em saleFailed usa o motivo sale_failed', async () => {
+    const failed: OrderState = { step: 'saleFailed', customer: { id: 1 } };
+    const tools = createFakeTools();
+    await globalCommand(failed, say('quero falar com um atendente'), tools);
+    expect(tools.calls[0].args[0]).toMatchObject({ reason: 'sale_failed' });
+  });
+
   it('botão de atendente em outra etapa usa customer_request', async () => {
     const tools = createFakeTools();
     await globalCommand(

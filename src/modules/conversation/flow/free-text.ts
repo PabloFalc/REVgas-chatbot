@@ -14,7 +14,7 @@ import {
   type StepResult,
 } from './flow.types';
 import { offer } from './handoff';
-import { matchProducts, routeIntent } from './intent';
+import { cleanItem, matchProducts, routeIntent } from './intent';
 import { msg } from './messages';
 import { nextStep } from './next-step';
 import { repeatQuestion } from './repeat-question';
@@ -183,6 +183,18 @@ export type FirstMessage = { kind: 'routed'; result: StepResult } | { kind: 'see
 
 const EMPTY_SEED: Seed = { fields: {}, replies: [] };
 
+function notCarriedNote(result: Interpretation, catalog: Catalog): string | null {
+  const item = result.unknownProduct;
+  if (!item || matchProducts([item], catalog.products).length > 0) return null;
+  return msg.notCarried(cleanItem(item));
+}
+
+function notedReplies(result: Interpretation, catalog: Catalog, notes: string[]): Reply[] {
+  const parts = [notCarriedNote(result, catalog), notes.length > 0 ? msg.noted(notes) : null];
+  const body = parts.filter((part): part is string => part !== null).join(' ');
+  return body ? [text(body)] : [];
+}
+
 export function seedFromInterpretation(result: Interpretation, catalog: Catalog): Seed {
   if (result.intent !== 'order') return EMPTY_SEED;
   const applied = applyInterpretation({ step: 'askName', customer: {} }, result, catalog);
@@ -195,8 +207,7 @@ export function seedFromInterpretation(result: Interpretation, catalog: Catalog)
   if (payment) fields.payment = payment;
   if (productCandidates) fields.productCandidates = productCandidates;
   if (pendingAddressText) fields.pendingAddressText = pendingAddressText;
-  const replies = applied.notes.length > 0 ? [text(msg.noted(applied.notes))] : [];
-  return { fields, replies };
+  return { fields, replies: notedReplies(result, catalog, applied.notes) };
 }
 
 export async function readFirstMessage(raw: string, tools: FlowTools): Promise<FirstMessage> {
@@ -284,7 +295,7 @@ export async function freeText(
   const applied = result.intent === 'order' ? applyInterpretation(state, result, catalog) : null;
   if (!applied) return misunderstood(state, tools, fallback);
 
-  const noted = applied.notes.length > 0 ? [text(msg.noted(applied.notes))] : [];
+  const noted = notedReplies(result, catalog, applied.notes);
   const ask = asks[state.step];
   const next =
     IDENTIFICATION_STEPS.includes(state.step) && ask

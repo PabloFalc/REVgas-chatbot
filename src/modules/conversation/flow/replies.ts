@@ -5,6 +5,7 @@ const BUTTON_TITLE = 20;
 const ROW_TITLE = 24;
 const ROW_DESCRIPTION = 72;
 const LIST_ROWS = 10;
+export const BUTTONS_BODY_LIMIT = 1024;
 
 interface Option {
   id: string;

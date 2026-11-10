@@ -349,6 +349,25 @@ describe('freeText', () => {
     expect(out.state?.quantity).toBe(3);
   });
 
+  it('produto que não vendemos junto com um que vendemos avisa antes do "Anotado"', async () => {
+    const out = await freeText(
+      paying,
+      'quero P45 e carvão',
+      tools(result({ products: ['Botijão P45'], unknownProduct: 'carvão' })),
+    );
+    expect(out.state?.product).toEqual(p45);
+    expect(out.replies[0]).toEqual(text('Não temos carvão. Anotado: Botijão P45.'));
+  });
+
+  it('item "que não vendemos" que está no catálogo não gera aviso', async () => {
+    const out = await freeText(
+      paying,
+      'quero P45',
+      tools(result({ products: ['Botijão P45'], unknownProduct: 'Botijão P45' })),
+    );
+    expect(out.replies[0]).toEqual(text('Anotado: Botijão P45.'));
+  });
+
   it('nas etapas de identificação repete a pergunta da etapa', async () => {
     const asking: OrderState = { step: 'askName', customer: {} };
     const out = await freeText(
@@ -396,6 +415,15 @@ describe('seedFromInterpretation', () => {
     );
     expect(seed.fields).toEqual({ product: p13, quantity: 2, payment: pix });
     expect(seed.replies).toEqual([text(msg.noted(['2x Botijão P13', 'Pix']))]);
+  });
+
+  it('produto que não vendemos junto com um que vendemos avisa no "Anotado"', () => {
+    const seed = seedFromInterpretation(
+      result({ products: ['Botijão P13'], quantity: 2, unknownProduct: 'carvão!!' }),
+      catalog,
+    );
+    expect(seed.fields).toEqual({ product: p13, quantity: 2 });
+    expect(seed.replies).toEqual([text('Não temos carvão. Anotado: 2x Botijão P13.')]);
   });
 
   it('só "pedido" semeia', () => {

@@ -15,7 +15,10 @@ const MONEY_TEXT = /^\s*(?:r\$)?[\s\d.,]*$/i;
 const MONEY_TOKEN = /^\d[\d.,]*$/;
 
 function parseChange(raw: string): number | null {
-  if (MONEY_TEXT.test(raw)) return parseMoney(raw);
+  if (MONEY_TEXT.test(raw)) {
+    const tokens = raw.replace(/r\$/gi, ' ').trim().split(/\s+/).filter(Boolean);
+    return tokens.length === 1 ? parseMoney(tokens[0]) : null;
+  }
   const words = normalizeText(raw)
     .replace(/r\$/g, ' ')
     .split(/\s+/)

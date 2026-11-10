@@ -171,7 +171,7 @@ describe('troco', () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
-    it.each(['troco de 50 e 100', '100 e 50', '1e3', '200 ou 300 reais'])(
+    it.each(['troco de 50 e 100', '100 e 50', '1e3', '200 ou 300 reais', '200 300', '1 000'])(
       '"%s" com mais de um valor não é aceito',
       async raw => {
         const tools = createFakeTools();

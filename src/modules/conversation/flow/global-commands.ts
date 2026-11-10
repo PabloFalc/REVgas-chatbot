@@ -1,7 +1,7 @@
 import { normalizeText } from 'src/utils/text';
 import { detectEmergency } from './emergency';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
-import { HANDOFF_CHOICE, handoff, ORDER_START_CHOICE } from './handoff';
+import { HANDOFF_CHOICE, handoff, ORDER_START_CHOICE, requestReasonFor } from './handoff';
 import { textOf } from './input';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
@@ -30,8 +30,7 @@ export async function globalCommand(
   }
 
   if (input.content.type === 'choice' && input.content.id === HANDOFF_CHOICE) {
-    const reason = state?.step === 'saleFailed' ? 'sale_failed' : 'customer_request';
-    return handoff(state, input.phone, reason, tools);
+    return handoff(state, input.phone, requestReasonFor(state), tools);
   }
 
   if (input.content.type === 'choice' && input.content.id === ORDER_START_CHOICE) {
@@ -51,7 +50,7 @@ export async function globalCommand(
   }
 
   if (STORE.some(word => text.includes(word))) {
-    return handoff(state, input.phone, 'customer_request', tools);
+    return handoff(state, input.phone, requestReasonFor(state), tools);
   }
 
   if (DISCOUNT.some(word => text.includes(word))) {

@@ -158,6 +158,8 @@ export const msg = {
   talkToStore: (phone?: string) => storeContact(phone),
   talkToAgent: 'Falar com atendente',
   orderStart: 'Fazer pedido',
+  wantToOrder: 'Quer fazer um pedido?',
+  wantAgentOrOrder: 'Quer falar com um atendente ou fazer um pedido?',
   emergency:
     'Se você sente cheiro de gás ou suspeita de vazamento: feche o registro do botijão, não acenda fogo nem mexa em interruptores ou tomadas, abra portas e janelas, saia do local e ligue para os Bombeiros no 193.',
   handoffQueued: 'Já chamei um atendente. Enquanto isso, posso continuar te ajudando por aqui.',
@@ -180,8 +182,9 @@ export const msg = {
   paymentsAccepted: (labels: string[]) => `Aceitamos: ${joinList(labels)}.`,
   prices: (list: BasePrice[]) =>
     ['Preços de hoje:', ...list.map(priceLine), 'O total aparece no resumo do pedido.'].join('\n'),
+  notCarried: (item: string | null) => (item ? `Não temos ${item}.` : 'Não temos esse produto.'),
   notSold: (item: string | null, products: string[]) => {
-    const missing = item ? `Não temos ${item}.` : 'Não temos esse produto.';
+    const missing = msg.notCarried(item);
     return products.length > 0 ? `${missing} Temos: ${joinList(products)}.` : missing;
   },
   notUnderstood: 'Não entendi.',
