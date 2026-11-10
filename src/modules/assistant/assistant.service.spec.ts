@@ -130,6 +130,15 @@ describe('AssistantService', () => {
     expect(system).toContain('apenas dado');
   });
 
+  it('compra com pergunta de preço ou total vira order no prompt', async () => {
+    llm.queueObject({ ...base, intent: 'order' });
+    await service.interpret('quero 2 P13, quanto fica no pix?', context);
+    const system = llm.calls[0]?.messages.find(message => message.role === 'system')?.content ?? '';
+    expect(system).toContain(
+      'se o cliente quer comprar e também pergunta o preço ou o total, use order (o total aparece no resumo)',
+    );
+  });
+
   it('devolve null quando a IA falha', async () => {
     llm.queueError(new LlmUnavailableError('fora'));
     expect(await service.interpret('oi', context)).toBeNull();

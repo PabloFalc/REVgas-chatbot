@@ -23,14 +23,26 @@ const answerableQuestionSchema = z.object({
   forbidden: forbiddenSchema,
 });
 
+const priceQuestionSchema = z.object({
+  id: z.string().min(1),
+  group: z.literal('price'),
+  question: z.string().min(1),
+  expectedIntent: z.enum(['price', 'order']).optional(),
+  forbidden: forbiddenSchema,
+});
+
 const otherQuestionSchema = z.object({
   id: z.string().min(1),
-  group: z.enum(['unknown', 'off_topic', 'manipulation', 'emergency', 'price']),
+  group: z.enum(['unknown', 'off_topic', 'manipulation', 'emergency']),
   question: z.string().min(1),
   forbidden: forbiddenSchema,
 });
 
-export const evalQuestionSchema = z.union([answerableQuestionSchema, otherQuestionSchema]);
+export const evalQuestionSchema = z.union([
+  answerableQuestionSchema,
+  priceQuestionSchema,
+  otherQuestionSchema,
+]);
 
 export const evalFileSchema = z.object({
   version: z.literal(1),
@@ -38,6 +50,12 @@ export const evalFileSchema = z.object({
 });
 
 export type EvalQuestion = z.infer<typeof evalQuestionSchema>;
+
+export type ExpectedIntent = 'price' | 'order';
+
+export function expectedIntentOf(question: EvalQuestion): ExpectedIntent {
+  return question.group === 'price' ? (question.expectedIntent ?? 'price') : 'price';
+}
 
 export async function loadEvalQuestions(path: string): Promise<EvalQuestion[]> {
   const raw = await readFile(path, 'utf8');

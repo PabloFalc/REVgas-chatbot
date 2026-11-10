@@ -14,6 +14,7 @@ import { assertSafeForEvaluation } from '../src/modules/knowledge/evaluation/eva
 import {
   type EvalGroup,
   type EvalQuestion,
+  expectedIntentOf,
   loadEvalQuestions,
 } from '../src/modules/knowledge/evaluation/questions.schemas';
 import {
@@ -102,7 +103,7 @@ describe.skipIf(!(env.EMBEDDING_API_KEY ?? env.LLM_API_KEY))('RAG da base de con
             question,
             retrievedTitles: [],
             answer: null,
-            routedCorrectly: interpreted?.intent === 'price',
+            routedCorrectly: interpreted?.intent === expectedIntentOf(question),
           });
           continue;
         }

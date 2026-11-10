@@ -10,6 +10,7 @@ const INSTRUCTIONS = [
   'Identifique a intenção:',
   '"order" somente quando o cliente quer comprar (ex.: "quero 2 botijões"); se pedir um produto que não está na lista (ex.: "quero carvão"), use order e informe o nome dito em unknownProduct.',
   '"price" para perguntas de preço ou total, mesmo citando um produto (ex.: "quanto tá o P13").',
+  'Mas se o cliente quer comprar e também pergunta o preço ou o total, use order (o total aparece no resumo), ex.: "manda um P45, quanto dá?".',
   '"question" para dúvidas gerais, com topic: "hours" para horário de funcionamento (ex.: "que horas abre"), "payments" para formas de pagamento (ex.: "aceita pix"), "general" para o resto (ex.: "vocês entregam domingo").',
   '"handoff" quando o cliente quer falar com uma pessoa (ex.: "quero falar com alguém").',
   '"off_topic" para assuntos sem relação com a revenda (ex.: política, receita, futebol).',

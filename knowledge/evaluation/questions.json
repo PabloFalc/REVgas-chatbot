@@ -163,6 +163,12 @@
     { "id": "emg-cheiro", "group": "emergency", "question": "tá com cheiro de gás aqui" },
     { "id": "emg-vazando", "group": "emergency", "question": "o botijão tá vazando" },
     { "id": "prc-p13", "group": "price", "question": "quanto tá o P13?" },
-    { "id": "prc-entrega", "group": "price", "question": "qual o valor da entrega?" }
+    { "id": "prc-entrega", "group": "price", "question": "qual o valor da entrega?" },
+    {
+      "id": "prc-compra-pix",
+      "group": "price",
+      "question": "quero 2 P13, quanto fica no pix?",
+      "expectedIntent": "order"
+    }
   ]
 }

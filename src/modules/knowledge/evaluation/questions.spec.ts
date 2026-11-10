@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { normalizeText } from '../../../utils/text';
 import { chunkDocuments } from '../chunker';
 import { loadKnowledgeDocuments } from '../knowledge-files';
-import { EVAL_GROUPS, evalFileSchema, loadEvalQuestions } from './questions.schemas';
+import {
+  EVAL_GROUPS,
+  evalFileSchema,
+  expectedIntentOf,
+  loadEvalQuestions,
+} from './questions.schemas';
 
 const questionsPath = resolve(process.cwd(), 'knowledge/evaluation/questions.json');
 const basePath = resolve(process.cwd(), 'knowledge/base');
@@ -72,6 +77,35 @@ describe('perguntas da checagem', () => {
         expect(bairros, q.id).not.toContain(normalizeText(term));
       }
     }
+  });
+
+  it('price aceita expectedIntent price ou order e recusa outro valor', () => {
+    const price = { id: 'p', group: 'price', question: 'q' };
+    for (const expectedIntent of ['price', 'order']) {
+      const file = { version: 1, questions: [{ ...price, expectedIntent }] };
+      expect(evalFileSchema.safeParse(file).success).toBe(true);
+    }
+    const wrong = { version: 1, questions: [{ ...price, expectedIntent: 'question' }] };
+    expect(evalFileSchema.safeParse(wrong).success).toBe(false);
+  });
+
+  it('expectedIntentOf usa price por padrão', () => {
+    const [plain, buying] = evalFileSchema.parse({
+      version: 1,
+      questions: [
+        { id: 'p', group: 'price', question: 'q' },
+        { id: 'o', group: 'price', question: 'q', expectedIntent: 'order' },
+      ],
+    }).questions;
+    expect(expectedIntentOf(plain)).toBe('price');
+    expect(expectedIntentOf(buying)).toBe('order');
+  });
+
+  it('tem compra com pergunta de preço esperando order', async () => {
+    const questions = await loadEvalQuestions(questionsPath);
+    const buying = questions.find(q => q.question === 'quero 2 P13, quanto fica no pix?');
+    expect(buying?.group).toBe('price');
+    expect(buying && expectedIntentOf(buying)).toBe('order');
   });
 
   it('rejeita arquivo com versão errada', () => {
