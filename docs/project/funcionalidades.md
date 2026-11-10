@@ -14,6 +14,7 @@
 | F02 | Identificação e cadastro automático | Reconhece o cliente pelo telefone; cadastra se for novo | RF02, RF03 |
 | F03 | Pedido em texto livre | "manda 2 botijão, pago no pix" → IA extrai tudo e o bot só pergunta o que faltou. **Entregue** (2026-10-22), junto com o fallback de intenção | RF04–RF06 |
 | F04 | Repetir último pedido | Cliente conhecido recebe botão com último pedido e endereço; fecha em 2 toques (pula para o resumo, ou para a pergunta de troco se o pagamento for dinheiro). **Entregue** (2026-10-23) | RF02, RF07 |
+| F07 | Handoff para atendente | Transfere a conversa para a fila do Chatwoot com resumo; o bot segue atendendo até o atendente falar. **Entregue** (2026-11-09) | RF11 |
 | F05 | Status do pedido | Nº da venda, entregador a caminho e tempo estimado; consulta "meu gás chegou?". **Pendente** | RF09 |
 
 > **Decisão de escopo (2026-10-22):** o MVP é F01–F05. F03 e o fallback de intenção estão
@@ -27,8 +28,9 @@
 > entregues e saem das melhorias futuras. Só F05 continua pendente no MVP. Ver
 > [requisitos.md](requisitos.md#decisões-2026-10-23).
 
-> **Fora do MVP (2026-10-21):** F07 — handoff para atendente. Pedido de atendente recebe uma
-> mensagem fixa com o telefone da revenda. Ver as decisões em [requisitos.md](requisitos.md#decisões-2026-10-21).
+> **Entregue (2026-11-09):** F07 — handoff para atendente via Chatwoot. Pedido de atendente ou
+> falha da venda entra na fila com um resumo; o atendente responde pelo mesmo WhatsApp. Ver
+> [chatwoot.md](../guides/integrations/chatwoot.md) e [requisitos.md](requisitos.md#decisões-2026-11-09).
 
 ## Melhorias futuras (fora do escopo atual)
 
@@ -37,7 +39,6 @@ Decisão de 2026-10-22: nada desta seção é usado por enquanto. F12 e F14 fora
 | # | Funcionalidade | Descrição | Dependência |
 | --- | --- | --- | --- |
 | F06 | FAQ com IA | Dúvidas fora do menu (horário, garantia, vale-gás) respondidas a partir de FAQ curto. Hoje a dúvida recebe resposta fixa com o telefone da revenda | Conteúdo do FAQ |
-| F07 | Handoff para atendente | Transfere a conversa com resumo | Definir quem recebe (plataforma da Flow?) |
 | F08 | Painel simples para a revenda | Conversas iniciadas, vendas criadas, taxa de conversão | Salvar vendas e conversas no Postgres |
 | F09 | Lembrete de recompra | Avisa quando o gás deve estar acabando, pelo intervalo entre compras do cliente | Histórico no Postgres; template aprovado no WhatsApp (fora da janela de 24h) |
 | F10 | Pedido por áudio | Transcreve o áudio e segue o mesmo fluxo | Serviço de transcrição |
@@ -60,7 +61,8 @@ Decisão de 2026-10-22: nada desta seção é usado por enquanto. F12 e F14 fora
 | Endereço novo digitado sem CEP | IA separa rua, número, bairro e referência; cliente confirma | Sim |
 | Dúvida fora do menu | Resposta fixa com o telefone da revenda e repete a pergunta (FAQ com IA é futuro, F06) | Não |
 | Mensagem que não bate com nada | IA classifica a intenção; confiança baixa → "Não entendi." e repete a pergunta com os botões | Sim |
-| Pedido de atendente ou de desconto | Mensagem fixa (telefone da revenda / "o preço é o da tabela") | Não |
+| Pedido de atendente | Entra na fila do Chatwoot (sem Chatwoot: telefone da revenda) | Não |
+| Pedido de desconto | Mensagem fixa ("o preço é o da tabela") | Não |
 
 ## Técnicas de IA — decisão por técnica
 
@@ -69,7 +71,7 @@ Decisão de 2026-10-22: nada desta seção é usado por enquanto. F12 e F14 fora
 | Intent Classification | Só quando a mensagem não bate com botão/palavra-chave | Essencial (fallback) |
 | Entity Extraction | Produto, quantidade, endereço e pagamento em texto livre | Essencial |
 | Guardrails | JSON validado; IA não define preço nem cria venda | Essencial |
-| Human Handoff | Confiança baixa, falha da API ou pedido do cliente | Fora do MVP |
+| Human Handoff | Pedido do cliente e falha da API (Chatwoot, F07); confiança baixa fica para os guard rails | Entregue |
 | Conversation Memory | Máquina de estados no Redis, não o modelo | Sem IA |
 | Tool Calling | Quem chama a API é o backend | Não usar |
 | RAG híbrido + Reranking | Só se o FAQ crescer | Futuro |

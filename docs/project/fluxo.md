@@ -2,7 +2,7 @@
 
 > Extraído de [revgas-ai-flow.md](revgas-ai-flow.md). Descreve a conversa e a máquina de estados.
 
-O fluxo tem 8 passos e só chama "criar venda" no passo 7, depois do "confirmo" do cliente. Não há atendente humano (decisão de 2026-10-21): falha da API vira "Tentar de novo" e pedido de atendente recebe o telefone da revenda.
+O fluxo tem 8 passos e só chama "criar venda" no passo 7, depois do "confirmo" do cliente. Pedido de atendente (e falha ao criar a venda, se o cliente quiser) transfere a conversa para um atendente no Chatwoot (F07, 2026-11-09; ver [Handoff para atendente](#handoff-para-atendente)). Sem o Chatwoot configurado (`CHATWOOT_MODE=off`), o bot volta a responder com o telefone da revenda.
 
 ## Diagrama
 
@@ -69,7 +69,7 @@ escolhido e o fluxo retoma dali.
 ### Comandos globais
 
 Valem em qualquer etapa (`global-commands.ts`): `cancelar` apaga o estado (bloqueado em
-`creatingSale`); `atendente`/`humano` responde com o telefone da revenda (`STORE_PHONE`);
+`creatingSale`); `atendente`/`humano`/`falar com alguem` e o botão "Falar com atendente" (id `handoff:request`) pedem o handoff (ver [Handoff para atendente](#handoff-para-atendente));
 `desconto`/`promoção` responde que o preço é o da tabela e repete a pergunta; mensagem que não é
 texto/botão/lista (áudio, imagem) pede texto e repete a pergunta. O estado não muda, exceto no cancelar.
 
@@ -109,6 +109,23 @@ Se o cliente some no meio do pedido, o bot manda um lembrete aos 10 min sem mens
 - Não renova o TTL de 15 min do pedido: só mensagem do cliente renova.
 - O agendador varre a cada 30 s e fica desligado com `NODE_ENV=test`.
 
+## Handoff para atendente
+
+Guia técnico: [chatwoot.md](../guides/integrations/chatwoot.md). O estado do handoff fica no Redis por
+telefone, separado do pedido (que expira em 15 min).
+
+| Estado | Quem fala com o cliente | Como entra | Como sai |
+| --- | --- | --- | --- |
+| (nenhum) | Bot | n/a | Pedido de atendente → `queued`; mensagem humana no Chatwoot → `active` |
+| `queued` | Bot (normal) | Pedido de atendente ou falha da venda | 1ª mensagem humana → `active`; venda criada pelo bot, conversa resolvida no Chatwoot ou 72 h → nenhum |
+| `active` | Atendente; o bot só repassa ao Chatwoot | 1ª mensagem humana | Conversa resolvida no Chatwoot ou 24 h sem mensagem do atendente → nenhum |
+
+- **Entrada na fila:** nota interna com o resumo (motivo, etapa, produto, quantidade, endereço, pagamento, total, nome; nunca CPF). Antes da verificação de identidade a nota não leva nome, endereço nem pedido. A resposta ao cliente é só o texto do handoff ("Já chamei um atendente...", "Você já está na fila..."); fora do horário (`SERVICE_HOURS`) o bot diz quando abre e pede que o cliente mande "oi" quando abrirmos.
+- **Em `queued`** o bot segue o fluxo normal. Se ele cria a venda, a conversa é resolvida e o cliente sai da fila. "Cancelar" não tira da fila.
+- **Em `active`** o pedido e o lembrete são apagados; mensagens do cliente vão só ao Chatwoot (não suportadas viram `[cliente enviou áudio]`); as do atendente chegam como `*Maria (atendente):* ...`.
+- **Espelho:** todas as mensagens do cliente e do bot são copiadas para uma conversa do Chatwoot por ciclo, depois do envio ao WhatsApp e sem nunca atrasar a resposta. CPF vira `[CPF ocultado]`.
+- **Chatwoot indisponível ou desligado:** volta ao telefone da revenda (`STORE_PHONE`).
+
 ## Texto livre e fallback
 
 A IA (`interpret`) só é chamada quando a etapa não entendeu a mensagem. Botões, listas e
@@ -145,7 +162,8 @@ cliente fica conhecido, o produto guardado é conferido de novo com a lista dele
 
 - **Fora de ordem (passos 3–5):** se o cliente escreve "2 botijões no Pix pra mesma casa", a IA extrai tudo de uma vez e o bot só pergunta o que faltou (ver [Texto livre e fallback](#texto-livre-e-fallback)).
 - **Repetir último pedido:** cliente conhecido e verificado pode ir direto do passo 2 para o passo 6 (ver [Repetir último pedido](#repetir-último-pedido)).
-- **Pedido de atendente:** de qualquer estado, resposta fixa com o telefone da revenda; o estado não muda.
+- **Pedido de atendente:** de qualquer estado, entra na fila do Chatwoot (ver [Handoff para atendente](#handoff-para-atendente)); o pedido em andamento não muda. Em `saleFailed` o motivo é `sale_failed`; nas demais, `customer_request`.
+- **Falha ao criar a venda (`saleFailed`):** dois botões, "Tentar de novo" e "Falar com atendente".
 - **Pedido de desconto:** resposta fixa ("o preço é o da tabela"); o estado não muda.
 - **Dúvida no meio do fluxo:** resposta fixa com o telefone da revenda e repete a pergunta; o estado não muda. FAQ com IA é melhoria futura.
 - **Expiração e lembrete:** o estado no Redis tem TTL de 15 min; se o cliente sumir, o carrinho expira. Aos 10 min sem mensagem, o bot manda um lembrete (ver [Lembrete de pedido parado](#lembrete-de-pedido-parado)).

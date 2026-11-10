@@ -231,7 +231,7 @@ header `bearer(token)` nessas chamadas, a menos que seja exatamente isso que o t
 
 ### WhatsApp sempre simulado
 
-`vitest.config.e2e.ts` força `REVGAS_MODE`, `VIACEP_MODE`, `LLM_MODE` e `WHATSAPP_MODE` para `fake`, independentemente do `.env` local.
+`vitest.config.e2e.ts` força `REVGAS_MODE`, `VIACEP_MODE`, `LLM_MODE`, `WHATSAPP_MODE` e `CHATWOOT_MODE` para `fake`, independentemente do `.env` local.
 
 `vitest.config.e2e.ts` define `WHATSAPP_MODE=fake` (e um app secret/verify token de teste), então
 o e2e nunca envia mensagem real, mesmo com token no `.env`. Para ver o que o bot respondeu, pegue o
@@ -240,6 +240,10 @@ assine o corpo com `signPayload` (`src/integrations/whatsapp/webhook/signature.t
 mensagem únicos: ids repetidos são ignorados por 24h no Redis. O webhook responde 200 antes de
 processar, então espere o envio com `vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1))`. Exemplo:
 `tests/conversation/whatsapp-webhook.e2e.spec.ts`.
+
+### Chatwoot sempre simulado
+
+O mesmo arquivo define `CHATWOOT_MODE=fake`, `CHATWOOT_INBOX_ID=1` e um `CHATWOOT_WEBHOOK_SECRET` de teste, então nenhum teste depende de um Chatwoot rodando. Pegue o simulador com `app.get(CHATWOOT_CLIENT)` para conferir contatos, conversas, mensagens e notas, e assine o corpo do webhook com `signChatwootPayload` (`src/integrations/chatwoot/webhook/signature.ts`). Use ids de mensagem únicos (dedup de 24h no Redis). Exemplo: `tests/conversation/chatwoot-webhook.e2e.spec.ts`.
 
 ## Checklist para uma suíte e2e nova
 
