@@ -19,7 +19,8 @@ Package manager is **pnpm** — use it for everything.
 | E2e tests | `pnpm test:e2e` (needs `pnpm docker:init` for Postgres/Redis) |
 | Dev | `pnpm start:dev` |
 | Migrations | `pnpm db:generate` → `pnpm db:migrate` |
-| Integration checks | `pnpm revgas:check` · `pnpm llm:check` |
+| Integration checks | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` |
+| Knowledge base | `pnpm kb:ingest` (embeds `knowledge/base`; needs the migrations applied) |
 
 **Commits:** `git commit` directly, conventional commits (`feat:`, `fix:`, `chore:`…).
 
@@ -35,7 +36,9 @@ src/
   utils/        pure helpers, no Nest/domain: mask, cpf, money, text, guards, safe-equal,
                 parse-json, iso-datetime. Check here before writing a new helper.
   modules/      conversation/ (webhook + order flow), customer/, catalog/, order/, address/,
-                assistant/ (LLM interpretation of free text), auth/ (on standby)
+                assistant/ (LLM interpretation of free text), knowledge/ (RAG over the base, not
+                wired into the flow yet), auth/ (on standby)
+knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluation/ (rag:check questions)
 ```
 
 - `AppModule` = `CoreModule` + `RoutesModule` + `InfraModule`. `RoutesModule` imports only
@@ -44,7 +47,7 @@ src/
   → `http` (Nest checks the last registered first, so the catch-all stays first), plus
   `rateLimit` and `zodValidationPipe`.
 - **Auth is on standby**: no `/auth/*` routes and no global auth guard, so routes are public.
-  Postgres is only used by Better Auth today. The WhatsApp webhook is validated by the Meta
+  Postgres now runs with pgvector and is used by the knowledge base and by Better Auth. The WhatsApp webhook is validated by the Meta
   signature (`X-Hub-Signature-256`, needs `rawBody: true` in `main.ts`). To turn auth on and for
   its conventions, see `docs/guides/modules/auth.md`.
 
@@ -76,7 +79,7 @@ Dependency rules:
 ## Conventions
 
 - **No explanatory `//` comments in code.** (Comments in docs/markdown are fine.)
-- **Secrets** (`REVGAS_API_KEY`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `LLM_API_KEY`)
+- **Secrets** (`REVGAS_API_KEY`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `LLM_API_KEY`, `EMBEDDING_API_KEY`)
   stay server-side — never in responses, logs or AI prompts.
 - **LGPD:** mask customer CPF, phone and address in logs with `src/utils/mask`. CPF digits never
   go to logs, replies or AI prompts.
@@ -94,7 +97,7 @@ Read the matching guide before touching an area:
 
 - `docs/guides/integrations/` — `revgas.md` (modes, never retry POST), `whatsapp.md`,
   `llm.md`, `viacep.md`
-- `docs/guides/modules/auth.md` · `docs/guides/services/email-service.md`
+- `docs/guides/modules/auth.md` · `docs/guides/modules/knowledge.md` · `docs/guides/services/email-service.md`
 - `docs/guides/conventions/` — `environment.md` (env vars), `testing.md`, `api-doc.md`,
   `ci-cd.md` (develop/staging/main gitflow)
 - `docs/security/SECURITY.md` — attack vectors, mitigations, secrets

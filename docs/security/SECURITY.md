@@ -72,6 +72,9 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   **No plano gratuito do Gemini as mensagens vão ao Google e podem ser usadas para treino**
   (decisão aceita em 2026-10-20): mande à IA só o texto necessário e nunca CPF. Ver
   [llm.md](../guides/integrations/llm.md).
+- **Embedding:** `EMBEDDING_API_KEY` (cai em `LLM_API_KEY` se vazia) segue as mesmas regras: só no
+  header da chamada server-side, nunca em log, erro, resposta HTTP nem prompt. O log do embedding
+  leva só a operação, o modelo, o status e a contagem de textos.
 - **Redis:** `REDIS_PASSWORD` e `REDIS_TLS` (opcionais em dev, obrigatórios na prática em prod) —
   sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
 - **Swagger** protegido por `DOC_TOKEN` (header `x-doc-token`) e não montado em produção.
@@ -123,6 +126,34 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   vezes.
 - Logs do webhook e dos envios: telefone mascarado (`*******1234`), sem corpo das mensagens nem
   token (o conteúdo só aparece no log do modo `fake` fora de produção).
+
+## IA e base de conhecimento
+
+Camadas que protegem as respostas da IA sobre a base ([knowledge.md](../guides/modules/knowledge.md)).
+
+Já entregues (etapa A, módulo ainda não ligado ao fluxo):
+
+- **Corte de relevância:** só entram trechos com similaridade mínima; sem trecho, a IA nem é chamada.
+- **Pergunta higienizada:** CPF (`removeCpfs`) e qualquer sequência de 9 dígitos ou mais (inclui
+  telefone) saem do texto, que é cortado em 500 caracteres antes do embedding e do prompt.
+- **Trechos e pergunta como dado:** vão escapados em `<trecho>`, com regras fixas mandando ignorar
+  ordens dentro deles; a IA responde `{ answer, sources }` validado por Zod.
+- **Checagens de saída:** a resposta é descartada se estiver vazia, passar de 600 caracteres, não
+  citar trechos ou citar id inexistente, tiver `R$`/"reais"/"centavos" ou `%`/"por cento", usar
+  palavra de preço que não está nos trechos citados, ou trouxer número (algarismo ou por extenso)
+  que não está neles. A base não guarda valores, porcentagens, horários nem formas de pagamento.
+- **Falha vira "não sei":** Postgres, embedding ou IA fora do ar nunca lançam; o resultado é
+  `unknown` com log de aviso. Uma tentativa por chamada, sem retry.
+- **Sem texto do cliente no log:** só motivo, rejeição, quantidade de trechos e nome do erro.
+- **Isolamento por modelo:** a busca só compara vetores do modelo de embedding atual.
+
+Planejado (etapa B, ainda não existe):
+
+- Emergência de gás (vazamento, cheiro) tratada antes de qualquer comando ou IA, com texto fixo e
+  encaminhamento ao atendente.
+- Recusa de assunto fora do escopo e tratamento de ofensa com texto fixo.
+- Limite de chamadas de IA por telefone por hora.
+- Preço informado só pelo código (nunca pela IA) e ligação do módulo ao fluxo.
 
 ## Planejado (chatbot)
 

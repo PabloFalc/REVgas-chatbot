@@ -19,6 +19,10 @@ correspondente.
 - [auth.md](./guides/modules/auth.md) — autenticação do painel (Better Auth, só token Bearer):
   status standby e como ligar, `AuthGuard`, `@AllowUnverified`, fluxos de email e rotas
 
+- [knowledge.md](./guides/modules/knowledge.md) — base de conhecimento (`src/modules/knowledge`):
+  como escrever a base, `pnpm kb:ingest`, busca híbrida (vetor + texto), checagens da resposta,
+  `pnpm rag:check`, valores calibrados e o banco com pgvector
+
 ### Integrações (`guides/integrations/`)
 
 - [revgas.md](./guides/integrations/revgas.md) — cliente da API RevGás (`src/integrations/revgas`), organizado por módulo da API: modos
@@ -31,7 +35,7 @@ correspondente.
   `live`/`fake` e busca de endereço por CEP no fluxo do pedido
 - [llm.md](./guides/integrations/llm.md) — cliente da LLM (`src/integrations/llm`, Gemini pelo endpoint
   compatível com OpenAI): modos `live`/`fake`, chave, como um módulo consome, erros, `FakeLlmClient`,
-  trocar de provedor e o check manual `pnpm llm:check`
+  trocar de provedor, embeddings (`EmbeddingClient`) e o check manual `pnpm llm:check`
 
 ### Serviços (`guides/services/`)
 

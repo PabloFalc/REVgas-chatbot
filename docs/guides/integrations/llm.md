@@ -50,7 +50,8 @@ e2e forçam `fake` (`vitest.config.e2e.ts`). Variáveis:
 ## Embeddings
 
 Além do chat, a camada oferece `EmbeddingClient.embed({ operation, input, timeoutMs? })`, que
-transforma textos em vetores para a busca semântica da base de conhecimento (token
+transforma textos em vetores para a busca semântica da base de conhecimento
+([knowledge.md](../modules/knowledge.md); token
 `EMBEDDING_CLIENT`, exportado pelo `LlmModule`). Usa `POST {URL}/embeddings` com `model`, `input` e
 `dimensions`, só com `fetch` e Zod.
 

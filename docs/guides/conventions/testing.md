@@ -57,6 +57,11 @@ O arquivo fica ao lado da unidade testada (`*.spec.ts` dentro de `src/`).
 
 ## Testes e2e
 
+> O Postgres do e2e precisa ter o **pgvector** (imagem `pgvector/pgvector:pg17`, já no
+> `docker-compose.yml`) e as migrations aplicadas (`pnpm db:migrate`). A suíte
+> `tests/knowledge/` usa a tabela `knowledge_chunks`; veja
+> [knowledge.md](../modules/knowledge.md#banco-local-pgvector).
+
 E2e sobe o app **inteiro** (Fastify + DI + plugins) e faz requisições HTTP de verdade via
 `supertest`. O app é criado pelo helper `createApp` (`tests/setup-e2e.ts`), que já roda
 `setupPlugins` e fica em `NODE_ENV=test`.
