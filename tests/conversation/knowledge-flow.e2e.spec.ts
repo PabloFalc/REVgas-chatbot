@@ -14,6 +14,7 @@ import {
   MISUNDERSTOOD_PREFIX,
   OFFENSE_PREFIX,
   ORDER_PREFIX,
+  REMINDER_SET,
 } from 'src/modules/conversation/conversation.repository';
 import { msg } from 'src/modules/conversation/flow/messages';
 import supertest from 'supertest';
@@ -101,6 +102,7 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
           `${OFFENSE_PREFIX}:${phone}`,
         ]),
       );
+      await redis.zrem(REMINDER_SET, ...phones);
       for (const phone of phones) {
         const keys = await redis.keys(`handoff:*${phone}*`);
         if (keys.length > 0) await redis.del(...keys);
@@ -174,5 +176,6 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
     expect(bodyOf(whatsapp.sent[0])).toContain('order:start');
     expect(bodyOf(whatsapp.sent[0])).toContain(msg.orderStart);
     await expect(redis.get(`${ORDER_PREFIX}:${phone}`)).resolves.toBeNull();
+    await expect(redis.zscore(REMINDER_SET, phone)).resolves.toBeNull();
   });
 });
