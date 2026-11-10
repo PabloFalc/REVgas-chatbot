@@ -20,6 +20,14 @@ describe('resolveChatwootConfig', () => {
     expect(resolveChatwootConfig(parse()).mode).toBe('off');
   });
 
+  it('off descarta o segredo do webhook para recusar tudo', () => {
+    const config = resolveChatwootConfig(
+      parse({ CHATWOOT_MODE: 'off', CHATWOOT_WEBHOOK_SECRET: '0123456789abcdef0123' }),
+    );
+    expect(config.mode).toBe('off');
+    expect(config.webhookSecret).toBeUndefined();
+  });
+
   it('usa live com token e sem modo', () => {
     const config = resolveChatwootConfig(parse(live));
     expect(config.mode).toBe('live');

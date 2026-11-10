@@ -353,6 +353,13 @@ describe('HandoffService', () => {
       expect(threads.get(PHONE)).toEqual({ conversationId: 42 });
     });
 
+    it('com o desk desativado não grava nada', async () => {
+      const { service, states, threads } = setup({ disabled: true });
+      await expect(service.markAgentMessage(PHONE, 42)).resolves.toEqual({ becameActive: false });
+      expect(states.size).toBe(0);
+      expect(threads.size).toBe(0);
+    });
+
     it('mantém o since de um active anterior', async () => {
       const { service, states } = setup();
       states.set(PHONE, {

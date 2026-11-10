@@ -40,7 +40,7 @@ export function resolveChatwootConfig(env: Env): ChatwootConfig {
     inboxId: env.CHATWOOT_INBOX_ID ?? (mode === 'fake' ? 1 : undefined),
     apiToken: env.CHATWOOT_API_TOKEN,
     botToken: env.CHATWOOT_BOT_TOKEN,
-    webhookSecret: env.CHATWOOT_WEBHOOK_SECRET,
+    webhookSecret: mode === 'off' ? undefined : env.CHATWOOT_WEBHOOK_SECRET,
     timeoutMs: env.CHATWOOT_TIMEOUT_MS,
   };
 }

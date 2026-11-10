@@ -180,6 +180,7 @@ export class HandoffService {
     phone: string,
     conversationId: number,
   ): Promise<{ becameActive: boolean }> {
+    if (!this.desk.enabled) return { becameActive: false };
     const previous = await this.repo.getState(phone);
     const now = this.clock.now().toISOString();
     await this.repo.saveState(phone, {
