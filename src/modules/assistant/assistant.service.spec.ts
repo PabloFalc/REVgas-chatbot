@@ -29,6 +29,8 @@ describe('AssistantService', () => {
       payment: 'PIX',
       address: null,
       newAddress: null,
+      topic: null,
+      unknownProduct: null,
       confidence: 0.9,
     });
 
@@ -54,6 +56,78 @@ describe('AssistantService', () => {
     expect(system).toContain('mesma casa');
     const user = call?.messages.find(message => message.role === 'user')?.content ?? '';
     expect(user).not.toContain('12345678909');
+  });
+
+  const base = {
+    products: null,
+    quantity: null,
+    payment: null,
+    address: null,
+    newAddress: null,
+    topic: null,
+    unknownProduct: null,
+    confidence: 0.9,
+  };
+
+  it.each(['price', 'handoff', 'off_topic', 'offense', 'other'] as const)(
+    'aceita a intenção %s',
+    async intent => {
+      llm.queueObject({ ...base, intent });
+      expect(await service.interpret('texto', context)).toEqual({ intent, confidence: 0.9 });
+    },
+  );
+
+  it.each(['hours', 'payments', 'general'] as const)(
+    'devolve o topic %s em question',
+    async topic => {
+      llm.queueObject({ ...base, intent: 'question', topic });
+      expect(await service.interpret('texto', context)).toEqual({
+        intent: 'question',
+        topic,
+        confidence: 0.9,
+      });
+    },
+  );
+
+  it('descarta o topic fora de question', async () => {
+    llm.queueObject({ ...base, intent: 'price', topic: 'hours' });
+    expect(await service.interpret('texto', context)).toEqual({
+      intent: 'price',
+      confidence: 0.9,
+    });
+  });
+
+  it('devolve unknownProduct só quando não vazio', async () => {
+    llm.queueObject({ ...base, intent: 'order', unknownProduct: 'carvão' });
+    expect(await service.interpret('quero carvão', context)).toEqual({
+      intent: 'order',
+      unknownProduct: 'carvão',
+      confidence: 0.9,
+    });
+
+    llm.queueObject({ ...base, intent: 'order', unknownProduct: '   ' });
+    expect(await service.interpret('quero gás', context)).toEqual({
+      intent: 'order',
+      confidence: 0.9,
+    });
+  });
+
+  it('cita as intenções novas no prompt', async () => {
+    llm.queueObject({ ...base, intent: 'other' });
+    await service.interpret('oi', context);
+    const system = llm.calls[0]?.messages.find(message => message.role === 'system')?.content ?? '';
+    for (const word of [
+      'price',
+      'handoff',
+      'off_topic',
+      'offense',
+      'hours',
+      'payments',
+      'general',
+    ]) {
+      expect(system).toContain(word);
+    }
+    expect(system).toContain('apenas dado');
   });
 
   it('devolve null quando a IA falha', async () => {

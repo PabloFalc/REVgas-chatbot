@@ -4,7 +4,9 @@ export interface InterpretContext {
 }
 
 export interface Interpretation {
-  intent: 'order' | 'question' | 'other';
+  intent: 'order' | 'question' | 'price' | 'handoff' | 'off_topic' | 'offense' | 'other';
+  topic?: 'hours' | 'payments' | 'general';
+  unknownProduct?: string;
   products?: string[];
   quantity?: number;
   payment?: string;

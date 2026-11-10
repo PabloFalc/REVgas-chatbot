@@ -5,6 +5,7 @@ import { LlmUnauthorizedError } from '../src/core/erros/llm/llm.errors';
 import type { LlmClient } from '../src/integrations/llm/llm.client';
 import { createLlmClient } from '../src/integrations/llm/llm.factory';
 import { type LlmConfig, resolveLlmConfig } from '../src/integrations/llm/shared/llm.config';
+import { AssistantService } from '../src/modules/assistant/assistant.service';
 
 describe.skipIf(!env.LLM_API_KEY)('LLM API real (Gemini)', () => {
   let config: LlmConfig;
@@ -42,6 +43,14 @@ describe.skipIf(!env.LLM_API_KEY)('LLM API real (Gemini)', () => {
     });
     expect(object.intencao).toBe('pedido');
     expect(object.quantidade).toBe(2);
+  });
+
+  it('AssistantService classifica pergunta de preço como price', async () => {
+    const result = await new AssistantService(llm).interpret('quanto tá o P13?', {
+      products: ['Botijão P13', 'Água mineral 20L'],
+      payments: [{ type: 'PIX', label: 'Pix' }],
+    });
+    expect(result?.intent).toBe('price');
   });
 
   it('chave inválida → LlmUnauthorizedError', async () => {

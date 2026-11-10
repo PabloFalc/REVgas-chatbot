@@ -7,7 +7,15 @@ import type { Interpretation, InterpretContext } from './contracts/assistant.typ
 
 const INSTRUCTIONS = [
   'Você interpreta a mensagem de um cliente de uma revenda de gás que quer fazer um pedido pelo WhatsApp.',
-  'Identifique a intenção: "order" quando o cliente quer pedir produtos, "question" para dúvidas e "other" para todo o resto.',
+  'Identifique a intenção:',
+  '"order" somente quando o cliente quer comprar (ex.: "quero 2 botijões"); se pedir um produto que não está na lista (ex.: "quero carvão"), use order e informe o nome dito em unknownProduct.',
+  '"price" para perguntas de preço ou total, mesmo citando um produto (ex.: "quanto tá o P13").',
+  '"question" para dúvidas gerais, com topic: "hours" para horário de funcionamento (ex.: "que horas abre"), "payments" para formas de pagamento (ex.: "aceita pix"), "general" para o resto (ex.: "vocês entregam domingo").',
+  '"handoff" quando o cliente quer falar com uma pessoa (ex.: "quero falar com alguém").',
+  '"off_topic" para assuntos sem relação com a revenda (ex.: política, receita, futebol).',
+  '"offense" para xingamentos e ofensas.',
+  '"other" para todo o resto.',
+  'Use topic somente em question e unknownProduct somente em order; nos demais casos, null.',
   'Extraia produtos, quantidade, forma de pagamento e endereço de entrega quando aparecerem no texto.',
   'Copie os nomes dos produtos e os types de pagamento EXATAMENTE como aparecem nas listas abaixo.',
   'Devolva mais de um produto somente quando o cliente foi ambíguo e mais de um da lista pode corresponder ao que ele disse.',
@@ -21,12 +29,14 @@ const INSTRUCTIONS = [
 ].join(' ');
 
 const interpretationSchema = z.object({
-  intent: z.enum(['order', 'question', 'other']),
+  intent: z.enum(['order', 'question', 'price', 'handoff', 'off_topic', 'offense', 'other']),
   products: z.array(z.string()).nullable(),
   quantity: z.number().int().min(1).nullable(),
   payment: z.string().nullable(),
   address: z.string().nullable(),
   newAddress: z.boolean().nullable(),
+  topic: z.enum(['hours', 'payments', 'general']).nullable(),
+  unknownProduct: z.string().nullable(),
   confidence: z.number().min(0).max(1),
 });
 
@@ -55,6 +65,13 @@ function presentFields(parsed: ParsedInterpretation): Interpretation {
   }
   if (parsed.newAddress !== null) {
     result.newAddress = parsed.newAddress;
+  }
+  if (parsed.intent === 'question' && parsed.topic !== null) {
+    result.topic = parsed.topic;
+  }
+  const unknownProduct = parsed.unknownProduct?.trim();
+  if (unknownProduct) {
+    result.unknownProduct = unknownProduct;
   }
   return result;
 }
