@@ -52,6 +52,7 @@ const GREETING_ONLY = /^(?:(?:oi|ola|bom dia|boa tarde|boa noite|opa|eai|e ai|me
 const CPF_STEP_DIGITS = 3;
 const STUCK_AFTER = 3;
 const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askCpfPrefix'];
+const MONEY_STEPS: Step[] = ['askChangeAmount'];
 const OTHER_ADDRESS_NOTE = 'entrega em outro endereço';
 
 export interface Catalog {
@@ -236,30 +237,52 @@ export async function keepOfferedProduct(state: OrderState, tools: FlowTools): P
   return next;
 }
 
-async function misunderstood(state: OrderState, tools: FlowTools): Promise<StepResult> {
+export interface FreeTextOptions {
+  whenNothingApplied?: () => Promise<StepResult>;
+  fallback?: string;
+}
+
+async function misunderstood(
+  state: OrderState,
+  tools: FlowTools,
+  fallback?: string,
+): Promise<StepResult> {
   const count = await tools.registerMisunderstood();
+  if (count < STUCK_AFTER && fallback !== undefined) {
+    return { state, replies: [text(fallback)], misunderstood: true };
+  }
   const first = count >= STUCK_AFTER ? offer(msg.stuck) : text(msg.notUnderstood);
   const result = await repeatQuestion(state, tools, first);
   return { ...result, misunderstood: true };
+}
+
+function readingFor(state: OrderState, result: Interpretation): Interpretation {
+  if (!MONEY_STEPS.includes(state.step)) return result;
+  const { quantity: _quantity, ...rest } = result;
+  return rest;
 }
 
 export async function freeText(
   state: OrderState,
   raw: string,
   tools: FlowTools,
-  whenNothingApplied?: () => Promise<StepResult>,
+  options: FreeTextOptions = {},
 ): Promise<StepResult> {
+  const { whenNothingApplied, fallback } = options;
   const spoken = spokenText(state, raw);
   const catalog = await loadCatalog(state, tools);
-  const result = await tools.interpret(spoken, contextOf(catalog));
-  if (!result || result.confidence < MIN_CONFIDENCE) return misunderstood(state, tools);
+  const interpreted = await tools.interpret(spoken, contextOf(catalog));
+  if (!interpreted || interpreted.confidence < MIN_CONFIDENCE) {
+    return misunderstood(state, tools, fallback);
+  }
+  const result = readingFor(state, interpreted);
 
   if (result.intent === 'other' && whenNothingApplied) return whenNothingApplied();
   const routed = await routeIntent(state, result, spoken, tools);
   if (routed) return routed;
 
   const applied = result.intent === 'order' ? applyInterpretation(state, result, catalog) : null;
-  if (!applied) return misunderstood(state, tools);
+  if (!applied) return misunderstood(state, tools, fallback);
 
   const noted = applied.notes.length > 0 ? [text(msg.noted(applied.notes))] : [];
   const ask = asks[state.step];
@@ -276,6 +299,6 @@ export function freeTextOr(
   tools: FlowTools,
   fallback: string,
 ): Promise<StepResult> {
-  if (raw !== null && shouldInterpret(raw)) return freeText(state, raw, tools);
+  if (raw !== null && shouldInterpret(raw)) return freeText(state, raw, tools, { fallback });
   return Promise.resolve({ state, replies: [text(fallback)] });
 }

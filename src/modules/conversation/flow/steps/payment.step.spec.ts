@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FlowInput, OrderState } from '../flow.types';
 import { msg } from '../messages';
 import { text } from '../replies';
@@ -136,7 +136,50 @@ describe('troco', () => {
     const loose = await handlers.askChangeAmount?.(state, say('abc'), createFakeTools());
     expect(equal?.replies).toEqual([text(msg.invalidChange(220))]);
     expect(junk?.replies).toEqual([text(msg.invalidChange(220))]);
-    expect(loose?.replies).toEqual([text(msg.notUnderstood), text(msg.askChangeAmount)]);
+    expect(loose?.replies).toEqual([text(msg.invalidChange(220))]);
+    expect(loose?.misunderstood).toBe(true);
+  });
+
+  describe('valor com palavras', () => {
+    const asking: OrderState = {
+      ...money,
+      step: 'askChangeAmount',
+      quantity: 1,
+      quote: { unitPrice: 110, total: 110 },
+    };
+
+    it.each([
+      ['200 reais', 200],
+      ['troco pra 200', 200],
+      ['R$ 200,00', 200],
+      ['para 150', 150],
+      ['Troco de 120 reais', 120],
+    ])('%s é aceito sem IA', async (raw, value) => {
+      const tools = createFakeTools();
+      const spy = vi.spyOn(tools, 'interpret');
+      const result = await handlers.askChangeAmount?.(asking, say(raw), tools);
+      expect(result?.state?.changeFor).toBe(value);
+      expect(result?.state?.step).toBe('summary');
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('"100 reais" abaixo do total pede outro valor sem IA', async () => {
+      const tools = createFakeTools();
+      const spy = vi.spyOn(tools, 'interpret');
+      const result = await handlers.askChangeAmount?.(asking, say('100 reais'), tools);
+      expect(result).toEqual({ state: asking, replies: [text(msg.invalidChange(110))] });
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('a IA não muda a quantidade no troco', async () => {
+      const tools = createFakeTools({
+        interpret: async () => ({ intent: 'order', quantity: 200, confidence: 0.9 }),
+      });
+      const result = await handlers.askChangeAmount?.(asking, say('quero de 200 mangos'), tools);
+      expect(result?.state).toEqual(asking);
+      expect(result?.replies).toEqual([text(msg.invalidChange(110))]);
+      expect(result?.misunderstood).toBe(true);
+    });
   });
 
   it('troco válido em formato brasileiro segue ao resumo', async () => {

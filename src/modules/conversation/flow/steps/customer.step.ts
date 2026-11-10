@@ -103,7 +103,9 @@ const handleAskName: HandleFn = async (state, input, tools) => {
   const acceptName = (valid: string) =>
     askCpf({ ...state, customer: { ...state.customer, name: valid } }, tools);
   if (raw !== null && (looksLikeOrder(raw) || raw.includes('?'))) {
-    return freeText(state, raw, tools, name ? () => acceptName(name) : undefined);
+    return freeText(state, raw, tools, {
+      whenNothingApplied: name ? () => acceptName(name) : undefined,
+    });
   }
   if (!name) return { state, replies: [text(msg.invalidName)] };
   return acceptName(name);

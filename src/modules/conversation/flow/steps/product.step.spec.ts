@@ -188,11 +188,11 @@ describe('quantidade', () => {
     expect(result).toEqual({ state: askState, replies: [text(msg.invalidQuantity)] });
   });
 
-  it('texto com letras vai para a IA e, sem resposta, vira "não entendi"', async () => {
+  it('texto com letras vai para a IA e, sem resposta, recebe o texto guiado', async () => {
     const askState: OrderState = { ...state, step: 'askQuantity' };
     const result = await handlers.askQuantity?.(askState, say('abc'), createFakeTools());
     expect(result?.state).toEqual(askState);
-    expect(result?.replies).toEqual([text(msg.notUnderstood), text(msg.askQuantity)]);
+    expect(result?.replies).toEqual([text(msg.invalidQuantity)]);
     expect(result?.misunderstood).toBe(true);
   });
 

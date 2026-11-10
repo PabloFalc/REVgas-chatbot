@@ -1,5 +1,6 @@
 import type { PaymentOption } from 'src/modules/catalog/contracts/catalog.types';
 import { parseMoney } from 'src/utils/money';
+import { normalizeText } from 'src/utils/text';
 import type { AskFn, HandleFn, Step } from '../flow.types';
 import { freeText, freeTextOr } from '../free-text';
 import { choiceOf, textOf } from '../input';
@@ -8,6 +9,17 @@ import { nextStep } from '../next-step';
 import { buttons, list, text } from '../replies';
 
 const BUTTON_LIMIT = 3;
+const CHANGE_FILLERS = new Set(['reais', 'real', 'pra', 'para', 'troco', 'de', 'o', 'os', 'e']);
+
+function parseChange(raw: string): number | null {
+  const direct = parseMoney(raw);
+  if (direct !== null) return direct;
+  const words = normalizeText(raw)
+    .replace(/r\$/g, ' ')
+    .split(/\s+/)
+    .filter(word => word && !CHANGE_FILLERS.has(word));
+  return words.length > 0 ? parseMoney(words.join(' ')) : null;
+}
 
 const choosePayment: AskFn = async (state, tools) => {
   const options = await tools.listPaymentOptions();
@@ -61,10 +73,9 @@ const handleAskNeedsChange: HandleFn = async (state, input, tools) => {
 const handleAskChangeAmount: HandleFn = async (state, input, tools) => {
   const total = state.quote?.total ?? 0;
   const raw = textOf(input);
-  const amount = raw === null ? null : parseMoney(raw);
-  if (amount === null || amount <= total) {
-    return freeTextOr(state, raw, tools, msg.invalidChange(total));
-  }
+  const amount = raw === null ? null : parseChange(raw);
+  if (amount === null) return freeTextOr(state, raw, tools, msg.invalidChange(total));
+  if (amount <= total) return { state, replies: [text(msg.invalidChange(total))] };
   return nextStep({ ...state, changeFor: amount }, tools);
 };
 
