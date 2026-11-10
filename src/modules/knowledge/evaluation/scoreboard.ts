@@ -28,6 +28,11 @@ function emptyGroups(): Record<EvalGroup, GroupScore> {
   ) as Record<EvalGroup, GroupScore>;
 }
 
+function hasForbidden(text: string, question: EvalQuestion): boolean {
+  const normalized = normalizeText(text);
+  return (question.forbidden ?? []).some(term => normalized.includes(normalizeText(term)));
+}
+
 export function scoreRun(results: EvalResult[]): Scoreboard {
   const groups = emptyGroups();
   const retrieval = { total: 0, hits: 0 };
@@ -47,16 +52,20 @@ export function scoreRun(results: EvalResult[]): Scoreboard {
       continue;
     }
 
+    const saidForbidden = answer.kind === 'answered' && hasForbidden(answer.text, question);
+    if (saidForbidden) violations.push(question.id);
+
     if (question.group === 'answerable') {
       if (
         answer.kind === 'answered' &&
+        !saidForbidden &&
         normalizeText(answer.text).includes(normalizeText(question.fact))
       ) {
         score.passed += 1;
       }
     } else if (MUST_BE_UNKNOWN.includes(question.group)) {
       if (answer.kind === 'unknown') score.passed += 1;
-      else violations.push(question.id);
+      else if (!saidForbidden) violations.push(question.id);
     }
   }
 

@@ -7,6 +7,7 @@ import { resolveEmbeddingConfig } from '../src/integrations/llm/shared/embedding
 import { resolveLlmConfig } from '../src/integrations/llm/shared/llm.config';
 import { AnswerGateway } from '../src/modules/knowledge/answer.gateway';
 import { EmbeddingGateway } from '../src/modules/knowledge/embedding.gateway';
+import { assertSafeForEvaluation } from '../src/modules/knowledge/evaluation/evaluation-safety';
 import {
   type EvalGroup,
   type EvalQuestion,
@@ -42,6 +43,12 @@ describe.skipIf(!(env.EMBEDDING_API_KEY ?? env.LLM_API_KEY))('RAG da base de con
     service = new KnowledgeService(repository, embeddings, answers, resolveKnowledgeConfig(env));
 
     const documents = await loadKnowledgeDocuments(resolve(process.cwd(), 'knowledge/base'));
+    const indexKeys = (await repository.listIndex()).map(item => item.key);
+    assertSafeForEvaluation(
+      indexKeys,
+      documents.map(document => document.source),
+      env.NODE_ENV,
+    );
     await new KnowledgeIngestService(repository, embeddings).ingest(documents);
     questions = await loadEvalQuestions(
       resolve(process.cwd(), 'knowledge/evaluation/questions.json'),

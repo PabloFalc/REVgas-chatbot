@@ -240,6 +240,7 @@ describe('KnowledgeService', () => {
       '123456789012',
       '(86) 99999-1234',
       '86 99999 1234',
+      '3222-1234',
     ])('CPF ou telefone %s não vai ao embedding nem ao prompt', async digits => {
       llm.queueObject({ answer: null, sources: [] });
       await service.answerQuestion(`meu número ${digits}, vocês entregam no Jóquei?`);
@@ -249,6 +250,18 @@ describe('KnowledgeService', () => {
       expect(sent).not.toMatch(/\d{3}/);
       expect(sent).toContain('Jóquei');
     });
+
+    it.each(['meu cpf termina em 0909', 'cpf: 123'])(
+      'pedaço de CPF em %j não vai ao embedding nem ao prompt',
+      async mention => {
+        llm.queueObject({ answer: null, sources: [] });
+        await service.answerQuestion(`${mention}, vocês entregam no Jóquei?`);
+        expect(embeddings.calls[0].input[0]).not.toMatch(/\d/);
+        expect(llm.calls[0].messages[1].content).not.toMatch(/\d/);
+        expect(JSON.stringify(repo.queries.map(q => q.textQuery))).not.toMatch(/\d/);
+        expect(embeddings.calls[0].input[0]).toContain('Jóquei');
+      },
+    );
 
     it.each([
       ['vazia', ''],

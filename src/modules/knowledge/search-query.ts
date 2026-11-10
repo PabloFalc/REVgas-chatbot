@@ -65,9 +65,17 @@ const STOPWORDS = new Set([
   'posso',
 ]);
 
+const LETTER_AND_NUMBER_PATTERN = /(?<![a-z0-9])([a-z])[\s-]?(\d+)/g;
+
+function joinLetterAndNumber(normalized: string): string {
+  return normalized.replace(LETTER_AND_NUMBER_PATTERN, (run, letter: string, digits: string) =>
+    STOPWORDS.has(letter) ? run : `${letter}${digits}`,
+  );
+}
+
 export function toTextQuery(question: string): string | null {
   const terms = new Set<string>();
-  for (const token of normalizeText(question).split(/[^a-z0-9]+/)) {
+  for (const token of joinLetterAndNumber(normalizeText(question)).split(/[^a-z0-9]+/)) {
     if (terms.size >= MAX_TERMS) break;
     if (token.length === 0 || STOPWORDS.has(token)) continue;
     if (token.length < 2 && !/\d/.test(token)) continue;

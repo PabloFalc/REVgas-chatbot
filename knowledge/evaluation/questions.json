@@ -16,6 +16,22 @@
       "fact": "não conseguimos entregar"
     },
     {
+      "id": "ans-bairro-satelite",
+      "group": "answerable",
+      "question": "vcs entregam no Satélite?",
+      "section": "Bairros atendidos",
+      "fact": "Centro",
+      "forbidden": ["Satélite"]
+    },
+    {
+      "id": "ans-bairro-esplanada",
+      "group": "answerable",
+      "question": "entrega no bairro Esplanada?",
+      "section": "Bairros atendidos",
+      "fact": "Centro",
+      "forbidden": ["Esplanada"]
+    },
+    {
       "id": "ans-p45",
       "group": "answerable",
       "question": "o p45 serve pra que?",

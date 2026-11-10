@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidCpf, onlyDigits, removeCpfs, removeLongDigitRuns } from './cpf';
+import { isValidCpf, onlyDigits, removeCpfMentions, removeCpfs, removeLongDigitRuns } from './cpf';
 
 describe('isValidCpf', () => {
   it('aceita CPF válido com ou sem pontuação', () => {
@@ -58,5 +58,58 @@ describe('removeLongDigitRuns', () => {
   it('respeita o mínimo de dígitos informado', () => {
     expect(removeLongDigitRuns('casa 120 456', 7)).toBe('casa 120 456');
     expect(removeLongDigitRuns('casa 120 456', 6)).toBe('casa ');
+  });
+
+  it('remove telefone fixo de 8 dígitos por padrão', () => {
+    expect(removeLongDigitRuns('fone 3222-1234 ok')).toBe('fone  ok');
+    expect(removeLongDigitRuns('casa 1234567')).toBe('casa 1234567');
+  });
+});
+
+describe('removeCpfMentions', () => {
+  it.each([
+    ['meu cpf termina em 0909', '0909'],
+    ['cpf: 123', '123'],
+    ['CPF 529.982', '529'],
+    ['o Cpf é 12-34', '12'],
+    ['meu c.p.f é 123', '123'],
+  ])('remove os dígitos depois de cpf em %j', (text, digits) => {
+    const result = removeCpfMentions(text);
+    expect(result).not.toContain(digits);
+    expect(result).not.toMatch(/\d/);
+  });
+
+  it('preserva o texto em volta', () => {
+    expect(removeCpfMentions('meu cpf termina em 0909, entregam?')).toBe(
+      'meu cpf termina em , entregam?',
+    );
+  });
+
+  it('dígitos depois de mais de 3 palavras ficam', () => {
+    expect(removeCpfMentions('cpf eu mando depois, quero 2 botijões')).toBe(
+      'cpf eu mando depois, quero 2 botijões',
+    );
+  });
+
+  it.each(['botijão P13 em 40 minutos', 'troca em 7 dias', 'reclamação em 24 horas'])(
+    'sem cpf o texto fica igual: %j',
+    text => {
+      expect(removeCpfMentions(text)).toBe(text);
+    },
+  );
+});
+
+describe('removeCpfs → removeCpfMentions → removeLongDigitRuns', () => {
+  const clean = (text: string) => removeLongDigitRuns(removeCpfMentions(removeCpfs(text)));
+
+  it.each(['meu cpf termina em 0909', 'cpf: 123', 'liga no 3222-1234'])(
+    'remove os dígitos de %j',
+    text => {
+      expect(clean(text)).not.toMatch(/\d/);
+    },
+  );
+
+  it.each(['P13', '40 minutos', '7 dias', '24 horas'])('%j sobrevive', text => {
+    expect(clean(`tem ${text}?`)).toBe(`tem ${text}?`);
   });
 });

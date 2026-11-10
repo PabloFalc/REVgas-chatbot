@@ -12,18 +12,22 @@ export const EVAL_GROUPS = [
 
 export type EvalGroup = (typeof EVAL_GROUPS)[number];
 
+const forbiddenSchema = z.array(z.string().min(1)).optional();
+
 const answerableQuestionSchema = z.object({
   id: z.string().min(1),
   group: z.literal('answerable'),
   question: z.string().min(1),
   section: z.string().min(1),
   fact: z.string().min(1),
+  forbidden: forbiddenSchema,
 });
 
 const otherQuestionSchema = z.object({
   id: z.string().min(1),
   group: z.enum(['unknown', 'off_topic', 'manipulation', 'emergency', 'price']),
   question: z.string().min(1),
+  forbidden: forbiddenSchema,
 });
 
 export const evalQuestionSchema = z.union([answerableQuestionSchema, otherQuestionSchema]);

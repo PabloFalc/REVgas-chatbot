@@ -117,9 +117,87 @@ describe('checkAnswer', () => {
     expect(check(answer)).toEqual({ ok: false, reason: 'number_not_in_sources' });
   });
 
-  it.each([['t1'], ['T1.'], [' t1, '], ['T1:']])('id %s é aceito como T1', ref => {
-    expect(check('Entregamos no Jóquei.', [ref])).toMatchObject({ ok: true, used: [T1] });
+  it('bairro fora do trecho citado → name_not_in_sources', () => {
+    expect(check('Entregamos no Satélite.')).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
   });
+
+  it('bairros que estão no trecho → ok', () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Bairros atendidos',
+      content: 'Entregamos no Centro, Jóquei e Mocambinho.',
+    };
+    expect(check('Entregamos no Jóquei e no Mocambinho.', ['T3'], [T3])).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('nome só em trecho não citado → name_not_in_sources', () => {
+    const T3: AnswerSource = { ref: 'T3', title: 'Bairros', content: 'Também no Mocambinho.' };
+    expect(check('Entregamos no Mocambinho.', ['T1'], [T1, T3])).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it.each([
+    'Sim, entregamos.',
+    'Entregamos no Jóquei. Também no Fátima.',
+    'Entregamos no Jóquei! Também no Fátima.',
+    'Entregamos no Jóquei? Também no Fátima.',
+    'Atenção: Também no Fátima.',
+    'Entregamos no Jóquei.\nTambém no Fátima.',
+  ])('palavra no começo da frase não é checada: %j', answer => {
+    expect(check(answer)).toMatchObject({ ok: true });
+  });
+
+  it('nome depois de vírgula é checado', () => {
+    expect(check('Sim, Satélite também.')).toEqual({ ok: false, reason: 'name_not_in_sources' });
+  });
+
+  it('nome é comparado como palavra inteira', () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Bairros',
+      content: 'Entregamos no Centrolândia.',
+    };
+    expect(check('Entregamos no Centro.', ['T3'], [T3])).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it("'Fale pelo WhatsApp.' com WhatsApp no trecho → ok", () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Como pedir',
+      content: 'Basta conversar com a gente pelo WhatsApp.',
+    };
+    expect(check('Fale pelo WhatsApp.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it('siglas curtas e códigos como P13 não são nomes', () => {
+    const T3: AnswerSource = { ref: 'T3', title: 'Botijão P13', content: 'É o mais vendido.' };
+    expect(check('O P13 é o mais vendido, ok.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it('price_claim vem antes de name_not_in_sources, que vem antes de number_not_in_sources', () => {
+    expect(check('A entrega é grátis no Satélite.')).toEqual({ ok: false, reason: 'price_claim' });
+    expect(check('Entregamos no Satélite em 30 minutos.')).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it.each([['t1'], ['T1.'], [' t1, '], ['T1:'], ['[T1]'], ['(T1)'], ['[t1].']])(
+    'id %s é aceito como T1',
+    ref => {
+      expect(check('Entregamos no Jóquei.', [ref])).toMatchObject({ ok: true, used: [T1] });
+    },
+  );
 
   it("'em até 40 minutos' → ok", () => {
     expect(check('Entregamos em até 40 minutos.')).toMatchObject({ ok: true });

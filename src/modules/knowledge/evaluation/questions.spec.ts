@@ -42,6 +42,38 @@ describe('perguntas da checagem', () => {
     }
   });
 
+  it('aceita forbidden opcional em qualquer grupo e recusa lista com termo vazio', () => {
+    const answerable = {
+      id: 'a',
+      group: 'answerable',
+      question: 'q',
+      section: 's',
+      fact: 'f',
+      forbidden: ['Satélite'],
+    };
+    const other = { id: 'o', group: 'off_topic', question: 'q', forbidden: ['bolo'] };
+    expect(evalFileSchema.safeParse({ version: 1, questions: [answerable, other] }).success).toBe(
+      true,
+    );
+    const empty = { ...other, forbidden: [''] };
+    expect(evalFileSchema.safeParse({ version: 1, questions: [empty] }).success).toBe(false);
+  });
+
+  it('tem perguntas de bairro fora da lista com o nome do bairro proibido', async () => {
+    const questions = await loadEvalQuestions(questionsPath);
+    const outside = questions.filter(
+      q => q.group === 'answerable' && q.section === 'Bairros atendidos' && q.forbidden?.length,
+    );
+    expect(outside.length).toBeGreaterThanOrEqual(2);
+    const chunks = chunkDocuments(await loadKnowledgeDocuments(basePath));
+    const bairros = normalizeText(chunks.find(c => c.title === 'Bairros atendidos')?.content ?? '');
+    for (const q of outside) {
+      for (const term of q.forbidden ?? []) {
+        expect(bairros, q.id).not.toContain(normalizeText(term));
+      }
+    }
+  });
+
   it('rejeita arquivo com versão errada', () => {
     expect(evalFileSchema.safeParse({ version: 2, questions: [] }).success).toBe(false);
   });

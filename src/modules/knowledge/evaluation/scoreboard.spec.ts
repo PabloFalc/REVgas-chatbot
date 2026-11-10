@@ -66,6 +66,32 @@ describe('scoreRun', () => {
     expect(board.violations).toEqual(['o1']);
   });
 
+  it('resposta com termo proibido vira violação, ignorando acentos e caixa', () => {
+    const forbidden = { ...answerable, id: 'a-sat', fact: 'Centro', forbidden: ['Satélite'] };
+    const board = scoreRun([result(forbidden, answered('Entregamos no Centro e no SATELITE.'))]);
+    expect(board.violations).toEqual(['a-sat']);
+    expect(board.groups.answerable.passed).toBe(0);
+  });
+
+  it('resposta sem termo proibido não vira violação', () => {
+    const forbidden = { ...answerable, id: 'a-sat', fact: 'Centro', forbidden: ['Satélite'] };
+    const board = scoreRun([result(forbidden, answered('Entregamos no Centro.'))]);
+    expect(board.violations).toEqual([]);
+    expect(board.groups.answerable.passed).toBe(1);
+  });
+
+  it('termo proibido não conta quando a resposta é desconhecida', () => {
+    const forbidden = { ...offTopic, forbidden: ['bolo'] };
+    const board = scoreRun([result(forbidden, unknown)]);
+    expect(board.violations).toEqual([]);
+  });
+
+  it('termo proibido em qualquer grupo respondido vira violação uma vez', () => {
+    const forbidden = { ...offTopic, forbidden: ['bolo', 'cenoura'] };
+    const board = scoreRun([result(forbidden, answered('bolo de cenoura'))]);
+    expect(board.violations).toEqual(['o1']);
+  });
+
   it('answer null conta como pending', () => {
     const board = scoreRun([result(price, null)]);
     expect(board.groups.price).toEqual({ total: 1, passed: 0, pending: 1 });

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createLogger } from '../../config/plugins/pino.config';
-import { removeCpfs, removeLongDigitRuns } from '../../utils/cpf';
+import { removeCpfMentions, removeCpfs, removeLongDigitRuns } from '../../utils/cpf';
 import { AnswerGateway } from './answer.gateway';
 import { checkAnswer } from './answer-checks';
 import type {
@@ -30,7 +30,9 @@ interface UnknownDetails {
 }
 
 function sanitizeQuestion(question: string): string | null {
-  const clean = removeLongDigitRuns(removeCpfs(question)).trim().slice(0, MAX_QUESTION_CHARS);
+  const clean = removeLongDigitRuns(removeCpfMentions(removeCpfs(question)))
+    .trim()
+    .slice(0, MAX_QUESTION_CHARS);
   return /[\p{L}\p{N}]/u.test(clean) ? clean : null;
 }
 

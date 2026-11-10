@@ -70,6 +70,7 @@ export type AnswerRejection =
   | 'money'
   | 'percent'
   | 'price_claim'
+  | 'name_not_in_sources'
   | 'number_not_in_sources';
 
 export type KnowledgeAnswer =

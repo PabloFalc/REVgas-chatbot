@@ -78,6 +78,8 @@ const PRICE_WORDS = new Set(['caro', 'cara']);
 
 const MONEY_PATTERN = /r\$|\bre(al|ais)\b|\bcentavos?\b/i;
 const PERCENT_PATTERN = /%|\bpor ?cento\b/;
+const NAME_PATTERN = /(?<![\p{L}\p{N}])\p{Lu}\p{L}{2,}(?![\p{L}\p{N}])/gu;
+const SENTENCE_START_PATTERN = /(?:^\s*|[.!?:]\s+|\n\s*)$/u;
 
 export type AnswerCheck =
   | { ok: true; text: string; used: AnswerSource[] }
@@ -113,6 +115,7 @@ function normalizeRef(ref: string): string {
   return ref
     .trim()
     .toUpperCase()
+    .replace(/^[[(]+/u, '')
     .replace(/[\p{P}\s]+$/u, '');
 }
 
@@ -134,6 +137,20 @@ function citedSources(refs: string[], sent: AnswerSource[]): AnswerSource[] | nu
 function onlyKnownPriceWords(normalized: string, sources: string): boolean {
   const allowed = priceStemsIn(sources);
   return [...priceStemsIn(normalized)].every(stem => allowed.has(stem));
+}
+
+function namesIn(text: string): Set<string> {
+  const names = new Set<string>();
+  for (const match of text.matchAll(NAME_PATTERN)) {
+    const before = text.slice(0, match.index);
+    if (!SENTENCE_START_PATTERN.test(before)) names.add(normalizeText(match[0]));
+  }
+  return names;
+}
+
+function onlyKnownNames(text: string, sources: string): boolean {
+  const words = new Set(wordsOf(sources));
+  return [...namesIn(text)].every(name => words.has(name));
 }
 
 function onlyKnownNumbers(normalized: string, sources: string): boolean {
@@ -162,6 +179,7 @@ export function checkAnswer(
   if (PERCENT_PATTERN.test(normalized)) return { ok: false, reason: 'percent' };
   const sources = textOfSources(used);
   if (!onlyKnownPriceWords(normalized, sources)) return { ok: false, reason: 'price_claim' };
+  if (!onlyKnownNames(text, sources)) return { ok: false, reason: 'name_not_in_sources' };
   if (!onlyKnownNumbers(normalized, sources)) {
     return { ok: false, reason: 'number_not_in_sources' };
   }
