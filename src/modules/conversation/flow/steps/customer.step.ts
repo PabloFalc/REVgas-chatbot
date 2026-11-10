@@ -1,4 +1,4 @@
-import { isValidCpf, onlyDigits } from 'src/utils/cpf';
+import { isValidCpf, onlyDigits, removeLongDigitRuns } from 'src/utils/cpf';
 import {
   type AskFn,
   type FlowInput,
@@ -17,6 +17,11 @@ import { text } from '../replies';
 import { offerOrNext } from './repeat.step';
 
 const MAX_NAME_LENGTH = 100;
+const CPF_LIKE_DIGITS = 9;
+
+function hasCpfLikeDigits(raw: string): boolean {
+  return removeLongDigitRuns(raw, CPF_LIKE_DIGITS) !== raw;
+}
 
 function parseName(raw: string | null): string | null {
   if (raw === null) return null;
@@ -97,7 +102,7 @@ const handleAskName: HandleFn = async (state, input, tools) => {
   const name = parseName(raw);
   const acceptName = (valid: string) =>
     askCpf({ ...state, customer: { ...state.customer, name: valid } }, tools);
-  if (raw !== null && looksLikeOrder(raw)) {
+  if (raw !== null && (looksLikeOrder(raw) || raw.includes('?'))) {
     return freeText(state, raw, tools, name ? () => acceptName(name) : undefined);
   }
   if (!name) return { state, replies: [text(msg.invalidName)] };
@@ -106,7 +111,10 @@ const handleAskName: HandleFn = async (state, input, tools) => {
 
 const handleAskCpf: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
-  if (raw === null || !isValidCpf(raw)) return freeTextOr(state, raw, tools, msg.invalidCpf);
+  if (raw === null || !isValidCpf(raw)) {
+    if (raw !== null && hasCpfLikeDigits(raw)) return { state, replies: [text(msg.invalidCpf)] };
+    return freeTextOr(state, raw, tools, msg.invalidCpf);
+  }
   return nextStep({ ...state, customer: { ...state.customer, cpf: onlyDigits(raw) } }, tools);
 };
 
@@ -126,6 +134,9 @@ const handleAskCpfPrefix: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
   const digits = prefixAttempt(raw);
   if (digits === null) {
+    if (raw !== null && hasCpfLikeDigits(raw)) {
+      return { state, replies: [text(msg.cpfPrefixFormat)] };
+    }
     const rest = raw?.replace(STANDALONE_PREFIX, '').trim() ?? '';
     if (!rest) return { state, replies: [text(msg.cpfPrefixFormat)] };
     return freeTextOr(state, rest, tools, msg.cpfPrefixFormat);

@@ -1,18 +1,21 @@
 import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
 import { describe, expect, it, vi } from 'vitest';
-import type { OrderState } from './flow.types';
+import type { FlowTools, OrderState } from './flow.types';
 import {
   applyInterpretation,
   type Catalog,
   freeText,
+  isGreetingOnly,
   keepOfferedProduct,
   looksLikeOrder,
+  seedFromInterpretation,
   shouldInterpret,
 } from './free-text';
+import { offer } from './handoff';
 import { msg } from './messages';
 import { buttons, text } from './replies';
 import './steps';
-import { createFakeTools } from './testing/fake-tools';
+import { createFakeTools, type FakeTools } from './testing/fake-tools';
 
 const p13 = { id: 1, name: 'Botijão P13' };
 const p45 = { id: 2, name: 'Botijão P45' };
@@ -49,13 +52,40 @@ describe('looksLikeOrder', () => {
 });
 
 describe('shouldInterpret', () => {
-  it.each(['123.456', '12 3', 'R$ 100,00', 'meu cpf é 123'])('false: %s', text => {
+  it.each(['123.456', '12 3', 'R$ 100,00', '?!', 'a 1 b 2', ''])('false: %j', text => {
     expect(shouldInterpret(text)).toBe(false);
   });
 
-  it.each(['quero 3 botijões', 'paga no pix'])('true: %s', text => {
-    expect(shouldInterpret(text)).toBe(true);
+  it.each(['quero 3 botijões', 'paga no pix', 'abc', 'vocês abrem domingo?', 'quanto tá o P13'])(
+    'true: %s',
+    text => {
+      expect(shouldInterpret(text)).toBe(true);
+    },
+  );
+});
+
+describe('isGreetingOnly', () => {
+  it.each([
+    'oi',
+    'Oi!',
+    'Olá',
+    'bom dia',
+    'Boa tarde, oi',
+    'boa noite!!',
+    'E aí?',
+    'eai',
+    'opa',
+    'MENU',
+  ])('true: %s', text => {
+    expect(isGreetingOnly(text)).toBe(true);
   });
+
+  it.each(['oi, quero gás', 'bom dia, vocês abrem domingo?', 'kkkk', 'oie', '', '!!'])(
+    'false: %j',
+    text => {
+      expect(isGreetingOnly(text)).toBe(false);
+    },
+  );
 });
 
 describe('applyInterpretation', () => {
@@ -202,12 +232,6 @@ describe('messages de texto livre', () => {
     expect(msg.noted(['3x Botijão P13', 'Pix'])).toBe('Anotado: 3x Botijão P13, Pix.');
   });
 
-  it('offTopic indica a revenda', () => {
-    expect(msg.offTopic('86999990000')).toBe(
-      'Essa dúvida eu não consigo responder por aqui. Fale com a revenda: 86999990000.',
-    );
-  });
-
   it('textos fixos', () => {
     expect(msg.notUnderstood).toBe('Não entendi.');
     expect(msg.chooseAmbiguousProduct).toBe('Qual desses você quer?');
@@ -226,35 +250,88 @@ describe('freeText', () => {
     msg.choosePayment,
     [pix, money, credit].map(option => ({ id: `pay:${option.type}`, title: option.label })),
   );
-  const tools = (value: Interpretation | null) => createFakeTools({ interpret: async () => value });
+  const tools = (value: Interpretation | null, overrides: Partial<FlowTools> = {}) =>
+    createFakeTools({ interpret: async () => value, ...overrides });
+  const called = (fake: FakeTools, name: string) =>
+    fake.calls.filter(call => call.name === name).length;
 
-  it('IA indisponível repete a pergunta', async () => {
-    const out = await freeText(paying, 'blá', tools(null));
+  it('IA indisponível repete a pergunta e conta o "não entendi"', async () => {
+    const fake = tools(null);
+    const out = await freeText(paying, 'blá', fake);
     expect(out.replies).toEqual([text(msg.notUnderstood), paymentButtons]);
     expect(out.state).toMatchObject({ step: 'choosePayment', quantity: 1 });
+    expect(out.misunderstood).toBe(true);
+    expect(called(fake, 'registerMisunderstood')).toBe(1);
   });
 
   it('confiança baixa repete a pergunta', async () => {
     const out = await freeText(paying, 'blá', tools(result({ confidence: 0.5, quantity: 5 })));
     expect(out.replies).toEqual([text(msg.notUnderstood), paymentButtons]);
     expect(out.state?.quantity).toBe(1);
+    expect(out.misunderstood).toBe(true);
   });
 
-  it('dúvida sem campos', async () => {
-    const out = await freeText(paying, 'vocês abrem?', tools(result({ intent: 'question' })));
-    expect(out.replies[0]).toEqual(text(msg.offTopic('86999990000')));
-    expect(out.replies[1]).toEqual(paymentButtons);
+  it('3º "não entendi" seguido oferece o atendente antes da pergunta', async () => {
+    const fake = tools(null, { registerMisunderstood: async () => 3 });
+    const out = await freeText(paying, 'blá', fake);
+    expect(out.replies).toEqual([offer(msg.stuck), paymentButtons]);
+    expect(out.misunderstood).toBe(true);
   });
 
-  it('dúvida com campos aplica os campos', async () => {
-    const out = await freeText(
-      paying,
-      'tem entrega? quero 2',
-      tools(result({ intent: 'question', quantity: 2 })),
-    );
+  it('pedido sem nada aplicável conta como "não entendi"', async () => {
+    const out = await freeText(paying, 'quero', tools(result({ products: ['Lenha'] })));
+    expect(out.replies).toEqual([text(msg.notUnderstood), paymentButtons]);
+    expect(out.misunderstood).toBe(true);
+  });
+
+  it('"outro" não altera o pedido e conta como "não entendi"', async () => {
+    const out = await freeText(paying, 'hmm 5', tools(result({ intent: 'other', quantity: 5 })));
+    expect(out.state?.quantity).toBe(1);
+    expect(out.replies).toEqual([text(msg.notUnderstood), paymentButtons]);
+    expect(out.misunderstood).toBe(true);
+  });
+
+  it('dúvida vai para a base com o texto do cliente e não altera o pedido', async () => {
+    const fake = tools(result({ intent: 'question', topic: 'general', quantity: 2 }));
+    const spy = vi.spyOn(fake, 'answerQuestion');
+    const out = await freeText(paying, 'tem entrega? quero 2', fake);
+    expect(spy).toHaveBeenCalledWith('tem entrega? quero 2');
+    expect(out.state?.quantity).toBe(1);
+    expect(out.replies).toEqual([offer(msg.notKnown), paymentButtons]);
+    expect(out.misunderstood).toBeUndefined();
+    expect(called(fake, 'registerMisunderstood')).toBe(0);
+  });
+
+  it('"quanto tá o P13" no meio do pedido não troca o produto', async () => {
+    const fake = tools(result({ intent: 'price', products: ['Botijão P13'] }), {
+      basePrices: async () => [{ product: p13, minPrice: 110, varies: false }],
+    });
+    const withP45: OrderState = { ...paying, product: p45, paymentOptions: [pix, money, credit] };
+    const out = await freeText(withP45, 'quanto tá o P13?', fake);
+    expect(out.state).toEqual(withP45);
+    expect(out.replies).toEqual([
+      text('Preços de hoje:\n- Botijão P13: R$ 110,00\nO total aparece no resumo do pedido.'),
+      paymentButtons,
+    ]);
+    expect(called(fake, 'quote')).toBe(0);
+  });
+
+  it('pedido aplicado não marca "não entendi"', async () => {
+    const fake = tools(result({ quantity: 2 }));
+    const out = await freeText(paying, 'quero 2', fake);
     expect(out.state?.quantity).toBe(2);
-    expect(out.replies[0]).toEqual(text(msg.noted(['2x Botijão P13'])));
-    expect(out.replies[1]).toEqual(paymentButtons);
+    expect(out.misunderstood).toBeUndefined();
+    expect(called(fake, 'registerMisunderstood')).toBe(0);
+  });
+
+  it('nas etapas de CPF os dígitos não chegam à IA', async () => {
+    const fake = tools(null);
+    const spy = vi.spyOn(fake, 'interpret');
+    const asking: OrderState = { step: 'askCpf', customer: { name: 'Maria da Silva' } };
+    await freeText(asking, 'meu cpf é 123.456 e quero 2 botijões P13', fake);
+    const sent = spy.mock.calls[0]?.[0] ?? '';
+    expect(sent).not.toMatch(/123|456/);
+    expect(sent).toContain('2 botijões P13');
   });
 
   it('troca quantidade e pede novo endereço', async () => {
@@ -308,6 +385,22 @@ describe('freeText', () => {
       payments: [{ type: 'PIX', label: 'Pix' }],
     });
     expect(fake.calls.map(call => call.name)).not.toContain('listProducts');
+  });
+});
+
+describe('seedFromInterpretation', () => {
+  it('pedido vira campos e "Anotado"', () => {
+    const seed = seedFromInterpretation(
+      result({ products: ['Botijão P13'], quantity: 2, payment: 'PIX' }),
+      catalog,
+    );
+    expect(seed.fields).toEqual({ product: p13, quantity: 2, payment: pix });
+    expect(seed.replies).toEqual([text(msg.noted(['2x Botijão P13', 'Pix']))]);
+  });
+
+  it('só "pedido" semeia', () => {
+    const seed = seedFromInterpretation(result({ intent: 'other', quantity: 2 }), catalog);
+    expect(seed).toEqual({ fields: {}, replies: [] });
   });
 });
 

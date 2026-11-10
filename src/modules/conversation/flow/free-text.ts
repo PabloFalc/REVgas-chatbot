@@ -3,9 +3,18 @@ import type {
   InterpretContext,
 } from 'src/modules/assistant/contracts/assistant.types';
 import type { PaymentOption, Product } from 'src/modules/catalog/contracts/catalog.types';
+import { removeCpfMentions, removeLongDigitRuns } from 'src/utils/cpf';
 import { normalizeText } from 'src/utils/text';
 import type { Reply } from '../contracts/conversation.types';
-import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
+import {
+  CPF_STEPS,
+  type FlowTools,
+  type OrderState,
+  type Step,
+  type StepResult,
+} from './flow.types';
+import { offer } from './handoff';
+import { matchProducts, routeIntent } from './intent';
 import { msg } from './messages';
 import { nextStep } from './next-step';
 import { repeatQuestion } from './repeat-question';
@@ -38,6 +47,10 @@ const ORDER_WORDS = new Set([
 ]);
 
 const NUMERIC_ONLY = /^[\d\s.,\-/R$]*$/i;
+const LETTERS = /\p{L}{2,}/u;
+const GREETING_ONLY = /^(?:(?:oi|ola|bom dia|boa tarde|boa noite|opa|eai|e ai|menu)(?:\s+|$))+$/;
+const CPF_STEP_DIGITS = 3;
+const STUCK_AFTER = 3;
 const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askCpfPrefix'];
 const OTHER_ADDRESS_NOTE = 'entrega em outro endereço';
 
@@ -57,17 +70,19 @@ export function looksLikeOrder(text: string): boolean {
 }
 
 export function shouldInterpret(text: string): boolean {
-  return !NUMERIC_ONLY.test(text) && hasOrderWord(text);
+  return !NUMERIC_ONLY.test(text) && LETTERS.test(text);
 }
 
-function matchProducts(names: string[] | undefined, products: Product[]): Product[] {
-  const matched: Product[] = [];
-  for (const name of names ?? []) {
-    const wanted = normalizeText(name);
-    const product = products.find(item => normalizeText(item.name) === wanted);
-    if (product && !matched.some(item => item.id === product.id)) matched.push(product);
-  }
-  return matched;
+export function isGreetingOnly(text: string): boolean {
+  const words = normalizeText(text)
+    .replace(/[^a-z]+/g, ' ')
+    .trim();
+  return GREETING_ONLY.test(words);
+}
+
+function spokenText(state: OrderState, raw: string): string {
+  if (!CPF_STEPS.includes(state.step)) return raw;
+  return removeLongDigitRuns(removeCpfMentions(raw), CPF_STEP_DIGITS).replace(/\s+/g, ' ').trim();
 }
 
 function matchPayment(value: string | undefined, payments: PaymentOption[]): PaymentOption | null {
@@ -163,20 +178,14 @@ export interface Seed {
   replies: Reply[];
 }
 
-export async function seedFromText(raw: string, tools: FlowTools): Promise<Seed> {
-  const empty: Seed = { fields: {}, replies: [] };
-  const catalog: Catalog = {
-    products: await tools.listProducts({}),
-    payments: await tools.listPaymentOptions(),
-  };
-  const result = await tools.interpret(raw, contextOf(catalog));
-  if (!result || result.confidence < MIN_CONFIDENCE) return empty;
+export type FirstMessage = { kind: 'routed'; result: StepResult } | { kind: 'seed'; seed: Seed };
 
+const EMPTY_SEED: Seed = { fields: {}, replies: [] };
+
+export function seedFromInterpretation(result: Interpretation, catalog: Catalog): Seed {
+  if (result.intent !== 'order') return EMPTY_SEED;
   const applied = applyInterpretation({ step: 'askName', customer: {} }, result, catalog);
-  if (!applied) {
-    if (result.intent !== 'question') return empty;
-    return { fields: {}, replies: [text(msg.offTopic(tools.storePhone))] };
-  }
+  if (!applied) return EMPTY_SEED;
 
   const { product, quantity, payment, productCandidates, pendingAddressText } = applied.state;
   const fields: Partial<OrderState> = {};
@@ -187,6 +196,19 @@ export async function seedFromText(raw: string, tools: FlowTools): Promise<Seed>
   if (pendingAddressText) fields.pendingAddressText = pendingAddressText;
   const replies = applied.notes.length > 0 ? [text(msg.noted(applied.notes))] : [];
   return { fields, replies };
+}
+
+export async function readFirstMessage(raw: string, tools: FlowTools): Promise<FirstMessage> {
+  if (isGreetingOnly(raw) || !shouldInterpret(raw)) return { kind: 'seed', seed: EMPTY_SEED };
+  const catalog: Catalog = {
+    products: await tools.listProducts({}),
+    payments: await tools.listPaymentOptions(),
+  };
+  const result = await tools.interpret(raw, contextOf(catalog));
+  if (!result || result.confidence < MIN_CONFIDENCE) return { kind: 'seed', seed: EMPTY_SEED };
+  const routed = await routeIntent(null, result, raw, tools);
+  if (routed) return { kind: 'routed', result: routed };
+  return { kind: 'seed', seed: seedFromInterpretation(result, catalog) };
 }
 
 export async function keepOfferedProduct(state: OrderState, tools: FlowTools): Promise<OrderState> {
@@ -214,24 +236,30 @@ export async function keepOfferedProduct(state: OrderState, tools: FlowTools): P
   return next;
 }
 
+async function misunderstood(state: OrderState, tools: FlowTools): Promise<StepResult> {
+  const count = await tools.registerMisunderstood();
+  const first = count >= STUCK_AFTER ? offer(msg.stuck) : text(msg.notUnderstood);
+  const result = await repeatQuestion(state, tools, first);
+  return { ...result, misunderstood: true };
+}
+
 export async function freeText(
   state: OrderState,
   raw: string,
   tools: FlowTools,
   whenNothingApplied?: () => Promise<StepResult>,
 ): Promise<StepResult> {
+  const spoken = spokenText(state, raw);
   const catalog = await loadCatalog(state, tools);
-  const result = await tools.interpret(raw, contextOf(catalog));
-  if (!result || result.confidence < MIN_CONFIDENCE) {
-    return repeatQuestion(state, tools, text(msg.notUnderstood));
-  }
+  const result = await tools.interpret(spoken, contextOf(catalog));
+  if (!result || result.confidence < MIN_CONFIDENCE) return misunderstood(state, tools);
 
-  const applied = applyInterpretation(state, result, catalog);
-  if (!applied) {
-    if (whenNothingApplied && result.intent === 'other') return whenNothingApplied();
-    const first = result.intent === 'question' ? msg.offTopic(tools.storePhone) : msg.notUnderstood;
-    return repeatQuestion(state, tools, text(first));
-  }
+  if (result.intent === 'other' && whenNothingApplied) return whenNothingApplied();
+  const routed = await routeIntent(state, result, spoken, tools);
+  if (routed) return routed;
+
+  const applied = result.intent === 'order' ? applyInterpretation(state, result, catalog) : null;
+  if (!applied) return misunderstood(state, tools);
 
   const noted = applied.notes.length > 0 ? [text(msg.noted(applied.notes))] : [];
   const ask = asks[state.step];

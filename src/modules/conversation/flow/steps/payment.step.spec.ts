@@ -132,9 +132,11 @@ describe('troco', () => {
   it('valor igual ao total é recusado e texto inválido também', async () => {
     const state: OrderState = { ...money, step: 'askChangeAmount' };
     const equal = await handlers.askChangeAmount?.(state, say('220'), createFakeTools());
-    const junk = await handlers.askChangeAmount?.(state, say('abc'), createFakeTools());
+    const junk = await handlers.askChangeAmount?.(state, say('0'), createFakeTools());
+    const loose = await handlers.askChangeAmount?.(state, say('abc'), createFakeTools());
     expect(equal?.replies).toEqual([text(msg.invalidChange(220))]);
     expect(junk?.replies).toEqual([text(msg.invalidChange(220))]);
+    expect(loose?.replies).toEqual([text(msg.notUnderstood), text(msg.askChangeAmount)]);
   });
 
   it('troco válido em formato brasileiro segue ao resumo', async () => {

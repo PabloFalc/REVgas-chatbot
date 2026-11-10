@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { type FlowInput, ToolError } from '../flow.types';
+import { offer } from '../handoff';
 import { msg } from '../messages';
 import { text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
@@ -112,13 +113,40 @@ describe('askName', () => {
     expect(result?.state?.customer.name).toBeUndefined();
   });
 
-  it('pergunta no nome responde fora do escopo e não vira o nome', async () => {
+  it('pergunta no nome vai para a base e não vira o nome', async () => {
     const tools = createFakeTools({
-      interpret: async () => ({ intent: 'question', confidence: 0.9 }),
+      interpret: async () => ({ intent: 'question', topic: 'general', confidence: 0.9 }),
     });
     const result = await handlers.askName?.(state, say('quero saber se entregam hoje'), tools);
-    expect(result?.state?.customer.name).toBeUndefined();
-    expect(result?.replies).toEqual([text(msg.offTopic(tools.storePhone)), text(msg.askName)]);
+    expect(result?.state).toEqual(state);
+    expect(result?.replies).toEqual([offer(msg.notKnown), text(msg.askName)]);
+  });
+
+  it('texto com "?" sem palavra de pedido vai para a IA e não vira o nome', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'question', topic: 'hours', confidence: 0.9 }),
+      serviceHours: async () => ({
+        open: true,
+        nextOpening: null,
+        windows: [{ day: 1, start: 480, end: 1080 }],
+      }),
+    });
+    const spy = vi.spyOn(tools, 'interpret');
+    const result = await handlers.askName?.(state, say('Vocês abrem segunda?'), tools);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(result?.state).toEqual(state);
+    expect(result?.replies).toEqual([
+      text(msg.serviceHours([{ day: 1, start: 480, end: 1080 }], true)),
+      text(msg.askName),
+    ]);
+  });
+
+  it('nome sem "?" nem palavra de pedido não chama a IA', async () => {
+    const tools = createFakeTools();
+    const spy = vi.spyOn(tools, 'interpret');
+    const result = await handlers.askName?.(state, say('Vocês Abrem Segunda'), tools);
+    expect(spy).not.toHaveBeenCalled();
+    expect(result?.state?.customer.name).toBe('Vocês Abrem Segunda');
   });
 
   it('pergunta o nome', async () => {
@@ -161,6 +189,23 @@ describe('askCpf', () => {
     const result = await handlers.askCpf?.(state, say(VALID_CPF), createFakeTools());
     expect(result?.state?.customer).toEqual({ name: 'Maria da Silva', cpf: '12345678909' });
     expect(result?.state?.step).toBe('askNewAddress');
+  });
+
+  it('CPF inválido no meio de uma frase não vai para a IA', async () => {
+    const tools = createFakeTools();
+    const spy = vi.spyOn(tools, 'interpret');
+    const result = await handlers.askCpf?.(state, say('meu cpf é 111.222.333-44'), tools);
+    expect(spy).not.toHaveBeenCalled();
+    expect(result).toEqual({ state, replies: [text(msg.invalidCpf)] });
+  });
+
+  it('texto sem CPF vai para a IA sem os dígitos', async () => {
+    const tools = createFakeTools();
+    const spy = vi.spyOn(tools, 'interpret');
+    await handlers.askCpf?.(state, say('meu cpf começa com 123, aceita pix?'), tools);
+    const sent = spy.mock.calls[0]?.[0] ?? '';
+    expect(sent).not.toContain('123');
+    expect(sent).toContain('aceita pix?');
   });
 
   it('CPF inválido não repete o número digitado', async () => {

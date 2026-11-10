@@ -129,13 +129,15 @@ describe('fallback de texto livre nas etapas', () => {
   it.each([
     ['askQuantity', msg.invalidQuantity],
     ['askChangeAmount', msg.invalidChange(110)],
-  ] as [Step, string][])('%s: erro de hoje sem IA e IA com pedido', async (step, error) => {
-    const bad = await run(step, 'abc');
+  ] as [Step, string][])('%s: número inválido sem IA e texto com IA', async (step, error) => {
+    const bad = await run(step, '0');
     expect(bad.out?.replies).toEqual([text(error)]);
     expect(interpretCalls(bad.fake)).toHaveLength(0);
 
-    const order = await run(step, 'quero no pix');
-    expect(interpretCalls(order.fake)).toHaveLength(1);
+    for (const loose of ['quero no pix', 'abc']) {
+      const { fake } = await run(step, loose);
+      expect(interpretCalls(fake)).toHaveLength(1);
+    }
   });
 
   it.each([

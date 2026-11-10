@@ -2,7 +2,7 @@ import {
   CpfTakenError,
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runFlow } from './flow';
 import {
   type FlowInput,
@@ -11,8 +11,9 @@ import {
   type StepResult,
   ToolError,
 } from './flow.types';
+import { HANDOFF_CHOICE, ORDER_START_CHOICE, offer } from './handoff';
 import { msg } from './messages';
-import { text } from './replies';
+import { buttons, text } from './replies';
 import { asks, handlers } from './steps';
 import { createFakeTools, FAKE_NOW, FAKE_PHONE, type FakeTools } from './testing/fake-tools';
 
@@ -375,13 +376,34 @@ describe('primeira mensagem com pedido', () => {
     payment: 'PIX',
     confidence: 0.9,
   };
-  const interpretCalls = (tools: FakeTools) =>
-    tools.calls.filter(call => call.name === 'interpret');
+  it.each(['oi', 'Bom dia!', 'oi, boa tarde', 'E aí'])(
+    'cumprimento (%s) não chama a IA e inicia o pedido',
+    async greeting => {
+      const tools = createFakeTools({ interpret: async () => order });
+      const spy = vi.spyOn(tools, 'interpret');
+      const chat = new Conversation(tools, '5586988887777');
+      const result = await chat.send(say(greeting));
+      expect(spy).not.toHaveBeenCalled();
+      expect(result.replies).toEqual([text(msg.welcomeNew)]);
+      expect(chat.state).toEqual({ step: 'askName', customer: {} });
+    },
+  );
 
-  it('"oi" não chama a IA', async () => {
-    const tools = createFakeTools();
-    await new Conversation(tools).send(say('oi'));
-    expect(interpretCalls(tools)).toHaveLength(0);
+  it('pedido na primeira mensagem chama a IA uma vez só', async () => {
+    const tools = createFakeTools({ interpret: async () => order });
+    const spy = vi.spyOn(tools, 'interpret');
+    await new Conversation(tools, '5586988887777').send(say('quero 2 botijão P13 no pix'));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('"outro" na primeira mensagem inicia o pedido como hoje', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'other', quantity: 2, confidence: 0.9 }),
+    });
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('tudo bem com vocês'));
+    expect(result.replies).toEqual([text(msg.welcomeNew)]);
+    expect(chat.state).toEqual({ step: 'askName', customer: {} });
   });
 
   it('cliente novo com pedido completo', async () => {
@@ -428,13 +450,93 @@ describe('primeira mensagem com pedido', () => {
     expect(chat.step).toBe('confirmAddress');
   });
 
-  it('dúvida na primeira mensagem', async () => {
+  it('dúvida que a base não sabe: atendente e "Fazer pedido", sem iniciar o pedido', async () => {
     const tools = createFakeTools({
-      interpret: async () => ({ intent: 'question', confidence: 0.9 }),
+      interpret: async () => ({ intent: 'question', topic: 'general', confidence: 0.9 }),
     });
     const chat = new Conversation(tools, '5586988887777');
     const result = await chat.send(say('vocês entregam hoje? quero saber'));
-    expect(result.replies).toEqual([text(msg.welcomeNew), text(msg.offTopic('86999990000'))]);
+    expect(result).toEqual({
+      state: null,
+      replies: [buttons(msg.notKnown, [handoffBtn, orderBtn])],
+    });
+    expect(tools.calls.map(call => call.name)).not.toContain('findCustomer');
+  });
+
+  it('dúvida respondida na primeira mensagem e depois "Fazer pedido"', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'question', topic: 'general', confidence: 0.9 }),
+      answerQuestion: async () => ({
+        kind: 'answered',
+        text: 'Entregamos no Centro.',
+        sources: ['T1'],
+      }),
+    });
+    const spy = vi.spyOn(tools, 'answerQuestion');
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('entregam no centro?'));
+    expect(result).toEqual({
+      state: null,
+      replies: [buttons('Entregamos no Centro.', [orderBtn])],
+    });
+    expect(spy).toHaveBeenCalledWith('entregam no centro?');
+    await chat.send(pick(ORDER_START_CHOICE));
+    expect(chat.step).toBe('askName');
+  });
+
+  it('preço na primeira mensagem pelo código, sem cotar', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'price', confidence: 0.9 }),
+      basePrices: async () => [
+        { product: { id: 1, name: 'Botijão P13' }, minPrice: 110, varies: false },
+      ],
+    });
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('quanto tá o gás?'));
+    expect(result).toEqual({
+      state: null,
+      replies: [
+        buttons('Preços de hoje:\n- Botijão P13: R$ 110,00\nO total aparece no resumo do pedido.', [
+          orderBtn,
+        ]),
+      ],
+    });
+    expect(tools.calls.map(call => call.name)).not.toContain('quote');
+  });
+
+  it.each([
+    ['off_topic', msg.offTopicRefusal],
+    ['offense', msg.offense],
+  ] as const)('%s na primeira mensagem não inicia o pedido', async (intent, body) => {
+    const tools = createFakeTools({ interpret: async () => ({ intent, confidence: 0.9 }) });
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('qualquer coisa'));
+    expect(result).toEqual({ state: null, replies: [buttons(body, [orderBtn])] });
+  });
+
+  it('produto que não vende na primeira mensagem', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'order', unknownProduct: 'carvão', confidence: 0.9 }),
+    });
+    const result = await new Conversation(tools, '5586988887777').send(say('quero carvão'));
+    expect(result).toEqual({
+      state: null,
+      replies: [
+        buttons('Não temos carvão. Temos: Botijão P13, Botijão P45 e Água mineral 20L.', [
+          orderBtn,
+        ]),
+      ],
+    });
+  });
+
+  it('pedir atendente pela IA na primeira mensagem transfere', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'handoff', confidence: 0.9 }),
+    });
+    const result = await new Conversation(tools).send(say('preciso de uma pessoa'));
+    expect(result).toEqual({ state: null, replies: [text(msg.handoffQueued)] });
+    const request = tools.calls.find(call => call.name === 'requestHandoff')?.args[0];
+    expect(request).toMatchObject({ reason: 'customer_request', summary: null });
   });
 
   it('IA falhou na primeira mensagem', async () => {
@@ -443,6 +545,112 @@ describe('primeira mensagem com pedido', () => {
     const result = await chat.send(say('quero gás'));
     expect(result.replies).toEqual([text(msg.welcomeNew)]);
     expect(chat.state).toEqual({ step: 'askName', customer: {} });
+  });
+});
+
+const handoffBtn = { id: HANDOFF_CHOICE, title: 'Falar com atendente' };
+const orderBtn = { id: ORDER_START_CHOICE, title: 'Fazer pedido' };
+
+describe('texto livre no meio do pedido', () => {
+  const pix = { type: 'PIX', label: 'Pix' };
+  const money = { type: 'MONEY', label: 'Dinheiro' };
+  const credit = { type: 'CARTAO_DE_CREDITO', label: 'Cartão de crédito' };
+  const paying: OrderState = {
+    step: 'choosePayment',
+    customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+    address: {
+      street: 'Rua das Flores',
+      number: '120',
+      neighborhood: 'Centro',
+      city: 'Teresina',
+      state: 'PI',
+    },
+    product: { id: 2, name: 'Botijão P45' },
+    quantity: 1,
+    paymentOptions: [pix, money, credit],
+  };
+  const paymentButtons = buttons(
+    msg.choosePayment,
+    [pix, money, credit].map(option => ({ id: `pay:${option.type}`, title: option.label })),
+  );
+  const names = (tools: FakeTools) => tools.calls.map(call => call.name);
+
+  it('"quanto tá o P13" responde o preço e não troca o produto', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'price', products: ['Botijão P13'], confidence: 0.9 }),
+      basePrices: async () => [
+        { product: { id: 1, name: 'Botijão P13' }, minPrice: 110, varies: false },
+        { product: { id: 2, name: 'Botijão P45' }, minPrice: 400, varies: false },
+      ],
+    });
+    const result = await runFlow(paying, say('quanto tá o P13?'), tools);
+    expect(result.state).toEqual(paying);
+    expect(result.replies).toEqual([
+      text('Preços de hoje:\n- Botijão P13: R$ 110,00\nO total aparece no resumo do pedido.'),
+      paymentButtons,
+    ]);
+    expect(names(tools)).not.toContain('quote');
+  });
+
+  it('dúvida que a base não sabe: oferta antes da pergunta e estado igual', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'question', topic: 'general', confidence: 0.9 }),
+    });
+    const result = await runFlow(paying, say('vocês entregam domingo?'), tools);
+    expect(result).toEqual({ state: paying, replies: [offer(msg.notKnown), paymentButtons] });
+  });
+
+  it('mensagem entendida zera o contador de "não entendi"', async () => {
+    const tools = createFakeTools();
+    await runFlow(paying, pick('pay:PIX'), tools);
+    expect(names(tools)).toContain('resetMisunderstood');
+  });
+
+  it('"não entendi" conta e não zera', async () => {
+    const tools = createFakeTools();
+    const result = await runFlow(paying, say('blá blá'), tools);
+    expect(result.replies).toEqual([text(msg.notUnderstood), paymentButtons]);
+    expect(names(tools)).toContain('registerMisunderstood');
+    expect(names(tools)).not.toContain('resetMisunderstood');
+  });
+
+  it('3º "não entendi" seguido oferece o atendente', async () => {
+    const tools = createFakeTools({ registerMisunderstood: async () => 3 });
+    const result = await runFlow(paying, say('blá blá'), tools);
+    expect(result.replies).toEqual([offer(msg.stuck), paymentButtons]);
+    expect(result.state).toEqual(paying);
+  });
+
+  it('comando global também zera o contador', async () => {
+    const tools = createFakeTools();
+    await runFlow(paying, say('cancelar'), tools);
+    expect(names(tools)).toContain('resetMisunderstood');
+  });
+
+  it('mensagem que não é texto nem botão não zera o contador', async () => {
+    const tools = createFakeTools();
+    await runFlow(paying, { phone: FAKE_PHONE, content: { type: 'unsupported' } }, tools);
+    expect(names(tools)).not.toContain('resetMisunderstood');
+  });
+
+  it('falha ao zerar o contador não derruba a resposta', async () => {
+    const seen: ToolError[] = [];
+    const tools = createFakeTools({
+      resetMisunderstood: async () => {
+        throw new Error('Redis fora do ar');
+      },
+    });
+    const result = await runFlow(paying, pick('pay:PIX'), tools, error => seen.push(error));
+    expect(result.state?.step).toBe('summary');
+    expect(seen).toEqual([]);
+  });
+
+  it('dúvida sem pedido em andamento também zera o contador', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'off_topic', confidence: 0.9 }),
+    });
+    await runFlow(null, say('receita de bolo'), tools);
+    expect(names(tools)).toContain('resetMisunderstood');
   });
 });
 

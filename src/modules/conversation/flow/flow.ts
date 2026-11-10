@@ -5,7 +5,7 @@ import {
   type StepResult,
   ToolError,
 } from './flow.types';
-import { looksLikeOrder, type Seed, seedFromText } from './free-text';
+import { readFirstMessage } from './free-text';
 import { globalCommand } from './global-commands';
 import { textOf } from './input';
 import { msg } from './messages';
@@ -32,6 +32,33 @@ function wrapTools(tools: FlowTools): FlowTools {
   return wrapped as unknown as FlowTools;
 }
 
+async function route(
+  state: OrderState | null,
+  input: FlowInput,
+  tools: FlowTools,
+): Promise<StepResult> {
+  const global = await globalCommand(state, input, tools);
+  if (global) return global;
+  const handle = state ? handlers[state.step] : undefined;
+  if (state && handle) return handle(state, input, tools);
+  const raw = state ? null : textOf(input);
+  const first = raw === null ? null : await readFirstMessage(raw, tools);
+  if (first?.kind === 'routed') return first.result;
+  const seed = first?.seed ?? { fields: {}, replies: [] };
+  const started = await start(input, tools, seed.fields);
+  const [greeting, ...rest] = started.replies;
+  const replies = greeting ? [greeting, ...seed.replies, ...rest] : seed.replies;
+  return { ...started, replies };
+}
+
+async function resetMisunderstood(tools: FlowTools): Promise<void> {
+  try {
+    await tools.resetMisunderstood();
+  } catch (error) {
+    if (!(error instanceof ToolError)) throw error;
+  }
+}
+
 export async function runFlow(
   state: OrderState | null,
   input: FlowInput,
@@ -40,19 +67,10 @@ export async function runFlow(
 ): Promise<StepResult> {
   const safe = wrapTools(tools);
   try {
-    const global = await globalCommand(state, input, safe);
-    if (global) return global;
-    const handle = state ? handlers[state.step] : undefined;
-    if (state && handle) return await handle(state, input, safe);
-    const raw = state ? null : textOf(input);
-    const seed: Seed =
-      raw !== null && looksLikeOrder(raw)
-        ? await seedFromText(raw, safe)
-        : { fields: {}, replies: [] };
-    const started = await start(input, safe, seed.fields);
-    const [greeting, ...rest] = started.replies;
-    const replies = greeting ? [greeting, ...seed.replies, ...rest] : seed.replies;
-    return { ...started, replies };
+    const result = await route(state, input, safe);
+    const fromCustomer = input.content.type === 'text' || input.content.type === 'choice';
+    if (fromCustomer && !result.misunderstood) await resetMisunderstood(safe);
+    return result;
   } catch (error) {
     if (error instanceof ToolError) {
       onToolError?.(error);

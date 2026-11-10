@@ -182,10 +182,18 @@ describe('quantidade', () => {
     expect(result?.state?.quantity).toBe(5);
   });
 
-  it.each(['0', 'abc', '-2', '1,5'])('%s é recusado', async raw => {
+  it.each(['0', '-2', '1,5'])('%s é recusado', async raw => {
     const askState: OrderState = { ...state, step: 'askQuantity' };
     const result = await handlers.askQuantity?.(askState, say(raw), createFakeTools());
     expect(result).toEqual({ state: askState, replies: [text(msg.invalidQuantity)] });
+  });
+
+  it('texto com letras vai para a IA e, sem resposta, vira "não entendi"', async () => {
+    const askState: OrderState = { ...state, step: 'askQuantity' };
+    const result = await handlers.askQuantity?.(askState, say('abc'), createFakeTools());
+    expect(result?.state).toEqual(askState);
+    expect(result?.replies).toEqual([text(msg.notUnderstood), text(msg.askQuantity)]);
+    expect(result?.misunderstood).toBe(true);
   });
 
   it('sem produto escolhido o fluxo volta ao produto', async () => {

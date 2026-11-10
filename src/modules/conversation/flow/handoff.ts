@@ -2,10 +2,10 @@ import type {
   HandoffOrderSummary,
   HandoffReason,
 } from 'src/modules/handoff/contracts/handoff.types';
-import type { ReplyOption } from '../contracts/conversation.types';
+import type { Reply, ReplyOption } from '../contracts/conversation.types';
 import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
 import { msg, paymentLine } from './messages';
-import { text } from './replies';
+import { buttons, text } from './replies';
 
 export const HANDOFF_CHOICE = 'handoff:request';
 
@@ -40,6 +40,10 @@ export function orderStartButton(): ReplyOption {
 
 export function handoffButton(): ReplyOption {
   return { id: HANDOFF_CHOICE, title: msg.talkToAgent };
+}
+
+export function offer(body: string): Reply {
+  return buttons(body, [handoffButton()]);
 }
 
 export function handoffSummary(state: OrderState | null): HandoffOrderSummary | null {
