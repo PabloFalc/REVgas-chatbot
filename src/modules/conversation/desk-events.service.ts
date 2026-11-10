@@ -9,7 +9,7 @@ import { ConversationRepository } from './conversation.repository';
 import { MessagingGateway } from './messaging.gateway';
 
 const WHATSAPP_TEXT_LIMIT = 4096;
-const WINDOW_CLOSED_CODE = 131047;
+export const WINDOW_CLOSED_CODE = 131047;
 
 type AgentMessage = Extract<DeskEvent, { kind: 'agentMessage' }>;
 

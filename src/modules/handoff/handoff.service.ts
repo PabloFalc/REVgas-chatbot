@@ -213,6 +213,17 @@ export class HandoffService {
     }
   }
 
+  async noteWindowClosedFor(phone: string): Promise<void> {
+    if (!this.desk.enabled) return;
+    try {
+      const state = await this.repo.getState(phone);
+      if (!state) return;
+      await this.desk.postNote(state.conversationId, WINDOW_CLOSED_NOTE);
+    } catch (error) {
+      this.warn(phone, error, 'Falha ao avisar a janela de 24 h');
+    }
+  }
+
   claimDeskMessage(messageId: number): Promise<boolean> {
     return this.repo.claimDeskMessage(messageId);
   }

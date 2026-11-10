@@ -46,6 +46,7 @@ function setup(whatsapp = new FakeWhatsappClient()) {
     routeFor: vi.fn(async () => 'bot' as 'bot' | 'agent'),
     forwardToAgent: vi.fn(async () => undefined),
     recordTurn: vi.fn(async () => undefined),
+    noteWindowClosedFor: vi.fn(async () => undefined),
   };
   const logger = {
     setContext: vi.fn(),
@@ -200,6 +201,47 @@ describe('ConversationService.handle', () => {
       errorCodes: [131047],
       recipient: '*******1234',
     });
+  });
+
+  it('status failed 131047 avisa o atendente da janela fechada', async () => {
+    const { service, handoff } = setup();
+    const failed = (code: number, recipient = '5586999991234') =>
+      parseWebhook(
+        webhookPayload({
+          statuses: [
+            { id: 'wamid.W', status: 'failed', recipient_id: recipient, errors: [{ code }] },
+          ],
+        }),
+      );
+
+    await service.handle(failed(131047));
+    expect(handoff.noteWindowClosedFor).toHaveBeenCalledWith('5586999991234');
+
+    handoff.noteWindowClosedFor.mockClear();
+    await service.handle(failed(131026));
+    expect(handoff.noteWindowClosedFor).not.toHaveBeenCalled();
+  });
+
+  it('noteWindowClosedFor rejeitando não lança', async () => {
+    const { service, handoff, logger } = setup();
+    handoff.noteWindowClosedFor.mockRejectedValueOnce(new Error('x'));
+    await expect(
+      service.handle(
+        parseWebhook(
+          webhookPayload({
+            statuses: [
+              {
+                id: 'wamid.W2',
+                status: 'failed',
+                recipient_id: '5586999991234',
+                errors: [{ code: 131047 }],
+              },
+            ],
+          }),
+        ),
+      ),
+    ).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalled();
   });
 
   it('nunca rejeita: erro inesperado num evento é logado e os outros seguem', async () => {

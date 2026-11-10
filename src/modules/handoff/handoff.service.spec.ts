@@ -548,6 +548,54 @@ describe('HandoffService', () => {
       await expect(service.noteWindowClosed(id)).resolves.toBeUndefined();
     });
 
+    it('noteWindowClosedFor posta a nota na conversa do handoff ativo ou na fila', async () => {
+      const { service, client, states } = setup();
+      const { id } = await client.createConversation({
+        contactId: 1,
+        sourceId: 's',
+        status: 'open',
+      });
+      states.set(PHONE, {
+        status: 'queued',
+        conversationId: id,
+        reason: 'customer_request',
+        since: minutesAgo(5),
+      });
+      await service.noteWindowClosedFor(PHONE);
+      expect(client.conversations.get(id)?.messages).toHaveLength(1);
+      expect(client.conversations.get(id)?.messages[0].private).toBe(true);
+      states.set(PHONE, { ...(states.get(PHONE) as HandoffState), status: 'active' });
+      await service.noteWindowClosedFor(PHONE);
+      expect(client.conversations.get(id)?.messages).toHaveLength(2);
+    });
+
+    it('noteWindowClosedFor não faz nada sem handoff nem com o desk desativado', async () => {
+      const { service, client } = setup();
+      const spy = vi.spyOn(client, 'createMessage');
+      await service.noteWindowClosedFor(PHONE);
+      expect(spy).not.toHaveBeenCalled();
+      const off = setup({ disabled: true });
+      off.states.set(PHONE, {
+        status: 'active',
+        conversationId: 1,
+        reason: 'agent',
+        since: minutesAgo(5),
+      });
+      await expect(off.service.noteWindowClosedFor(PHONE)).resolves.toBeUndefined();
+    });
+
+    it('noteWindowClosedFor não lança quando o Chatwoot falha', async () => {
+      const { service, client, states } = setup();
+      states.set(PHONE, {
+        status: 'active',
+        conversationId: 1,
+        reason: 'agent',
+        since: minutesAgo(5),
+      });
+      client.failNext();
+      await expect(service.noteWindowClosedFor(PHONE)).resolves.toBeUndefined();
+    });
+
     it('claimDeskMessage delega ao repositório', async () => {
       const { service } = setup();
       expect(await service.claimDeskMessage(1)).toBe(true);

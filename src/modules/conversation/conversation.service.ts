@@ -14,6 +14,7 @@ import { ConversationRepository } from './conversation.repository';
 import { runFlow } from './flow/flow';
 import { CPF_STEPS, type OrderState, type StepResult, type ToolError } from './flow/flow.types';
 import { REMINDER_AFTER_MS } from './flow/reminder';
+import { WINDOW_CLOSED_CODE } from './desk-events.service';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
 import { replyText } from './reply-text';
@@ -64,7 +65,7 @@ export class ConversationService {
         if (event.kind === 'message') {
           await this.onMessage(event);
         } else {
-          this.onStatus(event);
+          await this.onStatus(event);
         }
       } catch (error) {
         this.logger.error(
@@ -215,7 +216,7 @@ export class ConversationService {
     return { replies: result.replies, before, result };
   }
 
-  private onStatus(event: StatusEvent): void {
+  private async onStatus(event: StatusEvent): Promise<void> {
     const log = {
       component: 'conversation',
       messageId: event.id,
@@ -224,6 +225,9 @@ export class ConversationService {
     };
     if (event.status === 'failed') {
       this.logger.warn({ ...log, errorCodes: event.errorCodes }, 'Mensagem não entregue');
+      if (event.recipient && event.errorCodes.includes(WINDOW_CLOSED_CODE)) {
+        await this.handoff.noteWindowClosedFor(event.recipient);
+      }
       return;
     }
     this.logger.debug(log, 'Status de mensagem');
