@@ -181,6 +181,28 @@ describe('FlowToolsService.forPhone', () => {
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
   });
 
+  it('addressFromText consome 1 e, dentro do limite, delega ao AddressService', async () => {
+    const { service, aiUsage, addresses } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await tools.addressFromText('rua x, 10');
+
+    expect(aiUsage.consume).toHaveBeenCalledWith(PHONE, 1);
+    expect(addresses.fromText).toHaveBeenCalledWith('rua x, 10');
+  });
+
+  it('addressFromText acima do limite devolve null sem chamar o AddressService', async () => {
+    const { service, aiUsage, addresses, logger } = setup();
+    aiUsage.consume.mockResolvedValueOnce(false);
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await expect(tools.addressFromText('rua x, 10')).resolves.toBeNull();
+
+    expect(addresses.fromText).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
+  });
+
   it('answerQuestion consome 2 e delega ao KnowledgeService', async () => {
     const { service, aiUsage, knowledge } = setup();
     const tools = service.forPhone(PHONE, async () => undefined);

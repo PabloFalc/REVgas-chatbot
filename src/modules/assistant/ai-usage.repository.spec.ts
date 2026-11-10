@@ -6,11 +6,11 @@ import { AiUsageRepository } from './ai-usage.repository';
 const envMock = vi.hoisted(() => ({ AI_CALLS_PER_PHONE_HOUR: 30 }));
 vi.mock('src/config/env', () => ({ env: envMock }));
 
-function setup(fail = false) {
+function setup(fail: false | Error = false) {
   const counters = new Map<string, number>();
   const cache = {
     increment: vi.fn(async ({ prefix, key }: { prefix: string; key: string }) => {
-      if (fail) throw new Error('redis down');
+      if (fail) throw fail;
       const next = (counters.get(`${prefix}:${key}`) ?? 0) + 1;
       counters.set(`${prefix}:${key}`, next);
       return next;
@@ -47,9 +47,20 @@ describe('AiUsageRepository', () => {
   });
 
   it('Redis fora deixa passar e registra aviso sem o telefone', async () => {
-    const { repository, logger } = setup(true);
+    const { repository, logger } = setup(new Error('redis down'));
     await expect(repository.consume(phone, 1)).resolves.toBe(true);
     expect(logger.warn).toHaveBeenCalledOnce();
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(phone);
+  });
+
+  it('erro do Redis com a chave nos argumentos não leva o telefone cru ao log', async () => {
+    const error = Object.assign(new Error(`ERR on assistant:ai-usage:${phone}`), {
+      command: { name: 'incr', args: [`assistant:ai-usage:${phone}`] },
+    });
+    const { repository, logger } = setup(error);
+    await expect(repository.consume(phone, 1)).resolves.toBe(true);
+    const [logged] = logger.warn.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(logged).toEqual({ component: 'assistant', phone: '*******1234', error: 'Error' });
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(phone);
   });
 });
