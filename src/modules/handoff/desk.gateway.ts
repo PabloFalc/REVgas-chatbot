@@ -4,6 +4,7 @@ import {
   CHATWOOT_CONFIG,
   type ChatwootConfig,
 } from 'src/integrations/chatwoot/shared/chatwoot.config';
+import { hideCpfs } from 'src/utils/cpf';
 import type { DeskContact } from './contracts/handoff.types';
 
 @Injectable()
@@ -33,7 +34,7 @@ export class DeskGateway {
       return { contactId: existing.id, sourceId };
     }
     return client.createContact({
-      name: name ?? phone,
+      name: hideCpfs(name ?? phone),
       identifier: phone,
       phoneNumber: `+${phone}`,
       sourceId: phone,

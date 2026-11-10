@@ -197,6 +197,26 @@ describe('HandoffService', () => {
     });
   });
 
+  describe('requestHandoff com CPF nos dados', () => {
+    it('oculta CPF no nome e no endereço da nota', async () => {
+      const { service, client } = setup();
+      await service.requestHandoff({
+        phone: PHONE,
+        reason: 'customer_request',
+        summary: {
+          stepLabel: 'Endereço',
+          identityConfirmed: true,
+          newCustomer: false,
+          customerName: 'Maria 123.456.789-09',
+          address: 'Rua A 12345678909',
+        },
+      });
+      const content = [...client.conversations.values()][0].messages[0].content;
+      expect(content).toContain('[CPF ocultado]');
+      expect(content).not.toMatch(CPF_DIGITS);
+    });
+  });
+
   describe('serviceHours', () => {
     it('sem horário é sempre aberto', () => {
       expect(setup().service.serviceHours()).toEqual({

@@ -115,7 +115,7 @@ export class HandoffService {
       if (state?.status === 'queued') return outcome('alreadyQueued');
       if (state?.status === 'active') return outcome('active');
       const conversationId = await this.ensureThread(phone);
-      await this.desk.postNote(conversationId, handoffNote(request.reason, request.summary));
+      await this.desk.postNote(conversationId, hideCpfs(handoffNote(request.reason, request.summary)));
       await this.desk.setStatus(conversationId, 'open');
       await this.repo.saveState(phone, {
         status: 'queued',

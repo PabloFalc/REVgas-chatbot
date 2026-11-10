@@ -22,6 +22,13 @@ describe('DeskGateway', () => {
     expect(contact.sourceId).toBe('5585999990000');
   });
 
+  it('oculta CPF no nome do contato', async () => {
+    const { client, gateway } = setup();
+    const spy = vi.spyOn(client, 'createContact');
+    await gateway.ensureContact('5585999990000', 'Maria 123.456.789-09', null);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ name: 'Maria [CPF ocultado]' }));
+  });
+
   it('usa o telefone como nome quando não há nome', async () => {
     const { client, gateway } = setup();
     const spy = vi.spyOn(client, 'createContact');
