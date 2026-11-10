@@ -3,6 +3,7 @@ import type { AddressService } from '../address/address.service';
 import type { AssistantService } from '../assistant/assistant.service';
 import type { CatalogRepository } from '../catalog/catalog.repository';
 import type { CustomerRepository } from '../customer/customer.repository';
+import type { HandoffService } from '../handoff/handoff.service';
 import type { OrderRepository } from '../order/order.repository';
 import type { ConversationRepository } from './conversation.repository';
 import { FlowToolsService } from './flow-tools';
@@ -27,6 +28,10 @@ function setup() {
     registerCpfMismatch: vi.fn(async () => 2),
     isBlocked: vi.fn(async () => false),
   };
+  const handoff = {
+    requestHandoff: vi.fn(async () => ({ status: 'queued', open: true, nextOpening: null })),
+    serviceHours: vi.fn(() => ({ open: true, nextOpening: null, windows: [] })),
+  };
   const service = new FlowToolsService(
     customers as unknown as CustomerRepository,
     catalog as unknown as CatalogRepository,
@@ -34,11 +39,22 @@ function setup() {
     addresses as unknown as AddressService,
     assistant as unknown as AssistantService,
     conversations as unknown as ConversationRepository,
+    handoff as unknown as HandoffService,
   );
-  return { service, customers, catalog, orders, addresses, assistant, conversations };
+  return { service, customers, catalog, orders, addresses, assistant, conversations, handoff };
 }
 
 describe('FlowToolsService.forPhone', () => {
+  it('liga requestHandoff e serviceHours ao HandoffService', async () => {
+    const { service, handoff } = setup();
+    const tools = service.forPhone(async () => undefined);
+    const request = { phone: '5586999991234', reason: 'customer_request' as const, summary: null };
+    await expect(tools.requestHandoff(request)).resolves.toMatchObject({ status: 'queued' });
+    await expect(tools.serviceHours()).resolves.toMatchObject({ open: true });
+    expect(handoff.requestHandoff).toHaveBeenCalledWith(request);
+    expect(handoff.serviceHours).toHaveBeenCalledOnce();
+  });
+
   it('delega cada ferramenta ao repositório ou serviço correspondente', async () => {
     const { service, customers, catalog, orders, addresses } = setup();
     const tools = service.forPhone(async () => undefined);

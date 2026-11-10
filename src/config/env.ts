@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { parseServiceHours } from '../utils/service-hours';
 
 const emptyAsUndefined = (value: unknown) => (value === '' ? undefined : value);
 
@@ -104,6 +105,44 @@ export const envConfigSchema = z
     STORE_CITY: z.preprocess(emptyAsUndefined, z.string().min(1).default('Teresina')),
     STORE_STATE: z.preprocess(emptyAsUndefined, z.string().length(2).default('PI')),
     STORE_PHONE: z.preprocess(emptyAsUndefined, z.string().min(1).optional()),
+
+    // CHATWOOT (handoff para atendente humano)
+    CHATWOOT_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'fake', 'off']).optional()),
+    CHATWOOT_URL: z.preprocess(emptyAsUndefined, z.url().default('http://localhost:3000')),
+    CHATWOOT_ACCOUNT_ID: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().optional(),
+    ),
+    CHATWOOT_INBOX_ID: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().optional(),
+    ),
+    CHATWOOT_API_TOKEN: z.preprocess(emptyAsUndefined, z.string().optional()),
+    CHATWOOT_BOT_TOKEN: z.preprocess(emptyAsUndefined, z.string().optional()),
+    CHATWOOT_WEBHOOK_SECRET: z.preprocess(emptyAsUndefined, z.string().min(16).optional()),
+    CHATWOOT_TIMEOUT_MS: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().default(5_000),
+    ),
+
+    // HORARIO DE ATENDIMENTO (vazio = sempre aberto)
+    SERVICE_HOURS: z.preprocess(
+      emptyAsUndefined,
+      z
+        .string()
+        .optional()
+        .superRefine((value, ctx) => {
+          if (value === undefined) return;
+          try {
+            parseServiceHours(value);
+          } catch (error) {
+            ctx.addIssue({
+              code: 'custom',
+              message: error instanceof Error ? error.message : 'Horário de atendimento inválido',
+            });
+          }
+        }),
+    ),
 
     // RESEND (standby)
     RESEND_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),

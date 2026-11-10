@@ -1,4 +1,5 @@
 import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
+import type { HandoffOutcome, ServiceHoursInfo } from 'src/modules/handoff/contracts/handoff.types';
 import type { FlowTools } from '../flow.types';
 
 export const FAKE_PHONE = '5586999990000';
@@ -70,6 +71,16 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
     createSale: record('createSale', 4521),
     findRecentSale: record('findRecentSale', null as number | null),
     checkpoint: record('checkpoint', undefined),
+    requestHandoff: record('requestHandoff', {
+      status: 'queued',
+      open: true,
+      nextOpening: null,
+    } as HandoffOutcome),
+    serviceHours: record('serviceHours', {
+      open: true,
+      nextOpening: null,
+      windows: [],
+    } as ServiceHoursInfo),
     storePhone: '86999990000',
     now: () => FAKE_NOW,
   } satisfies FlowTools;

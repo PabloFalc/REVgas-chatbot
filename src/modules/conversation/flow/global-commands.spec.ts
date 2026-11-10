@@ -67,19 +67,47 @@ describe('globalCommand', () => {
     ).toBeNull();
   });
 
-  it.each(['atendente', 'quero falar com alguém', 'Humano'])(
-    '%s mostra o telefone da revenda',
+  it.each(['atendente', 'quero falar com um atendente', 'Humano'])(
+    '%s pede atendente e mantém o estado',
     async word => {
-      const tools = createFakeTools({ storePhone: '86988887777' });
+      const tools = createFakeTools();
       const result = await globalCommand(state, say(word), tools);
-      expect(result).toEqual({ state, replies: [text(msg.talkToStore('86988887777'))] });
+      expect(result).toEqual({ state, replies: [text(msg.handoffQueued)] });
+      expect(tools.calls[0].args[0]).toMatchObject({
+        phone: FAKE_PHONE,
+        reason: 'customer_request',
+      });
     },
   );
 
-  it('atendente sem telefone da revenda usa o texto genérico', async () => {
-    const tools = createFakeTools({ storePhone: undefined });
+  it('botão de atendente em saleFailed usa o motivo sale_failed', async () => {
+    const failed: OrderState = { step: 'saleFailed', customer: { id: 1 } };
+    const tools = createFakeTools();
+    const result = await globalCommand(
+      failed,
+      { phone: FAKE_PHONE, content: { type: 'choice', id: 'handoff:request' } },
+      tools,
+    );
+    expect(result?.state).toEqual(failed);
+    expect(tools.calls[0].args[0]).toMatchObject({ reason: 'sale_failed' });
+  });
+
+  it('botão de atendente em outra etapa usa customer_request', async () => {
+    const tools = createFakeTools();
+    await globalCommand(
+      state,
+      { phone: FAKE_PHONE, content: { type: 'choice', id: 'handoff:request' } },
+      tools,
+    );
+    expect(tools.calls[0].args[0]).toMatchObject({ reason: 'customer_request' });
+  });
+
+  it('atendente indisponível mostra o telefone da revenda', async () => {
+    const tools = createFakeTools({
+      requestHandoff: async () => ({ status: 'unavailable', open: true, nextOpening: null }),
+    });
     const result = await globalCommand(null, say('atendente'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.talkToStore())] });
+    expect(result).toEqual({ state: null, replies: [text(msg.talkToStore('86999990000'))] });
   });
 
   it.each(['desconto', 'tem promoção?', 'tem mais barato'])(

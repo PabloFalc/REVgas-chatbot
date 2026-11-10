@@ -111,6 +111,26 @@ Onde achar cada valor no painel da Meta: [whatsapp.md](../integrations/whatsapp.
 
 > As quatro obrigatórias só são exigidas em `live` (checagem em `resolveWhatsappConfig`), então o app sobe em `fake` sem nada configurado. **Em produção**, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` são exigidos em qualquer modo: sem eles a rota pública do webhook ficaria sem autenticação, e o boot falha. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
 
+## Chatwoot (handoff para atendente)
+
+Como obter cada valor no painel do Chatwoot: [chatwoot.md](../integrations/chatwoot.md).
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `CHATWOOT_MODE` | Não | vazio = automático | `live`, `fake` ou `off`. Vazio: `live` se houver `CHATWOOT_API_TOKEN`, senão `off`. Em `off` o pedido de atendente responde com `STORE_PHONE`, não há espelho e o webhook recusa tudo (401). |
+| `CHATWOOT_URL` | Não | `http://localhost:3000` | URL base do Chatwoot. Validada como URL; a barra final é removida. |
+| `CHATWOOT_ACCOUNT_ID` | Obrigatória em `live` | vazio | Id numérico da conta (aparece na URL do painel). |
+| `CHATWOOT_INBOX_ID` | Obrigatória em `live` | vazio | Id numérico da caixa do tipo API. Eventos de outra caixa são ignorados no webhook. |
+| `CHATWOOT_API_TOKEN` | Obrigatória em `live` | vazio | Token de acesso do usuário administrador; usado só para contatos. **Fica só no servidor**: nunca em log, resposta ou prompt. |
+| `CHATWOOT_BOT_TOKEN` | Obrigatória em `live` | vazio | Token do Agent Bot (não conectado à caixa); usado para conversas, mensagens, notas e status. **Fica só no servidor.** |
+| `CHATWOOT_WEBHOOK_SECRET` | Obrigatória em `live` | vazio | Segredo do canal da caixa (≥ 16 caracteres); confere `X-Chatwoot-Signature`. Sem ele o webhook recusa tudo. **Fica só no servidor.** |
+| `CHATWOOT_TIMEOUT_MS` | Não | `5000` | Timeout de cada chamada. Estourou, a chamada falha, o erro é engolido no espelho (log `warn`) e nada é repetido. |
+| `SERVICE_HOURS` | Não | vazio = sempre aberto | Horário de atendimento da revenda (fuso fixo `America/Fortaleza`), por exemplo `seg-sex 08:00-18:00; sab 08:00-12:00`. Entradas separadas por `;`; dias `dom seg ter qua qui sex sab` (intervalo `seg-sex` ou lista `seg,qua,sex`, sem diferenciar maiúsculas e acentos); horário `HH:MM-HH:MM` com fim maior que o início (`24:00` vale como fim). Valor inválido derruba o boot. Fora do horário o bot avisa e mantém o cliente na fila. |
+
+> `live` exige as cinco variáveis (checagem em `resolveChatwootConfig`), então o app sobe em `off` ou `fake` sem nada configurado. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
+
+O Chatwoot local (Docker) tem o próprio arquivo de segredos, `docker/chatwoot.env` (fora do git, modelo em `docker/chatwoot.env.example`); não é lido pelo app.
+
 ## LLM (Gemini via API compatível com OpenAI)
 
 Chave gratuita em [aistudio.google.com](https://aistudio.google.com) (plano gratuito).
@@ -143,7 +163,7 @@ Usadas pelo módulo `address` quando o cliente digita o endereço sem cidade ou 
 |---|---|---|---|
 | `STORE_CITY` | Não | `Teresina` | Cidade assumida quando o endereço não traz cidade. |
 | `STORE_STATE` | Não | `PI` | UF (2 letras) assumida quando o endereço não traz UF. |
-| `STORE_PHONE` | Não | vazio | Telefone da revenda em texto livre (ex.: `(86) 3222-0000`), mostrado quando o cliente pede atendente ou o CPF já está em outro cadastro. Sem ela, a mensagem diz só "fale direto com a revenda". |
+| `STORE_PHONE` | Não | vazio | Telefone da revenda em texto livre (ex.: `(86) 3222-0000`), mostrado quando o CPF já está em outro cadastro e, com o Chatwoot desligado ou fora do ar, quando o cliente pede atendente. Sem ela, a mensagem diz só "fale direto com a revenda". |
 
 ## E-mail — Resend (standby)
 

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from 'src/infra/cache/cache.module';
+import { ChatwootModule } from 'src/integrations/chatwoot/chatwoot.module';
 import { LlmModule } from 'src/integrations/llm/llm.module';
 import { RevgasModule } from 'src/integrations/revgas/revgas.module';
 import { ViacepModule } from 'src/integrations/viacep/viacep.module';
@@ -8,10 +9,13 @@ import { AddressModule } from '../address/address.module';
 import { AssistantModule } from '../assistant/assistant.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { CustomerModule } from '../customer/customer.module';
+import { HandoffModule } from '../handoff/handoff.module';
 import { OrderModule } from '../order/order.module';
 import { ConversationController } from './conversation.controller';
 import { ConversationRepository } from './conversation.repository';
 import { ConversationService } from './conversation.service';
+import { DeskEventsService } from './desk-events.service';
+import { DeskWebhookController } from './desk-webhook.controller';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
 import { ReminderScheduler } from './reminder.scheduler';
@@ -28,10 +32,13 @@ import { ReminderScheduler } from './reminder.scheduler';
     RevgasModule,
     LlmModule,
     ViacepModule,
+    HandoffModule,
+    ChatwootModule,
   ],
-  controllers: [ConversationController],
+  controllers: [ConversationController, DeskWebhookController],
   providers: [
     ConversationService,
+    DeskEventsService,
     ConversationRepository,
     MessagingGateway,
     FlowToolsService,

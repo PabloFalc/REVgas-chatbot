@@ -67,6 +67,10 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - **WhatsApp:** `WHATSAPP_ACCESS_TOKEN` só no header da chamada server-side (nunca em log);
   `WHATSAPP_APP_SECRET` confere a assinatura do webhook; `WHATSAPP_VERIFY_TOKEN` comparado em tempo
   constante.
+- **Chatwoot:** `CHATWOOT_API_TOKEN` e `CHATWOOT_BOT_TOKEN` só no header (`api_access_token`) da
+  chamada server-side; `CHATWOOT_WEBHOOK_SECRET` confere a assinatura do webhook. Nunca em log,
+  resposta ou prompt. O Chatwoot local guarda os seus próprios segredos (`SECRET_KEY_BASE`, senha do
+  Postgres) em `docker/chatwoot.env`, fora do git; só o `.example` é versionado.
 - **LLM:** `LLM_API_KEY` só no header da chamada server-side; nunca em log, erro, resposta HTTP nem
   prompt. Os logs da integração não levam prompt, resposta nem a mensagem de erro do provedor.
   **No plano gratuito do Gemini as mensagens vão ao Google e podem ser usadas para treino**
@@ -123,6 +127,24 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   vezes.
 - Logs do webhook e dos envios: telefone mascarado (`*******1234`), sem corpo das mensagens nem
   token (o conteúdo só aparece no log do modo `fake` fora de produção).
+
+## Webhook do Chatwoot
+
+- `POST /webhooks/chatwoot` confere `X-Chatwoot-Signature` (HMAC-SHA256 de `timestamp.corpo cru`
+  com `CHATWOOT_WEBHOOK_SECRET`, comparação em tempo constante) antes de qualquer processamento;
+  inválida → 401. O Chatwoot não confere a idade do timestamp, então recusamos diferença maior que
+  300 s (repetição de requisição capturada). Sem segredo configurado, ou com o modo `off`, recusa
+  tudo: nunca aceita sem assinatura.
+- Payload validado com Zod (inválido → 400); eventos de outra caixa ou com telefone fora de
+  `/^\d{8,15}$/` são descartados. Responde 200 e processa em segundo plano, com `WEBHOOK_THROTTLE`.
+- **Eco/loop:** só mensagens de saída, não privadas e de remetente humano (`sender.type = user`) vão
+  ao cliente; as do bot (`agent_bot`), as copiadas do cliente e as notas privadas nunca voltam.
+  Dedup pelo id da mensagem.
+- **CPF não vai ao Chatwoot:** `[CPF ocultado]` nas etapas de CPF e em qualquer trecho com padrão de
+  CPF; a nota de resumo não tem campo de CPF.
+- Nunca reenviar POST ao Chatwoot automaticamente. Logs com telefone mascarado, sem tokens e sem o
+  texto das mensagens.
+- Não cadastrar webhook da conta além do da caixa (eventos em dobro).
 
 ## Planejado (chatbot)
 

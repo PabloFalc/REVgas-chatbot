@@ -6,14 +6,18 @@ import type {
   StatusEvent,
   WebhookEvent,
 } from 'src/integrations/whatsapp/webhook/webhook.schemas';
+import type { DeskInbound } from 'src/modules/handoff/contracts/handoff.types';
+import { HandoffService } from 'src/modules/handoff/handoff.service';
 import { maskPhone } from 'src/utils/mask';
-import type { IncomingMessage, Reply } from './contracts/conversation.types';
+import type { IncomingContent, IncomingMessage, Reply } from './contracts/conversation.types';
 import { ConversationRepository } from './conversation.repository';
+import { WINDOW_CLOSED_CODE } from './desk-events.service';
 import { runFlow } from './flow/flow';
-import type { ToolError } from './flow/flow.types';
+import { CPF_STEPS, type OrderState, type StepResult, type ToolError } from './flow/flow.types';
 import { REMINDER_AFTER_MS } from './flow/reminder';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
+import { replyText } from './reply-text';
 
 function toIncoming(event: InboundMessageEvent): IncomingMessage {
   const { content } = event;
@@ -26,8 +30,14 @@ function toIncoming(event: InboundMessageEvent): IncomingMessage {
         ? { type: 'text', text: content.text }
         : content.type === 'reply'
           ? { type: 'choice', id: content.replyId, title: content.title }
-          : { type: 'unsupported' },
+          : { type: 'unsupported', originalType: content.originalType },
   };
+}
+
+function toDeskInbound(content: IncomingContent): DeskInbound {
+  if (content.type === 'text') return { type: 'text', text: content.text };
+  if (content.type === 'choice') return { type: 'choice', title: content.title ?? content.id };
+  return { type: 'unsupported', originalType: content.originalType };
 }
 
 function errorInfo(error: unknown) {
@@ -43,6 +53,7 @@ export class ConversationService {
     private readonly conversations: ConversationRepository,
     private readonly messaging: MessagingGateway,
     private readonly flowTools: FlowToolsService,
+    private readonly handoff: HandoffService,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(ConversationService.name);
@@ -54,7 +65,7 @@ export class ConversationService {
         if (event.kind === 'message') {
           await this.onMessage(event);
         } else {
-          this.onStatus(event);
+          await this.onStatus(event);
         }
       } catch (error) {
         this.logger.error(
@@ -88,9 +99,48 @@ export class ConversationService {
 
     const incoming = toIncoming(event);
     await this.conversations.withPhoneLock(event.from, async () => {
-      const replies = await this.advance(incoming, log);
+      const inbound = toDeskInbound(incoming.content);
+      if ((await this.handoff.routeFor(event.from)) === 'agent') {
+        await this.forward(event.from, inbound, log);
+        return;
+      }
+      const { replies, before, result } = await this.advance(incoming, log);
       await this.sendAll(event.from, replies, log);
+      await this.mirror(incoming, inbound, replies, before, result, log);
     });
+  }
+
+  private async forward(phone: string, inbound: DeskInbound, log: object): Promise<void> {
+    try {
+      await this.handoff.forwardToAgent(phone, inbound);
+      this.logger.info(log, 'Mensagem repassada ao atendente');
+    } catch (error) {
+      this.logger.warn({ ...log, error: errorInfo(error) }, 'Falha ao repassar ao atendente');
+    }
+  }
+
+  private async mirror(
+    incoming: IncomingMessage,
+    inbound: DeskInbound,
+    replies: Reply[],
+    before: OrderState | null,
+    result: StepResult,
+    log: object,
+  ): Promise<void> {
+    try {
+      await this.handoff.recordTurn({
+        phone: incoming.from,
+        name: incoming.name,
+        inbound,
+        sensitive: before !== null && CPF_STEPS.includes(before.step),
+        botMessages: replies.map(replyText),
+        newCycle: before === null,
+        ended: result.state === null,
+        saleId: result.saleId,
+      });
+    } catch (error) {
+      this.logger.warn({ ...log, error: errorInfo(error) }, 'Falha ao espelhar a conversa');
+    }
   }
 
   private async sendAll(to: string, replies: Reply[], log: object): Promise<void> {
@@ -107,7 +157,10 @@ export class ConversationService {
     }
   }
 
-  private async advance(incoming: IncomingMessage, log: object): Promise<Reply[]> {
+  private async advance(
+    incoming: IncomingMessage,
+    log: object,
+  ): Promise<{ replies: Reply[]; before: OrderState | null; result: StepResult }> {
     const phone = incoming.from;
     const tools = this.flowTools.forPhone(state => this.conversations.saveOrder(phone, state));
     const before = await this.conversations.loadOrder(phone);
@@ -160,10 +213,10 @@ export class ConversationService {
       },
       'Fluxo de pedido avançou',
     );
-    return result.replies;
+    return { replies: result.replies, before, result };
   }
 
-  private onStatus(event: StatusEvent): void {
+  private async onStatus(event: StatusEvent): Promise<void> {
     const log = {
       component: 'conversation',
       messageId: event.id,
@@ -172,6 +225,9 @@ export class ConversationService {
     };
     if (event.status === 'failed') {
       this.logger.warn({ ...log, errorCodes: event.errorCodes }, 'Mensagem não entregue');
+      if (event.recipient && event.errorCodes.includes(WINDOW_CLOSED_CODE)) {
+        await this.handoff.noteWindowClosedFor(event.recipient);
+      }
       return;
     }
     this.logger.debug(log, 'Status de mensagem');

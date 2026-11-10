@@ -20,6 +20,7 @@ Package manager is **pnpm** — use it for everything.
 | Dev | `pnpm start:dev` |
 | Migrations | `pnpm db:generate` → `pnpm db:migrate` |
 | Integration checks | `pnpm revgas:check` · `pnpm llm:check` |
+| Local Chatwoot (Docker profile) | `pnpm chatwoot:prepare` · `pnpm chatwoot:up` · `pnpm chatwoot:stop` |
 
 **Commits:** `git commit` directly, conventional commits (`feat:`, `fix:`, `chore:`…).
 
@@ -29,17 +30,20 @@ Package manager is **pnpm** — use it for everything.
 src/
   config/       env.ts (dotenv + Zod, imported directly — no ConfigService) and Fastify plugins
   core/         global guards, filters, pipes, interceptors, decorators; erros/ (app errors at the
-                root, one folder per integration: revgas/, whatsapp/, llm/, viacep/); services/email
+                root, one folder per integration: revgas/, whatsapp/, llm/, viacep/, chatwoot/); services/email
   infra/        database (Drizzle + schemas), cache (Redis), health
-  integrations/ revgas/, whatsapp/ (client + webhook), llm/, viacep/ — each with a fake mode
+  integrations/ revgas/, whatsapp/ (client + webhook), chatwoot/ (client + webhook), llm/, viacep/ —
+                each with a fake mode
   utils/        pure helpers, no Nest/domain: mask, cpf, money, text, guards, safe-equal,
                 parse-json, iso-datetime. Check here before writing a new helper.
   modules/      conversation/ (webhook + order flow), customer/, catalog/, order/, address/,
-                assistant/ (LLM interpretation of free text), auth/ (on standby)
+                assistant/ (LLM interpretation of free text), handoff/ (queue to a human
+                agent via Chatwoot), auth/ (on standby)
 ```
 
 - `AppModule` = `CoreModule` + `RoutesModule` + `InfraModule`. `RoutesModule` imports only
-  `ConversationModule`.
+  `ConversationModule`, which also hosts the Chatwoot webhook route (`POST /webhooks/chatwoot`,
+  validated by `X-Chatwoot-Signature`).
 - `CoreModule` registers the global filters in the order `unexpected` → `betterAuth` → `drizzle`
   → `http` (Nest checks the last registered first, so the catch-all stays first), plus
   `rateLimit` and `zodValidationPipe`.
@@ -76,10 +80,11 @@ Dependency rules:
 ## Conventions
 
 - **No explanatory `//` comments in code.** (Comments in docs/markdown are fine.)
-- **Secrets** (`REVGAS_API_KEY`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `LLM_API_KEY`)
+- **Secrets** (`REVGAS_API_KEY`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `LLM_API_KEY`,
+  `CHATWOOT_API_TOKEN`, `CHATWOOT_BOT_TOKEN`, `CHATWOOT_WEBHOOK_SECRET`)
   stay server-side — never in responses, logs or AI prompts.
 - **LGPD:** mask customer CPF, phone and address in logs with `src/utils/mask`. CPF digits never
-  go to logs, replies or AI prompts.
+  go to logs, replies, AI prompts or Chatwoot (`[CPF ocultado]`).
 - **DTOs** are Zod schemas via `createZodDto`. Routes document and validate their output with
   `@ApiDoc(doc)` (`docs/guides/conventions/api-doc.md`).
 
@@ -93,7 +98,7 @@ Vitest for unit (next to the code) and e2e (`tests/`, config `vitest.config.e2e.
 Read the matching guide before touching an area:
 
 - `docs/guides/integrations/` — `revgas.md` (modes, never retry POST), `whatsapp.md`,
-  `llm.md`, `viacep.md`
+  `llm.md`, `viacep.md`, `chatwoot.md` (human handoff desk, local Docker)
 - `docs/guides/modules/auth.md` · `docs/guides/services/email-service.md`
 - `docs/guides/conventions/` — `environment.md` (env vars), `testing.md`, `api-doc.md`,
   `ci-cd.md` (develop/staging/main gitflow)

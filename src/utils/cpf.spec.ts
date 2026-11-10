@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidCpf, onlyDigits, removeCpfs } from './cpf';
+import { hideCpfs, isValidCpf, onlyDigits, removeCpfs } from './cpf';
 
 describe('isValidCpf', () => {
   it('aceita CPF válido com ou sem pontuação', () => {
@@ -26,5 +26,16 @@ describe('removeCpfs', () => {
     expect(result).not.toContain('123.456.789-09');
     expect(result).not.toContain('12345678909');
     expect(result).toContain('casa 120');
+  });
+});
+
+describe('hideCpfs', () => {
+  it('troca CPFs por marcador', () => {
+    expect(hideCpfs('meu cpf é 123.456.789-09 ok')).toBe('meu cpf é [CPF ocultado] ok');
+    expect(hideCpfs('12345678909')).toBe('[CPF ocultado]');
+  });
+
+  it('não altera texto sem CPF', () => {
+    expect(hideCpfs('rua 123 nº 45')).toBe('rua 123 nº 45');
   });
 });
