@@ -134,9 +134,11 @@ O estado fica no Redis, por telefone, separado do pedido (que expira em 15 min).
 | `active` | Atendente (o bot só repassa ao Chatwoot) | 1ª mensagem humana | Conversa resolvida no Chatwoot → nenhum; 24 h sem mensagem do atendente → nenhum |
 
 - **Gatilhos:** o botão "Falar com atendente" (id `handoff:request`, comando global, vale em qualquer
-  etapa), as palavras de `global-commands.ts` (`atendente`, `falar com alguem`, `humano`) e a etapa
-  `saleFailed` ("Tentar de novo" ou "Falar com atendente"). Os guard rails usam o mesmo ponto de
-  entrada (`FlowTools.requestHandoff`) com outros motivos.
+  etapa), as palavras de `asksForAgent` (`flow/handoff.ts`: `atendente`, `falar com alguem`,
+  `humano`) e a etapa `saleFailed` ("Tentar de novo" ou "Falar com atendente"). Os guard rails usam
+  o mesmo ponto de entrada (`FlowTools.requestHandoff`) com outros motivos. Quando só a IA entende
+  que o cliente quer um atendente, o bot **não** transfere: oferece o botão (decisão de 2026-11-15,
+  ver [fluxo.md](../../project/fluxo.md#handoff-para-atendente)).
 - **Entrada na fila:** o bot cria ou reaproveita o contato e a conversa, muda para `open` (sem
   atendente) e deixa uma nota interna com o resumo (motivo, etapa, produto, quantidade, endereço,
   pagamento, total, nome). Sem CPF. Se a identidade ainda não foi confirmada, a nota diz isso e não

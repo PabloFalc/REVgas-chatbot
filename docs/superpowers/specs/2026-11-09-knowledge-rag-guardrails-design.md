@@ -30,6 +30,12 @@ a busca é por embeddings (RAG) desde já, e não "colar o FAQ inteiro no prompt
   o plano gratuito do Gemini.
 - **Duas fases no mesmo documento:** fase 1, conhecimento + RAG + interpretação; fase 2, guard rails.
 - O quadro de interpretação e guard rails proposto na conversa foi aprovado como está (seções 5 e 6).
+- **Transferência só com pedido claro (2026-11-15, muda a seção 5).** Vão direto para a fila só as
+  palavras `atendente`, `humano` e `falar com alguem`, o botão "Falar com atendente" (inclusive o da
+  etapa `saleFailed`) e a emergência. Quando só a IA classifica a mensagem como pedido de atendente,
+  o bot oferece o botão e repete a pergunta da etapa, sem transferir. Motivo: no teste com o
+  `pnpm chat`, "não quero tirar minhas dúvidas" em `askNeedsChange` virou handoff e o cliente entrou
+  na fila sem pedir.
 
 ## Objetivos
 
@@ -129,7 +135,7 @@ a busca é por embeddings (RAG) desde já, e não "colar o FAQ inteiro no prompt
 | Pedido | Como hoje: extrai os dados e segue o fluxo |
 | Dúvida da revenda | RAG: busca trechos → a IA responde **só com eles** → repete a pergunta da etapa |
 | Pergunta de preço | **Código**, não a IA: consulta o catálogo/preço da RevGás e responde com texto fixo |
-| Pedir atendente | Handoff (ver dependência abaixo) |
+| Pedir atendente | Handoff (ver dependência abaixo). Desde 2026-11-15, só a IA não basta: oferece o botão |
 | Fora do assunto | Recusa fixa e educada (fase 2) → repete a pergunta da etapa |
 | Ofensa | Resposta fixa e neutra (fase 2) |
 | Outro / confiança baixa | Como hoje: "Não entendi" + repete a pergunta |
@@ -158,8 +164,9 @@ a busca é por embeddings (RAG) desde já, e não "colar o FAQ inteiro no prompt
   (por exemplo `handoff:offer`) e é tratado como **comando global**, valendo em qualquer etapa. Um
   "sim" digitado nunca é lido como aceite. Digitar "atendente" continua funcionando. Usado em "não
   sei", falha nas checagens de saída, cliente travado e ofensa repetida.
-- **Transferir direto** (`requestHandoff`): só quando o cliente pede ou toca o botão, e na
-  **emergência** (vazamento).
+- **Transferir direto** (`requestHandoff`): só quando o cliente digita a palavra de atendente ou
+  toca o botão, e na **emergência** (vazamento). A intenção `handoff` vinda só da IA vira oferta
+  (decisão do usuário de 2026-11-15).
 
 **Dinheiro, horário e pagamento: quem é a fonte.**
 - **A base não contém valores em R$.** Qualquer resposta da IA com R$ ou porcentagem é descartada.
@@ -284,3 +291,17 @@ junto com a fase 2.
   código.
 - A resposta de preço mostra só o preço base, nunca o preço especial do cliente.
 - Primeira mensagem que é só dúvida: o bot responde com o botão "Fazer pedido", sem iniciar o pedido.
+- **Convite para perguntar (2026-11-15).** "tenho dúvidas", "posso perguntar uma coisa?", "quero que
+  você tire dúvidas comigo" e parecidas, sem a pergunta, recebem um texto fixo ("Claro! Pode
+  perguntar...") e a pergunta da etapa; não vão à base nem oferecem atendente. Detecção em duas
+  camadas: um detector no código (`flow/question-invite.ts`, frase inteira, sem negação, sem IA) para
+  as formas comuns, e o `topic: 'invite'` da IA para as variações. Em `askName` o convite não vira
+  nome.
+- **Taxa de entrega e frete (2026-11-15).** A IA classifica como `price` com `topic: 'delivery_fee'`
+  e o código responde com texto fixo: não tem o valor, o resumo do pedido mostra o total antes de
+  confirmar, e oferece o atendente. A cotação da RevGás não traz taxa de entrega, então o bot não
+  informa valor. Compra com pergunta de total ("quero 2 P13, quanto fica no pix?") segue `order`.
+  Sem detector no código aqui: a taxa aparece no meio de pedidos, e quem decide entre pedido e
+  pergunta é a IA.
+- **Rotas nomeadas (2026-11-15).** `routeIntent` decide pela rota (`intentRoute`, `FLOW_ROUTES`), e o
+  `rag:check` mede a mesma rota no grupo `routing`.

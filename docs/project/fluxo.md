@@ -70,7 +70,7 @@ escolhido e o fluxo retoma dali.
 
 Valem em qualquer etapa (`global-commands.ts`), nesta ordem: **emergência de gás** (ver
 [Emergência de gás](#emergência-de-gás)), que vem antes de tudo; `cancelar` apaga o estado
-(bloqueado em `creatingSale`); `atendente`/`humano`/`falar com alguem` e o botão "Falar com atendente" (id `handoff:request`) pedem o handoff (ver [Handoff para atendente](#handoff-para-atendente));
+(bloqueado em `creatingSale`); `atendente`/`humano`/`falar com alguem` e o botão "Falar com atendente" (id `handoff:request`) pedem o handoff **direto** (ver [Handoff para atendente](#handoff-para-atendente));
 o botão "Fazer pedido" (id `order:start`) inicia o pedido (sem estado) ou repete a pergunta da etapa (com estado);
 `desconto`/`promoção` responde que o preço é o da tabela e repete a pergunta; mensagem que não é
 texto/botão/lista (áudio, imagem) pede texto e repete a pergunta. O estado não muda, exceto no cancelar.
@@ -130,10 +130,11 @@ telefone, separado do pedido (que expira em 15 min).
 
 | Estado | Quem fala com o cliente | Como entra | Como sai |
 | --- | --- | --- | --- |
-| (nenhum) | Bot | n/a | Pedido de atendente → `queued`; mensagem humana no Chatwoot → `active` |
+| (nenhum) | Bot | n/a | Pedido claro de atendente → `queued`; mensagem humana no Chatwoot → `active` |
 | `queued` | Bot (normal) | Pedido de atendente ou falha da venda | 1ª mensagem humana → `active`; venda criada pelo bot, conversa resolvida no Chatwoot ou 72 h → nenhum |
 | `active` | Atendente; o bot só repassa ao Chatwoot | 1ª mensagem humana | Conversa resolvida no Chatwoot ou 24 h sem mensagem do atendente → nenhum |
 
+- **Quem entra na fila direto:** só pedido claro. As palavras `atendente`, `humano` e `falar com alguem` (`asksForAgent` em `flow/handoff.ts`), o toque no botão "Falar com atendente" (`handoff:request`, inclusive o da etapa `saleFailed`) e a emergência de gás. Quando **só a IA** acha que o cliente pediu atendente (intenção `handoff`), o bot **não** transfere: oferece o botão e repete a pergunta da etapa, sem mudar o estado. Decisão do usuário (2026-11-15), depois que "não quero tirar minhas dúvidas" em `askNeedsChange` foi lido como pedido de atendente e o cliente entrou na fila.
 - **Entrada na fila:** nota interna com o resumo (motivo, etapa, produto, quantidade, endereço, pagamento, total, nome; nunca CPF). Antes da verificação de identidade a nota não leva nome, endereço nem pedido. A resposta ao cliente é só o texto do handoff ("Já chamei um atendente...", "Você já está na fila..."); fora do horário (`SERVICE_HOURS`) o bot diz quando abre e pede que o cliente mande "oi" quando abrirmos.
 - **Em `queued`** o bot segue o fluxo normal. Se ele cria a venda, a conversa é resolvida e o cliente sai da fila. "Cancelar" não tira da fila.
 - **Em `active`** o pedido e o lembrete são apagados; mensagens do cliente vão só ao Chatwoot (não suportadas viram `[cliente enviou áudio]`); as do atendente chegam como `*Maria (atendente):* ...`. Mensagem de vazamento não recebe o texto de segurança: vai ao atendente com uma nota interna de emergência (ver [Emergência de gás](#emergência-de-gás)).
@@ -151,15 +152,17 @@ Código em `flow/free-text.ts` e `flow/intent.ts`; o serviço de IA fica em `src
 | Botão, lista ou palavra-chave que a etapa entende | Igual antes. Sem IA |
 | Comandos globais (emergência, cancelar, atendente, desconto) | Antes de tudo. Sem IA |
 | Etapa de botão recebe texto que não entende | IA |
-| `askName` | Texto com dígito, palavra de pedido ou `?` → IA; senão, validação de nome de sempre |
+| `askName` | Texto com dígito, palavra de pedido ou `?` → IA; convite para perguntar ("tenho dúvidas") → convite, sem IA; senão, validação de nome de sempre |
 | `askCpf`, `askCpfPrefix`, `askQuantity`, `askChangeAmount` | Primeiro a validação de sempre; se falhar e o texto não for só números e pontuação, mas tiver ao menos 2 letras seguidas → IA; senão, o erro de sempre |
-| Primeira mensagem (sem estado) | Só cumprimento (`oi`, `ola`, `bom dia`, `boa tarde`, `boa noite`, `opa`, `eai`, `e ai`, `menu`) → `start` sem IA; texto com 2 letras seguidas → IA antes do `start` |
+| Primeira mensagem (sem estado) | Só cumprimento (`oi`, `ola`, `bom dia`, `boa tarde`, `boa noite`, `opa`, `eai`, `e ai`, `menu`) → `start` sem IA; convite para perguntar → convite, sem IA; texto com 2 letras seguidas → IA antes do `start` |
+| Qualquer texto que iria para a IA e é só um convite para perguntar | Convite, sem IA (ver [Dúvidas, preço e guard rails](#dúvidas-preço-e-guard-rails)) |
 | `askNewAddress`, `askAddressField`, `searchProduct` | Sem mudança (já recebem texto livre) |
 | `creatingSale`, `saleFailed` | Nunca chama a IA |
 
 O que a IA devolve e como vira pedido:
 
-- Saída validada com Zod: `intent`, `topic`, `unknownProduct`, `products`, `quantity`, `payment`, `address`, `newAddress` e `confidence`. As intenções são `order`, `question`, `price`, `handoff`, `off_topic`, `offense` e `other`; `topic` (`hours`, `payments` ou `general`) só vem em `question`; `unknownProduct` é o item pedido que não está no catálogo.
+- Saída validada com Zod: `intent`, `topic`, `unknownProduct`, `products`, `quantity`, `payment`, `address`, `newAddress` e `confidence`. As intenções são `order`, `question`, `price`, `handoff`, `off_topic`, `offense` e `other`. `topic` vem em `question` (`hours`, `payments`, `invite` ou `general`) e em `price` (`delivery_fee`, para taxa de entrega e frete); fora dessas combinações é descartado. `unknownProduct` é o item pedido que não está no catálogo.
+- Frase negada não pede nada: o prompt manda classificar "não quero tirar minhas dúvidas" ou "não preciso de atendente" como `other`.
 - **Só `order` altera o pedido.** As outras intenções são respondidas pelo roteamento abaixo e o estado não muda ("quanto tá o P13?" não põe o P13 no pedido).
 - Confiança abaixo de 0,6 ou falha da IA (`null`) → "Não entendi." e repete a pergunta. O estado não muda.
 - Produto e pagamento só entram se existirem em `listProducts` / `listPaymentOptions`. Preço, total e troco nunca vêm da IA.
@@ -182,9 +185,11 @@ preços longa), ela vai em texto e os botões seguem numa mensagem curta ("Quer 
 | --- | --- | --- |
 | `question`, assunto `hours` | "Nosso horário de atendimento: ..." + "Estamos abertos agora." ou "Estamos fechados agora." Sem `SERVICE_HOURS`: "Não tenho o horário..." + oferta de atendente | Código (`SERVICE_HOURS`), nunca a IA nem a base |
 | `question`, assunto `payments` | "Aceitamos: Pix, Dinheiro e Cartão de crédito." (formas ativas na RevGás) | Código |
+| `question`, assunto `invite` (o cliente só avisa que tem uma dúvida: "tenho dúvidas", "posso perguntar uma coisa?", "quero que você tire dúvidas comigo") | "Claro! Pode perguntar. Consigo te ajudar com horário, entrega, formas de pagamento, vale-gás, troca de botijão e segurança." Não busca na base nem oferece atendente | Texto fixo. Detectado pelo código (`flow/question-invite.ts`, frase inteira, sem IA) ou pela IA (`topic: 'invite'`) |
 | `question`, assunto `general` | Resposta a partir da base de conhecimento ([knowledge.md](../guides/modules/knowledge.md)). Sem resposta: "Não tenho essa informação. Quer falar com um atendente?" + botão "Falar com atendente" | Base + IA, com checagens de saída |
 | `price` | "Preços de hoje:" + uma linha por produto (`- P13: R$ 110,00` ou `- P13: a partir de R$ 105,00`) + "O total aparece no resumo do pedido." Se o cliente citou produtos do catálogo, só eles. Sem preço: "Não consegui consultar os preços agora..." + oferta | Código, só acordo base da RevGás (nunca o acordo do cliente); a IA só classifica |
-| `handoff` | Entra na fila (motivo `customer_request`; em `saleFailed`, `sale_failed`) | Handoff |
+| `price`, assunto `delivery_fee` (taxa de entrega, frete, valor da entrega) | "Não tenho o valor da entrega por aqui. O resumo do pedido mostra o total antes de você confirmar. Quer falar com um atendente?" + botão "Falar com atendente". A cotação da RevGás (`Quote`: preço unitário e total) não tem taxa de entrega, então o bot não informa valor | Texto fixo; a IA só classifica |
+| `handoff` (só a IA) | "Se quiser falar com um atendente, é só tocar no botão." + botão "Falar com atendente". **Não** entra na fila | Texto fixo. Transferência direta só pelos comandos globais |
 | `off_topic` | "Sou o assistente da revenda: posso te ajudar com pedidos e dúvidas sobre gás e entrega." | Texto fixo |
 | `offense` | 1ª vez: "Vamos manter a conversa respeitosa. Posso te ajudar com seu pedido de gás." Da 2ª em diante, o mesmo texto com o botão "Falar com atendente" | Texto fixo |
 | `order` com produto que não vendemos | "Não temos {item}. Temos: P13, P45, Água 20L." (só letras, números, espaço e hífen, até 30 caracteres). Se outro produto da mesma mensagem foi aceito ("quero P13 e carvão"), o pedido segue e o aviso vem antes: "Não temos carvão. Anotado: Botijão P13." | Código |
@@ -196,7 +201,7 @@ preços longa), ela vai em texto e os botões seguem numa mensagem curta ("Quer 
 - **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora). `interpret` custa 1, ler endereço em texto livre (`addressFromText`) custa 1 e responder dúvida custa 2. Passou do limite, o bot segue sem IA (como se ela estivesse fora do ar; no endereço, pede o endereço de novo). Se o Redis do limitador falhar, a chamada passa. Ver [environment.md](../guides/conventions/environment.md).
 - **A base nunca informa** preço, porcentagem, horário de funcionamento nem formas de pagamento; essas respostas vêm do código.
 
-**Primeira mensagem só com dúvida.** Se a primeira mensagem é uma dúvida (ou preço, fora do assunto etc.), o bot responde e mostra o botão "Fazer pedido". Não cria pedido nem pede identificação até o cliente tocar.
+**Primeira mensagem só com dúvida.** Se a primeira mensagem é uma dúvida (ou preço, convite para perguntar, fora do assunto etc.), o bot responde e mostra o botão "Fazer pedido". Não cria pedido nem pede identificação até o cliente tocar.
 
 **Identificação primeiro.** Na primeira mensagem, o que foi dito fica guardado (produto, quantidade, pagamento e
 endereço como texto pendente) e o `start` segue: cliente novo dá nome e CPF; cadastrado confirma os 3 primeiros dígitos do CPF. A saudação (boas-vindas) vem primeiro, depois o "Anotado: ..." e a pergunta seguinte. Em `askName`, texto com palavra de pedido vale como nome só quando a IA responde com confiança que não é pedido nem pergunta e o texto é um nome válido; com a IA fora do ar ou incerta, o bot diz "Não entendi" e pede o nome de novo. Texto

@@ -7,7 +7,8 @@ trechos certos para uma pergunta e deixa a IA responder **só com eles**. Usa em
 > **Estado atual (etapa B):** o módulo está ligado ao fluxo. `ConversationModule` importa o
 > `KnowledgeModule` e `flow-tools.ts` expõe `answerQuestion(texto)`, usado quando a IA classifica a
 > mensagem como dúvida de assunto geral (`question` com `topic: 'general'`). Horário, forma de
-> pagamento e preço **não** passam pela base: o código responde (ver
+> pagamento, preço, taxa de entrega/frete e o convite para perguntar ("tenho dúvidas", sem a
+> pergunta) **não** passam pela base: o código responde (ver
 > [fluxo.md](../../project/fluxo.md#dúvidas-preço-e-guard-rails)). Sem resposta (`unknown`), o bot
 > diz "Não tenho essa informação. Quer falar com um atendente?" e oferece o botão de atendente.
 > Cada `answerQuestion` custa 2 no limite de IA por telefone (`AI_CALLS_PER_PHONE_HOUR`); acima do
@@ -177,13 +178,22 @@ Grupos das perguntas:
 - `price`: passa se `interpret` (cliente da IA real) devolve a intenção esperada. Ela é
   `expectedIntent` (opcional, `price` ou `order`, padrão `price`): compra com pergunta de preço
   ("quero 2 P13, quanto fica no pix?") espera `order`.
+- `routing`: passa se a rota do fluxo bate. A rota vem de `routeOfText` (`flow/route.ts`): primeiro
+  o que o código decide sem IA (emergência → `emergency`, palavra de atendente → `transfer`,
+  convite para perguntar → `invite`), depois `intentRoute` sobre a leitura da IA real (a mesma
+  função que o `routeIntent` usa para responder). Rotas: `FLOW_ROUTES` em
+  `src/modules/conversation/contracts/flow-route.ts`. Cada pergunta traz `expectedRoute` (a rota
+  certa), `forbiddenRoutes` (rotas que não podem sair) ou os dois. Exemplo: "não quero tirar minhas
+  dúvidas" tem `forbiddenRoutes: ["transfer", "invite"]`. O script imprime `id: rota` de cada uma, e
+  um teste unitário (`flow/route.spec.ts`) confere, sem IA, que o que o código decide sozinho já bate.
 
 Qualquer pergunta pode ter `forbidden` (lista de termos). Se a resposta sair `answered` e contiver
 um deles (sem acento e sem caixa), a pergunta entra nas violações e não conta como acerto. É assim
 que se mede bairro inventado: "vcs entregam no Satélite?" tem `fact: "Centro"` e
 `forbidden: ["Satélite"]`.
 
-O placar mostra `passado/total` por grupo, a linha "busca" e a lista de violações.
+O placar mostra `passado/total` por grupo (inclusive `routing`), a linha "busca" e a lista de
+violações.
 
 ## Valores calibrados
 
@@ -198,6 +208,12 @@ O placar mostra `passado/total` por grupo, a linha "busca" e a lista de violaç�
 | Pergunta | 500 caracteres | `search-query.ts` |
 | Embedding | `gemini-embedding-001`, 768 dimensões | `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` |
 | Chunk | seção `##`, quebra acima de 1200 caracteres | `chunker.ts` |
+
+**Placares registrados:**
+
+| Data | Modelo | answerable | unknown | off_topic | manipulation | emergency | price | busca | violações |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-15 (antes do grupo `routing` e das correções de convite, atendente e taxa de entrega) | `gemini-3.5-flash-lite` | 15/16 | 5/5 | 5/5 | 3/3 | 2/2 | 2/3 | 16/16 | `prc-entrega` |
 
 **Não calibrado ainda.** Os cortes são palpite. Rode `pnpm rag:check` com a chave real, ajuste as
 três primeiras linhas e **registre aqui o placar** (data, modelo, busca X/Y, violações). O corte do
