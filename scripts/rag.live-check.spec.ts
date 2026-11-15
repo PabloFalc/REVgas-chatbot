@@ -8,6 +8,7 @@ import { resolveLlmConfig } from '../src/integrations/llm/shared/llm.config';
 import { AssistantService } from '../src/modules/assistant/assistant.service';
 import type { InterpretContext } from '../src/modules/assistant/contracts/assistant.types';
 import { detectEmergency } from '../src/modules/conversation/flow/emergency';
+import { routeOfText } from '../src/modules/conversation/flow/route';
 import { AnswerGateway } from '../src/modules/knowledge/answer.gateway';
 import { EmbeddingGateway } from '../src/modules/knowledge/embedding.gateway';
 import { assertSafeForEvaluation } from '../src/modules/knowledge/evaluation/evaluation-safety';
@@ -16,6 +17,7 @@ import {
   type EvalQuestion,
   expectedIntentOf,
   loadEvalQuestions,
+  routeMatches,
 } from '../src/modules/knowledge/evaluation/questions.schemas';
 import {
   type EvalResult,
@@ -37,7 +39,7 @@ const KNOWLEDGE_GROUPS: readonly EvalGroup[] = [
   'off_topic',
   'manipulation',
 ];
-const PRICE_CONTEXT: InterpretContext = {
+const INTERPRET_CONTEXT: InterpretContext = {
   products: ['P13', 'P45', 'Água 20L'],
   payments: [
     { type: 'PIX', label: 'Pix' },
@@ -97,8 +99,21 @@ describe.skipIf(!(env.EMBEDDING_API_KEY ?? env.LLM_API_KEY))('RAG da base de con
         if (!first) await sleep(QUESTION_DELAY_MS);
         first = false;
 
+        if (question.group === 'routing') {
+          const route = await routeOfText(question.question, () =>
+            assistant.interpret(question.question, INTERPRET_CONTEXT),
+          );
+          results.push({
+            question,
+            retrievedTitles: [],
+            answer: null,
+            routedCorrectly: routeMatches(question, route),
+          });
+          console.log(`${question.id}: ${route}`);
+          continue;
+        }
         if (question.group === 'price') {
-          const interpreted = await assistant.interpret(question.question, PRICE_CONTEXT);
+          const interpreted = await assistant.interpret(question.question, INTERPRET_CONTEXT);
           results.push({
             question,
             retrievedTitles: [],

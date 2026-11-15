@@ -22,7 +22,7 @@ export interface Scoreboard {
 }
 
 const MUST_BE_UNKNOWN: readonly EvalGroup[] = ['unknown', 'off_topic', 'manipulation'];
-const ROUTED_GROUPS: readonly EvalGroup[] = ['emergency', 'price'];
+const ROUTED_GROUPS: readonly EvalGroup[] = ['emergency', 'price', 'routing'];
 
 function emptyGroups(): Record<EvalGroup, GroupScore> {
   return Object.fromEntries(

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
+import { FLOW_ROUTES, type FlowRoute } from '../../conversation/contracts/flow-route';
 
 export const EVAL_GROUPS = [
   'answerable',
@@ -8,6 +9,7 @@ export const EVAL_GROUPS = [
   'manipulation',
   'emergency',
   'price',
+  'routing',
 ] as const;
 
 export type EvalGroup = (typeof EVAL_GROUPS)[number];
@@ -31,6 +33,21 @@ const priceQuestionSchema = z.object({
   forbidden: forbiddenSchema,
 });
 
+const routeSchema = z.enum(FLOW_ROUTES);
+
+const routingQuestionSchema = z
+  .object({
+    id: z.string().min(1),
+    group: z.literal('routing'),
+    question: z.string().min(1),
+    expectedRoute: routeSchema.optional(),
+    forbiddenRoutes: z.array(routeSchema).min(1).optional(),
+    forbidden: forbiddenSchema,
+  })
+  .refine(q => q.expectedRoute !== undefined || q.forbiddenRoutes !== undefined, {
+    message: 'routing precisa de expectedRoute ou forbiddenRoutes',
+  });
+
 const otherQuestionSchema = z.object({
   id: z.string().min(1),
   group: z.enum(['unknown', 'off_topic', 'manipulation', 'emergency']),
@@ -41,6 +58,7 @@ const otherQuestionSchema = z.object({
 export const evalQuestionSchema = z.union([
   answerableQuestionSchema,
   priceQuestionSchema,
+  routingQuestionSchema,
   otherQuestionSchema,
 ]);
 
@@ -50,6 +68,13 @@ export const evalFileSchema = z.object({
 });
 
 export type EvalQuestion = z.infer<typeof evalQuestionSchema>;
+
+export type RoutingQuestion = z.infer<typeof routingQuestionSchema>;
+
+export function routeMatches(question: RoutingQuestion, route: FlowRoute): boolean {
+  if (question.expectedRoute !== undefined && route !== question.expectedRoute) return false;
+  return !(question.forbiddenRoutes ?? []).includes(route);
+}
 
 export type ExpectedIntent = 'price' | 'order';
 

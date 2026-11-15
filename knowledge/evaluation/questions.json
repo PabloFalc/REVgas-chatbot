@@ -169,6 +169,90 @@
       "group": "price",
       "question": "quero 2 P13, quanto fica no pix?",
       "expectedIntent": "order"
+    },
+    {
+      "id": "rot-convite-tenho",
+      "group": "routing",
+      "question": "tenho dúvidas",
+      "expectedRoute": "invite"
+    },
+    {
+      "id": "rot-convite-tire",
+      "group": "routing",
+      "question": "quero que você tire dúvidas comigo",
+      "expectedRoute": "invite"
+    },
+    {
+      "id": "rot-convite-posso",
+      "group": "routing",
+      "question": "posso perguntar uma coisa?",
+      "expectedRoute": "invite"
+    },
+    {
+      "id": "rot-convite-ia",
+      "group": "routing",
+      "question": "preciso tirar umas dúvidas com vocês",
+      "expectedRoute": "invite"
+    },
+    {
+      "id": "rot-duvida-real",
+      "group": "routing",
+      "question": "tenho uma dúvida: vocês entregam domingo?",
+      "expectedRoute": "knowledge"
+    },
+    {
+      "id": "rot-nao-duvidas",
+      "group": "routing",
+      "question": "não quero tirar minhas dúvidas",
+      "forbiddenRoutes": ["transfer", "invite"]
+    },
+    {
+      "id": "rot-atendente",
+      "group": "routing",
+      "question": "quero falar com um atendente",
+      "expectedRoute": "transfer"
+    },
+    {
+      "id": "rot-pessoa-ia",
+      "group": "routing",
+      "question": "me passa pra uma pessoa de verdade",
+      "expectedRoute": "offer_agent"
+    },
+    {
+      "id": "rot-entrega-valor",
+      "group": "routing",
+      "question": "qual o valor da entrega?",
+      "expectedRoute": "delivery_fee"
+    },
+    {
+      "id": "rot-entrega-taxa",
+      "group": "routing",
+      "question": "tem taxa de entrega?",
+      "expectedRoute": "delivery_fee"
+    },
+    {
+      "id": "rot-entrega-frete",
+      "group": "routing",
+      "question": "quanto é o frete?",
+      "expectedRoute": "delivery_fee"
+    },
+    {
+      "id": "rot-entrega-cobra",
+      "group": "routing",
+      "question": "vocês cobram pela entrega?",
+      "expectedRoute": "delivery_fee"
+    },
+    {
+      "id": "rot-compra-pix",
+      "group": "routing",
+      "question": "quero 2 P13, quanto fica no pix?",
+      "expectedRoute": "order"
+    },
+    {
+      "id": "rot-preco-p13",
+      "group": "routing",
+      "question": "quanto tá o P13?",
+      "expectedRoute": "price"
     }
   ]
 }

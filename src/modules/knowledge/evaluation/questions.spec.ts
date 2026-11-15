@@ -8,6 +8,8 @@ import {
   evalFileSchema,
   expectedIntentOf,
   loadEvalQuestions,
+  type RoutingQuestion,
+  routeMatches,
 } from './questions.schemas';
 
 const questionsPath = resolve(process.cwd(), 'knowledge/evaluation/questions.json');
@@ -18,7 +20,7 @@ describe('perguntas da checagem', () => {
     await expect(loadEvalQuestions(questionsPath)).resolves.toBeDefined();
   });
 
-  it('tem pelo menos 30 perguntas e todos os 6 grupos', async () => {
+  it('tem pelo menos 30 perguntas e todos os grupos', async () => {
     const questions = await loadEvalQuestions(questionsPath);
     expect(questions.length).toBeGreaterThanOrEqual(30);
     for (const group of EVAL_GROUPS) {
@@ -106,6 +108,55 @@ describe('perguntas da checagem', () => {
     const buying = questions.find(q => q.question === 'quero 2 P13, quanto fica no pix?');
     expect(buying?.group).toBe('price');
     expect(buying && expectedIntentOf(buying)).toBe('order');
+  });
+
+  it('routing aceita expectedRoute ou forbiddenRoutes e recusa sem nenhum ou com rota inválida', () => {
+    const routing = { id: 'r', group: 'routing', question: 'q' };
+    const parse = (extra: object) =>
+      evalFileSchema.safeParse({ version: 1, questions: [{ ...routing, ...extra }] }).success;
+    expect(parse({ expectedRoute: 'invite' })).toBe(true);
+    expect(parse({ forbiddenRoutes: ['transfer'] })).toBe(true);
+    expect(parse({ expectedRoute: 'order', forbiddenRoutes: ['transfer'] })).toBe(true);
+    expect(parse({})).toBe(false);
+    expect(parse({ expectedRoute: 'voar' })).toBe(false);
+    expect(parse({ forbiddenRoutes: [] })).toBe(false);
+  });
+
+  it('routeMatches confere a rota esperada e as proibidas', () => {
+    const expecting: RoutingQuestion = {
+      id: 'r1',
+      group: 'routing',
+      question: 'tenho dúvidas',
+      expectedRoute: 'invite',
+    };
+    const forbidding: RoutingQuestion = {
+      id: 'r2',
+      group: 'routing',
+      question: 'não quero tirar minhas dúvidas',
+      forbiddenRoutes: ['transfer', 'invite'],
+    };
+    expect(routeMatches(expecting, 'invite')).toBe(true);
+    expect(routeMatches(expecting, 'knowledge')).toBe(false);
+    expect(routeMatches(forbidding, 'offer_agent')).toBe(true);
+    expect(routeMatches(forbidding, 'not_understood')).toBe(true);
+    expect(routeMatches(forbidding, 'transfer')).toBe(false);
+    expect(routeMatches(forbidding, 'invite')).toBe(false);
+  });
+
+  it('tem os casos das correções de convite, atendente e taxa de entrega', async () => {
+    const routing = (await loadEvalQuestions(questionsPath)).filter(
+      (q): q is RoutingQuestion => q.group === 'routing',
+    );
+    const find = (text: string) => routing.find(q => q.question === text);
+    expect(find('tenho dúvidas')?.expectedRoute).toBe('invite');
+    expect(find('quero que você tire dúvidas comigo')?.expectedRoute).toBe('invite');
+    expect(find('não quero tirar minhas dúvidas')?.forbiddenRoutes).toEqual(
+      expect.arrayContaining(['transfer', 'invite']),
+    );
+    expect(find('qual o valor da entrega?')?.expectedRoute).toBe('delivery_fee');
+    expect(find('quanto é o frete?')?.expectedRoute).toBe('delivery_fee');
+    expect(find('quero 2 P13, quanto fica no pix?')?.expectedRoute).toBe('order');
+    expect(find('quero falar com um atendente')?.expectedRoute).toBe('transfer');
   });
 
   it('rejeita arquivo com versão errada', () => {

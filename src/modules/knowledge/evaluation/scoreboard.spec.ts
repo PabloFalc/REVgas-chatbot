@@ -129,6 +129,23 @@ describe('formatScoreboard', () => {
     expect(board.violations).toEqual([]);
   });
 
+  it('routing roteada certo passa e errado vira violação', () => {
+    const routing: EvalQuestion = {
+      id: 'r1',
+      group: 'routing',
+      question: 'tenho dúvidas',
+      expectedRoute: 'invite',
+    };
+    const ok = scoreRun([
+      { question: routing, retrievedTitles: [], answer: null, routedCorrectly: true },
+    ]);
+    expect(ok.groups.routing).toEqual({ total: 1, passed: 1, pending: 0 });
+    const wrong = scoreRun([
+      { question: routing, retrievedTitles: [], answer: null, routedCorrectly: false },
+    ]);
+    expect(wrong.violations).toEqual(['r1']);
+  });
+
   it('emergency e price roteadas errado viram violação', () => {
     const board = scoreRun([
       { question: price, retrievedTitles: [], answer: null, routedCorrectly: false },
