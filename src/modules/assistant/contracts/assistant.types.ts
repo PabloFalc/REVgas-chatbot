@@ -3,9 +3,11 @@ export interface InterpretContext {
   payments: { type: string; label: string }[];
 }
 
+export type InterpretationTopic = 'hours' | 'payments' | 'general' | 'invite' | 'delivery_fee';
+
 export interface Interpretation {
   intent: 'order' | 'question' | 'price' | 'handoff' | 'off_topic' | 'offense' | 'other';
-  topic?: 'hours' | 'payments' | 'general';
+  topic?: InterpretationTopic;
   unknownProduct?: string;
   products?: string[];
   quantity?: number;

@@ -17,6 +17,7 @@ import { offer } from './handoff';
 import { cleanItem, matchProducts, routeIntent } from './intent';
 import { msg } from './messages';
 import { nextStep } from './next-step';
+import { isQuestionInvite } from './question-invite';
 import { repeatQuestion } from './repeat-question';
 import { text } from './replies';
 import { asks } from './steps/registry';
@@ -54,6 +55,7 @@ const STUCK_AFTER = 3;
 const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askCpfPrefix'];
 const MONEY_STEPS: Step[] = ['askChangeAmount'];
 const OTHER_ADDRESS_NOTE = 'entrega em outro endereço';
+const INVITE: Interpretation = { intent: 'question', topic: 'invite', confidence: 1 };
 
 export interface Catalog {
   products: Product[];
@@ -212,6 +214,10 @@ export function seedFromInterpretation(result: Interpretation, catalog: Catalog)
 
 export async function readFirstMessage(raw: string, tools: FlowTools): Promise<FirstMessage> {
   if (isGreetingOnly(raw) || !shouldInterpret(raw)) return { kind: 'seed', seed: EMPTY_SEED };
+  if (isQuestionInvite(raw)) {
+    const invited = await routeIntent(null, INVITE, raw, tools);
+    if (invited) return { kind: 'routed', result: invited };
+  }
   const catalog: Catalog = {
     products: await tools.listProducts({}),
     payments: await tools.listPaymentOptions(),
@@ -281,6 +287,10 @@ export async function freeText(
 ): Promise<StepResult> {
   const { whenNothingApplied, fallback } = options;
   const spoken = spokenText(state, raw);
+  if (isQuestionInvite(spoken)) {
+    const invited = await routeIntent(state, INVITE, spoken, tools);
+    if (invited) return invited;
+  }
   const catalog = await loadCatalog(state, tools);
   const interpreted = await tools.interpret(spoken, contextOf(catalog));
   if (!interpreted || interpreted.confidence < MIN_CONFIDENCE) {

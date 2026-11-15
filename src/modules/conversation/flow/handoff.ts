@@ -2,12 +2,20 @@ import type {
   HandoffOrderSummary,
   HandoffReason,
 } from 'src/modules/handoff/contracts/handoff.types';
+import { normalizeText } from 'src/utils/text';
 import type { Reply, ReplyOption } from '../contracts/conversation.types';
 import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
 import { msg, paymentLine } from './messages';
 import { buttons, text } from './replies';
 
 export const HANDOFF_CHOICE = 'handoff:request';
+
+const AGENT_WORDS = ['atendente', 'falar com alguem', 'humano'];
+
+export function asksForAgent(raw: string): boolean {
+  const text = normalizeText(raw);
+  return AGENT_WORDS.some(word => text.includes(word));
+}
 
 const STEP_LABELS: Record<Step, string> = {
   askName: 'Nome do cliente',

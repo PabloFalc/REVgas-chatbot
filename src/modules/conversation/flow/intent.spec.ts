@@ -82,6 +82,13 @@ describe('textos fixos da etapa B', () => {
     expect(msg.noPrice).toBe(
       'Não consegui consultar os preços agora. Quer falar com um atendente?',
     );
+    expect(msg.questionInvite).toBe(
+      'Claro! Pode perguntar. Consigo te ajudar com horário, entrega, formas de pagamento, vale-gás, troca de botijão e segurança.',
+    );
+    expect(msg.offerAgent).toBe('Se quiser falar com um atendente, é só tocar no botão.');
+    expect(msg.deliveryFee).toBe(
+      'Não tenho o valor da entrega por aqui. O resumo do pedido mostra o total antes de você confirmar. Quer falar com um atendente?',
+    );
   });
 
   it('horário agrupa dias seguidos com o mesmo horário', () => {
@@ -245,22 +252,28 @@ describe('routeIntent com pedido em andamento', () => {
     expect(out).toEqual({ state: paying, replies: [offer(msg.offense), paymentButtons] });
   });
 
-  it('pedir atendente transfere e mantém o estado', async () => {
+  it('pedido de atendente só pela IA oferece o botão, não transfere, e repete a pergunta', async () => {
     const tools = createFakeTools();
     const spy = vi.spyOn(tools, 'requestHandoff');
-    const out = await route(result({ intent: 'handoff' }), tools);
-    expect(spy).toHaveBeenCalledWith(
-      expect.objectContaining({ phone: tools.phone, reason: 'customer_request' }),
-    );
-    expect(out).toEqual({ state: paying, replies: [text(msg.handoffQueued)] });
+    const out = await route(result({ intent: 'handoff' }), tools, 'não quero tirar minhas dúvidas');
+    expect(spy).not.toHaveBeenCalled();
+    expect(out).toEqual({ state: paying, replies: [offer(msg.offerAgent), paymentButtons] });
   });
 
-  it('pedir atendente pela IA em saleFailed usa o motivo sale_failed', async () => {
+  it('convite para perguntar responde fixo, sem base nem atendente, e repete a pergunta', async () => {
     const tools = createFakeTools();
-    const spy = vi.spyOn(tools, 'requestHandoff');
-    const failed: OrderState = { ...paying, step: 'saleFailed' };
-    await routeIntent(failed, result({ intent: 'handoff' }), 'quero falar com alguém', tools);
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ reason: 'sale_failed' }));
+    const out = await route(result({ intent: 'question', topic: 'invite' }), tools);
+    expect(out).toEqual({ state: paying, replies: [text(msg.questionInvite), paymentButtons] });
+    expect(names(tools)).not.toContain('answerQuestion');
+    expect(names(tools)).not.toContain('requestHandoff');
+  });
+
+  it('taxa de entrega pelo código: texto fixo com oferta, sem preço nem base', async () => {
+    const tools = createFakeTools({ basePrices: async () => prices });
+    const out = await route(result({ intent: 'price', topic: 'delivery_fee' }), tools);
+    expect(out).toEqual({ state: paying, replies: [offer(msg.deliveryFee), paymentButtons] });
+    expect(names(tools)).not.toContain('basePrices');
+    expect(names(tools)).not.toContain('answerQuestion');
   });
 
   it('produto que não vende lista o catálogo do cliente', async () => {
@@ -410,16 +423,30 @@ describe('routeIntent sem pedido em andamento', () => {
     expect(second?.replies).toEqual([buttons(msg.offense, [handoffBtn, orderBtn])]);
   });
 
-  it('pedir atendente transfere sem estado', async () => {
+  it('pedido de atendente só pela IA oferece atendente e "Fazer pedido", sem transferir', async () => {
     const tools = createFakeTools();
     const spy = vi.spyOn(tools, 'requestHandoff');
     const out = await route(result({ intent: 'handoff' }), tools);
-    expect(spy).toHaveBeenCalledWith({
-      phone: tools.phone,
-      reason: 'customer_request',
-      summary: null,
+    expect(spy).not.toHaveBeenCalled();
+    expect(out).toEqual({
+      state: null,
+      replies: [buttons(msg.offerAgent, [handoffBtn, orderBtn])],
     });
-    expect(out).toEqual({ state: null, replies: [text(msg.handoffQueued)] });
+  });
+
+  it('convite para perguntar sem pedido: texto fixo com "Fazer pedido"', async () => {
+    const tools = createFakeTools();
+    const out = await route(result({ intent: 'question', topic: 'invite' }), tools);
+    expect(out).toEqual({ state: null, replies: [buttons(msg.questionInvite, [orderBtn])] });
+    expect(names(tools)).toEqual([]);
+  });
+
+  it('taxa de entrega sem pedido: texto fixo com atendente e "Fazer pedido"', async () => {
+    const out = await route(result({ intent: 'price', topic: 'delivery_fee' }), createFakeTools());
+    expect(out).toEqual({
+      state: null,
+      replies: [buttons(msg.deliveryFee, [handoffBtn, orderBtn])],
+    });
   });
 
   it('produto que não vende usa o catálogo base', async () => {

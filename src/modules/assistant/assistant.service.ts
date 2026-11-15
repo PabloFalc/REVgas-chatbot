@@ -3,20 +3,26 @@ import { z } from 'zod';
 import { LlmError } from '../../core/erros/llm/llm.errors';
 import { LLM_CLIENT, type LlmClient } from '../../integrations/llm/llm.client';
 import { removeCpfs } from '../../utils/cpf';
-import type { Interpretation, InterpretContext } from './contracts/assistant.types';
+import type {
+  Interpretation,
+  InterpretationTopic,
+  InterpretContext,
+} from './contracts/assistant.types';
 
 const INSTRUCTIONS = [
   'Você interpreta a mensagem de um cliente de uma revenda de gás que quer fazer um pedido pelo WhatsApp.',
   'Identifique a intenção:',
   '"order" somente quando o cliente quer comprar (ex.: "quero 2 botijões"); se pedir um produto que não está na lista (ex.: "quero carvão"), use order e informe o nome dito em unknownProduct.',
   '"price" para perguntas de preço ou total, mesmo citando um produto (ex.: "quanto tá o P13").',
+  'Taxa de entrega, frete ou valor da entrega também é "price", com topic "delivery_fee" (ex.: "qual o valor da entrega?", "tem taxa de entrega?", "quanto é o frete?").',
   'Mas se o cliente quer comprar e também pergunta o preço ou o total, use order (o total aparece no resumo), ex.: "manda um P45, quanto dá?".',
-  '"question" para dúvidas gerais, com topic: "hours" para horário de funcionamento (ex.: "que horas abre"), "payments" para formas de pagamento (ex.: "aceita pix"), "general" para o resto (ex.: "vocês entregam domingo").',
-  '"handoff" quando o cliente quer falar com uma pessoa (ex.: "quero falar com alguém").',
+  '"question" para dúvidas gerais, com topic: "hours" para horário de funcionamento (ex.: "que horas abre"), "payments" para formas de pagamento (ex.: "aceita pix"), "invite" quando o cliente só avisa que tem uma dúvida, sem dizer qual (ex.: "tenho dúvidas", "posso perguntar uma coisa?", "quero que você tire dúvidas comigo"), "general" para o resto (ex.: "vocês entregam domingo").',
+  '"handoff" somente quando o cliente pede para falar com uma pessoa (ex.: "quero falar com alguém").',
+  'Frase negada não pede nada: "não quero tirar minhas dúvidas" ou "não preciso de atendente" são "other".',
   '"off_topic" para assuntos sem relação com a revenda (ex.: política, receita, futebol).',
   '"offense" para xingamentos e ofensas.',
   '"other" para todo o resto.',
-  'Use topic somente em question e unknownProduct somente em order; nos demais casos, null.',
+  'Use topic somente em question (hours, payments, invite, general) e em price (delivery_fee, só para entrega); unknownProduct somente em order; nos demais casos, null.',
   'Extraia produtos, quantidade, forma de pagamento e endereço de entrega quando aparecerem no texto.',
   'Copie os nomes dos produtos e os types de pagamento EXATAMENTE como aparecem nas listas abaixo.',
   'Devolva mais de um produto somente quando o cliente foi ambíguo e mais de um da lista pode corresponder ao que ele disse.',
@@ -36,12 +42,23 @@ const interpretationSchema = z.object({
   payment: z.string().nullable(),
   address: z.string().nullable(),
   newAddress: z.boolean().nullable(),
-  topic: z.enum(['hours', 'payments', 'general']).nullable(),
+  topic: z.enum(['hours', 'payments', 'general', 'invite', 'delivery_fee']).nullable(),
   unknownProduct: z.string().nullable(),
   confidence: z.number().min(0).max(1),
 });
 
 type ParsedInterpretation = z.infer<typeof interpretationSchema>;
+
+const TOPICS_BY_INTENT: Partial<Record<Interpretation['intent'], InterpretationTopic[]>> = {
+  question: ['hours', 'payments', 'general', 'invite'],
+  price: ['delivery_fee'],
+};
+
+function topicOf(parsed: ParsedInterpretation): InterpretationTopic | undefined {
+  const { topic } = parsed;
+  if (topic === null) return undefined;
+  return TOPICS_BY_INTENT[parsed.intent]?.includes(topic) ? topic : undefined;
+}
 
 function buildSystemPrompt(context: InterpretContext): string {
   const products = context.products.map(name => `- ${name}`).join('\n');
@@ -67,8 +84,9 @@ function presentFields(parsed: ParsedInterpretation): Interpretation {
   if (parsed.newAddress !== null) {
     result.newAddress = parsed.newAddress;
   }
-  if (parsed.intent === 'question' && parsed.topic !== null) {
-    result.topic = parsed.topic;
+  const topic = topicOf(parsed);
+  if (topic) {
+    result.topic = topic;
   }
   const unknownProduct = parsed.unknownProduct?.trim();
   if (unknownProduct) {

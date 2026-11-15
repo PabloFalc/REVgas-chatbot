@@ -97,6 +97,49 @@ describe('AssistantService', () => {
     });
   });
 
+  it('devolve o topic invite em question', async () => {
+    llm.queueObject({ ...base, intent: 'question', topic: 'invite' });
+    expect(await service.interpret('tenho dúvidas', context)).toEqual({
+      intent: 'question',
+      topic: 'invite',
+      confidence: 0.9,
+    });
+  });
+
+  it('devolve o topic delivery_fee em price', async () => {
+    llm.queueObject({ ...base, intent: 'price', topic: 'delivery_fee' });
+    expect(await service.interpret('qual o valor da entrega?', context)).toEqual({
+      intent: 'price',
+      topic: 'delivery_fee',
+      confidence: 0.9,
+    });
+  });
+
+  it('descarta delivery_fee fora de price e invite fora de question', async () => {
+    llm.queueObject({ ...base, intent: 'question', topic: 'delivery_fee' });
+    expect(await service.interpret('texto', context)).toEqual({
+      intent: 'question',
+      confidence: 0.9,
+    });
+
+    llm.queueObject({ ...base, intent: 'price', topic: 'invite' });
+    expect(await service.interpret('texto', context)).toEqual({
+      intent: 'price',
+      confidence: 0.9,
+    });
+  });
+
+  it('o prompt ensina convite, taxa de entrega e negação', async () => {
+    llm.queueObject({ ...base, intent: 'other' });
+    await service.interpret('oi', context);
+    const system = llm.calls[0]?.messages.find(message => message.role === 'system')?.content ?? '';
+    expect(system).toContain('"invite"');
+    expect(system).toContain('tenho dúvidas');
+    expect(system).toContain('"delivery_fee"');
+    expect(system).toContain('frete');
+    expect(system).toContain('não quero tirar minhas dúvidas');
+  });
+
   it('devolve unknownProduct só quando não vazio', async () => {
     llm.queueObject({ ...base, intent: 'order', unknownProduct: 'carvão' });
     expect(await service.interpret('quero carvão', context)).toEqual({

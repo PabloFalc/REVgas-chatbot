@@ -173,6 +173,11 @@ export const msg = {
     'Sou o assistente da revenda: posso te ajudar com pedidos e dúvidas sobre gás e entrega.',
   offense: 'Vamos manter a conversa respeitosa. Posso te ajudar com seu pedido de gás.',
   notKnown: 'Não tenho essa informação. Quer falar com um atendente?',
+  questionInvite:
+    'Claro! Pode perguntar. Consigo te ajudar com horário, entrega, formas de pagamento, vale-gás, troca de botijão e segurança.',
+  offerAgent: 'Se quiser falar com um atendente, é só tocar no botão.',
+  deliveryFee:
+    'Não tenho o valor da entrega por aqui. O resumo do pedido mostra o total antes de você confirmar. Quer falar com um atendente?',
   stuck: 'Não estou conseguindo entender. Quer falar com um atendente?',
   noServiceHours:
     'Não tenho o horário de atendimento cadastrado aqui. Quer falar com um atendente?',

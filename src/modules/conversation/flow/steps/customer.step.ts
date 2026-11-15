@@ -13,6 +13,7 @@ import { freeText, freeTextOr, keepOfferedProduct, looksLikeOrder } from '../fre
 import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
+import { isQuestionInvite } from '../question-invite';
 import { text } from '../replies';
 import { offerOrNext } from './repeat.step';
 
@@ -102,7 +103,7 @@ const handleAskName: HandleFn = async (state, input, tools) => {
   const name = parseName(raw);
   const acceptName = (valid: string) =>
     askCpf({ ...state, customer: { ...state.customer, name: valid } }, tools);
-  if (raw !== null && (looksLikeOrder(raw) || raw.includes('?'))) {
+  if (raw !== null && (looksLikeOrder(raw) || raw.includes('?') || isQuestionInvite(raw))) {
     return freeText(state, raw, tools, {
       whenNothingApplied: name ? () => acceptName(name) : undefined,
     });

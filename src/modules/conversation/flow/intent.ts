@@ -1,8 +1,12 @@
-import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
+import type {
+  Interpretation,
+  InterpretationTopic,
+} from 'src/modules/assistant/contracts/assistant.types';
 import type { PriceCustomer, Product } from 'src/modules/catalog/contracts/catalog.types';
 import { normalizeText } from 'src/utils/text';
+import type { FlowRoute } from '../contracts/flow-route';
 import type { FlowTools, OrderState, StepResult } from './flow.types';
-import { handoff, handoffButton, offer, orderStartButton, requestReasonFor } from './handoff';
+import { handoffButton, offer, orderStartButton } from './handoff';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
 import { BUTTONS_BODY_LIMIT, buttons, text } from './replies';
@@ -42,22 +46,24 @@ function customerOf(state: OrderState | null): PriceCustomer {
   return state ? { id: state.customer.id, tagId: state.customer.tagId } : {};
 }
 
-async function question(result: Interpretation, raw: string, tools: FlowTools): Promise<Answer> {
-  if (result.topic === 'hours') {
-    const hours = await tools.serviceHours();
-    if (hours.windows.length === 0) return offering(msg.noServiceHours);
-    return plain(msg.serviceHours(hours.windows, hours.open));
-  }
-  if (result.topic === 'payments') {
-    const options = await tools.listPaymentOptions();
-    if (options.length === 0) return offering(msg.notKnown);
-    return plain(msg.paymentsAccepted(options.map(option => option.label)));
-  }
+async function hoursAnswer(tools: FlowTools): Promise<Answer> {
+  const hours = await tools.serviceHours();
+  if (hours.windows.length === 0) return offering(msg.noServiceHours);
+  return plain(msg.serviceHours(hours.windows, hours.open));
+}
+
+async function paymentsAnswer(tools: FlowTools): Promise<Answer> {
+  const options = await tools.listPaymentOptions();
+  if (options.length === 0) return offering(msg.notKnown);
+  return plain(msg.paymentsAccepted(options.map(option => option.label)));
+}
+
+async function knowledgeAnswer(raw: string, tools: FlowTools): Promise<Answer> {
   const answer = await tools.answerQuestion(raw);
   return answer.kind === 'answered' ? plain(answer.text) : offering(msg.notKnown);
 }
 
-async function price(result: Interpretation, tools: FlowTools): Promise<Answer> {
+async function priceAnswer(result: Interpretation, tools: FlowTools): Promise<Answer> {
   const prices = await tools.basePrices();
   if (prices.length === 0) return offering(msg.noPrice);
   const catalog = prices.map(item => item.product);
@@ -67,6 +73,29 @@ async function price(result: Interpretation, tools: FlowTools): Promise<Answer> 
       ? prices.filter(item => named.some(product => product.id === item.product.id))
       : prices;
   return plain(msg.prices(shown));
+}
+
+const QUESTION_ROUTES: Partial<Record<InterpretationTopic, FlowRoute>> = {
+  invite: 'invite',
+  hours: 'hours',
+  payments: 'payments',
+};
+
+export function intentRoute(result: Interpretation): FlowRoute {
+  switch (result.intent) {
+    case 'question':
+      return (result.topic && QUESTION_ROUTES[result.topic]) || 'knowledge';
+    case 'price':
+      return result.topic === 'delivery_fee' ? 'delivery_fee' : 'price';
+    case 'handoff':
+      return 'offer_agent';
+    case 'off_topic':
+    case 'offense':
+    case 'order':
+      return result.intent;
+    default:
+      return 'not_understood';
+  }
 }
 
 async function notSold(
@@ -87,11 +116,21 @@ async function answerFor(
   raw: string,
   tools: FlowTools,
 ): Promise<Answer | null> {
-  switch (result.intent) {
-    case 'question':
-      return question(result, raw, tools);
+  switch (intentRoute(result)) {
+    case 'invite':
+      return plain(msg.questionInvite);
+    case 'hours':
+      return hoursAnswer(tools);
+    case 'payments':
+      return paymentsAnswer(tools);
+    case 'knowledge':
+      return knowledgeAnswer(raw, tools);
     case 'price':
-      return price(result, tools);
+      return priceAnswer(result, tools);
+    case 'delivery_fee':
+      return offering(msg.deliveryFee);
+    case 'offer_agent':
+      return offering(msg.offerAgent);
     case 'off_topic':
       return plain(msg.offTopicRefusal);
     case 'offense':
@@ -109,9 +148,6 @@ export async function routeIntent(
   raw: string,
   tools: FlowTools,
 ): Promise<StepResult | null> {
-  if (result.intent === 'handoff') {
-    return handoff(state, tools.phone, requestReasonFor(state), tools);
-  }
   const answer = await answerFor(state, result, raw, tools);
   if (!answer) return null;
   if (state) {

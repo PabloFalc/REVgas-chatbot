@@ -529,14 +529,37 @@ describe('primeira mensagem com pedido', () => {
     });
   });
 
-  it('pedir atendente pela IA na primeira mensagem transfere', async () => {
+  it('pedir atendente só pela IA na primeira mensagem oferece o botão, sem transferir', async () => {
     const tools = createFakeTools({
       interpret: async () => ({ intent: 'handoff', confidence: 0.9 }),
     });
     const result = await new Conversation(tools).send(say('preciso de uma pessoa'));
+    expect(result).toEqual({
+      state: null,
+      replies: [buttons(msg.offerAgent, [handoffBtn, orderBtn])],
+    });
+    expect(tools.calls.map(call => call.name)).not.toContain('requestHandoff');
+  });
+
+  it('"atendente" digitado na primeira mensagem continua transferindo direto, sem IA', async () => {
+    const tools = createFakeTools();
+    const result = await new Conversation(tools).send(say('quero falar com um atendente'));
     expect(result).toEqual({ state: null, replies: [text(msg.handoffQueued)] });
-    const request = tools.calls.find(call => call.name === 'requestHandoff')?.args[0];
-    expect(request).toMatchObject({ reason: 'customer_request', summary: null });
+    const names = tools.calls.map(call => call.name);
+    expect(names).toContain('requestHandoff');
+    expect(names).not.toContain('interpret');
+  });
+
+  it('primeira mensagem só com convite para perguntar: "Fazer pedido", sem IA nem pedido', async () => {
+    const tools = createFakeTools();
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('tenho dúvidas'));
+    expect(result).toEqual({ state: null, replies: [buttons(msg.questionInvite, [orderBtn])] });
+    const names = tools.calls.map(call => call.name);
+    expect(names).not.toContain('interpret');
+    expect(names).not.toContain('answerQuestion');
+    expect(names).not.toContain('findCustomer');
+    expect(names).not.toContain('requestHandoff');
   });
 
   it('IA falhou na primeira mensagem', async () => {
@@ -598,6 +621,56 @@ describe('texto livre no meio do pedido', () => {
     });
     const result = await runFlow(paying, say('vocês entregam domingo?'), tools);
     expect(result).toEqual({ state: paying, replies: [offer(msg.notKnown), paymentButtons] });
+  });
+
+  it('convite para perguntar: texto fixo, sem IA, sem base, e repete a pergunta', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'other', confidence: 0.9 }),
+    });
+    const result = await runFlow(paying, say('quero que você tire dúvidas comigo'), tools);
+    expect(result).toEqual({
+      state: paying,
+      replies: [text(msg.questionInvite), paymentButtons],
+    });
+    expect(names(tools)).not.toContain('interpret');
+    expect(names(tools)).not.toContain('answerQuestion');
+    expect(names(tools)).toContain('resetMisunderstood');
+  });
+
+  it('convite que só a IA reconhece também responde fixo', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'question', topic: 'invite', confidence: 0.9 }),
+    });
+    const result = await runFlow(
+      paying,
+      say('me ajuda com umas coisas que eu queria saber?'),
+      tools,
+    );
+    expect(result).toEqual({
+      state: paying,
+      replies: [text(msg.questionInvite), paymentButtons],
+    });
+    expect(names(tools)).not.toContain('answerQuestion');
+  });
+
+  it('"não quero tirar minhas dúvidas" em askNeedsChange não transfere mesmo se a IA disser handoff', async () => {
+    const needsChange: OrderState = { ...paying, step: 'askNeedsChange', payment: money };
+    const asked = await asks.askNeedsChange?.(needsChange, createFakeTools());
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'handoff', confidence: 0.9 }),
+    });
+    const result = await runFlow(needsChange, say('não quero tirar minhas dúvidas'), tools);
+    expect(names(tools)).not.toContain('requestHandoff');
+    expect(result.state).toEqual(needsChange);
+    expect(result.replies).toEqual([offer(msg.offerAgent), ...(asked?.replies ?? [])]);
+  });
+
+  it('taxa de entrega no meio do pedido: texto fixo com oferta e estado igual', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({ intent: 'price', topic: 'delivery_fee', confidence: 0.9 }),
+    });
+    const result = await runFlow(paying, say('qual o valor da entrega?'), tools);
+    expect(result).toEqual({ state: paying, replies: [offer(msg.deliveryFee), paymentButtons] });
   });
 
   it('mensagem entendida zera o contador de "não entendi"', async () => {

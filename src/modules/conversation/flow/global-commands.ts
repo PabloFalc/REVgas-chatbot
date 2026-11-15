@@ -1,7 +1,13 @@
 import { normalizeText } from 'src/utils/text';
 import { detectEmergency } from './emergency';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
-import { HANDOFF_CHOICE, handoff, ORDER_START_CHOICE, requestReasonFor } from './handoff';
+import {
+  asksForAgent,
+  HANDOFF_CHOICE,
+  handoff,
+  ORDER_START_CHOICE,
+  requestReasonFor,
+} from './handoff';
 import { textOf } from './input';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
@@ -10,7 +16,6 @@ import { asks, start } from './steps';
 import { cancelAfterFailedSale } from './steps/summary.step';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
-const STORE = ['atendente', 'falar com alguem', 'humano'];
 const DISCOUNT = ['desconto', 'promocao', 'mais barato'];
 
 export async function globalCommand(
@@ -49,7 +54,7 @@ export async function globalCommand(
     return { state: null, replies: [textReply(msg.cancelled)] };
   }
 
-  if (STORE.some(word => text.includes(word))) {
+  if (asksForAgent(raw)) {
     return handoff(state, input.phone, requestReasonFor(state), tools);
   }
 

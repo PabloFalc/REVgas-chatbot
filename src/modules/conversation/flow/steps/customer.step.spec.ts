@@ -85,6 +85,14 @@ describe('start', () => {
 describe('askName', () => {
   const state = { step: 'askName' as const, customer: {} };
 
+  it('"tenho dúvidas" não vira nome: convite para perguntar e pede o nome de novo', async () => {
+    const tools = createFakeTools();
+    const result = await handlers.askName?.(state, say('tenho dúvidas'), tools);
+    expect(result?.state).toEqual(state);
+    expect(result?.replies).toEqual([text(msg.questionInvite), text(msg.askName)]);
+    expect(tools.calls.map(call => call.name)).not.toContain('interpret');
+  });
+
   it('texto com palavra de pedido que a IA diz não ser pedido vira o nome', async () => {
     const tools = createFakeTools({
       interpret: async () => ({ intent: 'other', confidence: 0.9 }),
