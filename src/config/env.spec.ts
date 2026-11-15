@@ -27,6 +27,13 @@ describe('envConfigSchema', () => {
     expect(env.REVGAS_API_URL).toBe('https://api.revgas.com/v1');
   });
 
+  it('LOG_FILE é opcional e vazio fica não definido', () => {
+    expect(envConfigSchema.parse({ ...base, LOG_FILE: '' }).LOG_FILE).toBeUndefined();
+    expect(envConfigSchema.parse({ ...base, LOG_FILE: 'logs/chat.log' }).LOG_FILE).toBe(
+      'logs/chat.log',
+    );
+  });
+
   it('exige CORS_ORIGIN em produção', () => {
     const result = envConfigSchema.safeParse({ ...base, NODE_ENV: 'production', CORS_ORIGIN: '' });
     expect(result.success).toBe(false);

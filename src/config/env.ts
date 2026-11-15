@@ -13,6 +13,7 @@ export const envConfigSchema = z
       emptyAsUndefined,
       z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
     ),
+    LOG_FILE: z.preprocess(emptyAsUndefined, z.string().min(1).optional()),
 
     // BETTER AUTH (standby)
     BETTER_AUTH_SECRET: z.preprocess(emptyAsUndefined, z.string().min(32).optional()),
