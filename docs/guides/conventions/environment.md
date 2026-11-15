@@ -27,6 +27,7 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 | `PORT` | Não | `3100` | Porta HTTP. |
 | `HOST` | Não | `0.0.0.0` | Interface de bind. `0.0.0.0` aceita conexões externas (necessário em container). |
 | `LOG_LEVEL` | Não | por `NODE_ENV` (ver abaixo) | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace` \| `silent`. Sobrescreve o nível do logger (Pino). Sem ela, o default é `debug` em dev, `info` em produção e `silent` em test. Use para subir/baixar a verbosidade sem editar código — ex.: `LOG_LEVEL=trace` ao caçar um bug, ou `LOG_LEVEL=debug` para ligar logs ao depurar um teste. |
+| `LOG_FILE` | Não | — | Caminho de um arquivo para os logs (a pasta é criada; acrescenta ao fim). Com ela, nada de log sai no terminal: em dev o texto é o mesmo do `pino-pretty`, sem cores; fora de dev, JSON. O `pnpm chat` liga sozinho (`logs/chat.log`, ver [chat-simulator.md](./chat-simulator.md)). |
 
 > **Logger (`src/config/plugins/pino.config.ts`).** Em **dev** a saída é colorida e legível
 > (`pino-pretty`, prefixo `[Contexto]`); em **produção** é JSON estruturado; em **test** é silenciada

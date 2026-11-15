@@ -22,6 +22,7 @@ Package manager is **pnpm** — use it for everything.
 | Integration checks | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` |
 | Knowledge base | `pnpm kb:ingest` (embeds `knowledge/base`; needs the migrations applied) |
 | Local Chatwoot (Docker profile) | `pnpm chatwoot:prepare` · `pnpm chatwoot:up` · `pnpm chatwoot:stop` |
+| Terminal chat simulator (instead of `start:dev`) | `pnpm chat` · `pnpm chat --phone 5586988887777 --revgas hybrid` |
 
 **Commits:** `git commit` directly, conventional commits (`feat:`, `fix:`, `chore:`…).
 
@@ -41,6 +42,8 @@ src/
                 assistant/ (LLM interpretation of free text), handoff/ (queue to a human
                 agent via Chatwoot), knowledge/ (RAG over the base, answers questions in the
                 flow), auth/ (on standby)
+  cli/          dev entry points run from dist/: kb-ingest, chat (terminal simulator, `pnpm chat`)
+  server.ts     createServer() — the Fastify app shared by main.ts and `pnpm chat`
 knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluation/ (rag:check questions)
 ```
 
@@ -104,6 +107,6 @@ Read the matching guide before touching an area:
 - `docs/guides/integrations/` — `revgas.md` (modes, never retry POST), `whatsapp.md`,
   `llm.md`, `viacep.md`, `chatwoot.md` (human handoff desk, local Docker)
 - `docs/guides/modules/auth.md` · `docs/guides/modules/knowledge.md` · `docs/guides/services/email-service.md`
-- `docs/guides/conventions/` — `environment.md` (env vars), `testing.md`, `api-doc.md`,
-  `ci-cd.md` (develop/staging/main gitflow)
+- `docs/guides/conventions/` — `environment.md` (env vars), `testing.md`, `chat-simulator.md`
+  (`pnpm chat`), `api-doc.md`, `ci-cd.md` (develop/staging/main gitflow)
 - `docs/security/SECURITY.md` — attack vectors, mitigations, secrets

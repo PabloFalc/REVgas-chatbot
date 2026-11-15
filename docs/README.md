@@ -55,6 +55,9 @@ correspondente.
 - [testing.md](./guides/conventions/testing.md) — como escrever testes (unit + e2e), os helpers
   `createApp(extraImports)`, os helpers `deleteBy`/`signIn`/`signUpVerified`/`bearer`, limpeza
   escopada e as armadilhas do e2e
+- [chat-simulator.md](./guides/conventions/chat-simulator.md) — `pnpm chat`: conversar com o bot
+  pelo terminal (WhatsApp fake, RevGás fake por padrão) vendo a conversa no Chatwoot local;
+  passo a passo, comandos, logs em arquivo e decisões
 - [ci-cd.md](./guides/conventions/ci-cd.md) — os workflows do `.github` e o gitflow
   develop/staging/main
 

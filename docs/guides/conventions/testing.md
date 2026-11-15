@@ -15,6 +15,10 @@ Comandos:
 | E2e | `pnpm test:e2e` (precisa de infra: `pnpm docker:init`) |
 | Infra local | `pnpm docker:init` / `pnpm docker:stop` |
 
+> **Testar a conversa na mão, sem WhatsApp:** `pnpm chat` sobe o app e abre um chat no terminal,
+> com o Chatwoot local mostrando a mesma conversa. Passo a passo em
+> [chat-simulator.md](./chat-simulator.md).
+
 ## Testes unitários
 
 Para classes com dependências, monte um módulo de teste com `Test.createTestingModule` e
