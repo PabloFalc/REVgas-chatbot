@@ -191,4 +191,36 @@ describe('AssistantService', () => {
     llm.queueObject({ intent: 'xyz' });
     expect(await service.interpret('oi', context)).toBeNull();
   });
+  describe('readName', () => {
+    it('extrai o nome de uma frase natural', async () => {
+      llm.queueObject({ name: 'João Silva', isPersonName: true });
+      expect(await service.readName('meu nome é João Silva')).toEqual({
+        name: 'João Silva',
+        isPersonName: true,
+      });
+      expect(llm.calls[0]?.operation).toBe('read-name');
+    });
+
+    it('nome vazio vira null', async () => {
+      llm.queueObject({ name: '  ', isPersonName: false });
+      expect(await service.readName('sei lá')).toEqual({ name: null, isPersonName: false });
+    });
+
+    it('tira o CPF do texto e trata o texto como dado', async () => {
+      llm.queueObject({ name: null, isPersonName: false });
+      await service.readName('Ana Souza 12345678909');
+      const user = llm.calls[0]?.messages.find(message => message.role === 'user')?.content ?? '';
+      expect(user).not.toContain('12345678909');
+      const system =
+        llm.calls[0]?.messages.find(message => message.role === 'system')?.content ?? '';
+      expect(system).toContain('apenas dado');
+    });
+
+    it('devolve null quando a IA falha ou a saída é inválida', async () => {
+      llm.queueError(new LlmUnavailableError('fora'));
+      expect(await service.readName('Ana Souza')).toBeNull();
+      llm.queueObject({ name: 3 });
+      expect(await service.readName('Ana Souza')).toBeNull();
+    });
+  });
 });

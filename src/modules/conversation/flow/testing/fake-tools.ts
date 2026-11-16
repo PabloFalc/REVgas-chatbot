@@ -1,4 +1,4 @@
-import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
+import type { Interpretation, NameReading } from 'src/modules/assistant/contracts/assistant.types';
 import type { BasePrice } from 'src/modules/catalog/contracts/catalog.types';
 import type { HandoffOutcome, ServiceHoursInfo } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
@@ -64,6 +64,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
     resetMisunderstood: record('resetMisunderstood', undefined),
     registerOffense: record('registerOffense', 1),
     interpret: record('interpret', null as Interpretation | null),
+    readName: record('readName', null as NameReading | null),
     listProducts: record('listProducts', [
       { id: 1, name: 'Botijão P13' },
       { id: 2, name: 'Botijão P45' },

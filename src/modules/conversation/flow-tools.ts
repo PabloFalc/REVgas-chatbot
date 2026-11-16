@@ -16,6 +16,7 @@ import type { FlowTools, OrderState } from './flow/flow.types';
 const INTERPRET_COST = 1;
 const QUESTION_COST = 2;
 const ADDRESS_COST = 1;
+const NAME_COST = 1;
 
 @Injectable()
 export class FlowToolsService {
@@ -55,6 +56,10 @@ export class FlowToolsService {
       interpret: async (text, context) => {
         if (!(await this.withinLimit(phone, INTERPRET_COST))) return null;
         return this.assistant.interpret(text, context);
+      },
+      readName: async text => {
+        if (!(await this.withinLimit(phone, NAME_COST))) return null;
+        return this.assistant.readName(text);
       },
       answerQuestion: async text => {
         if (!(await this.withinLimit(phone, QUESTION_COST))) {

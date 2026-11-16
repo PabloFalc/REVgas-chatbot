@@ -29,7 +29,10 @@ function setup() {
   };
   const orders = { createSale: vi.fn(async () => 7), findRecentSale: vi.fn(async () => null) };
   const addresses = { fromCep: vi.fn(async () => null), fromText: vi.fn(async () => null) };
-  const assistant = { interpret: vi.fn(async () => null) };
+  const assistant = {
+    interpret: vi.fn(async () => null),
+    readName: vi.fn(async () => ({ name: 'Ana Souza', isPersonName: true })),
+  };
   const conversations = {
     isVerified: vi.fn(async () => true),
     markVerified: vi.fn(async () => undefined),
@@ -179,6 +182,28 @@ describe('FlowToolsService.forPhone', () => {
     expect(assistant.interpret).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledOnce();
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
+  });
+
+  it('readName consome 1 e, dentro do limite, chama o assistente', async () => {
+    const { service, aiUsage, assistant } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await expect(tools.readName('sou a Ana Souza')).resolves.toEqual({
+      name: 'Ana Souza',
+      isPersonName: true,
+    });
+
+    expect(aiUsage.consume).toHaveBeenCalledWith(PHONE, 1);
+    expect(assistant.readName).toHaveBeenCalledWith('sou a Ana Souza');
+  });
+
+  it('readName acima do limite devolve null sem chamar o assistente', async () => {
+    const { service, aiUsage, assistant } = setup();
+    aiUsage.consume.mockResolvedValueOnce(false);
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await expect(tools.readName('Ana Souza')).resolves.toBeNull();
+    expect(assistant.readName).not.toHaveBeenCalled();
   });
 
   it('addressFromText consome 1 e, dentro do limite, delega ao AddressService', async () => {

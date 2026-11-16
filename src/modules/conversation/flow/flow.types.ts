@@ -6,6 +6,7 @@ import type {
 import type {
   Interpretation,
   InterpretContext,
+  NameReading,
 } from 'src/modules/assistant/contracts/assistant.types';
 import type {
   BasePrice,
@@ -122,6 +123,7 @@ export interface FlowTools {
   addressFromCep(cep: string): Promise<AddressDraft | null>;
   addressFromText(text: string): Promise<AddressDraft | null>;
   interpret(text: string, context: InterpretContext): Promise<Interpretation | null>;
+  readName(text: string): Promise<NameReading | null>;
   answerQuestion(text: string): Promise<KnowledgeAnswer>;
   listProducts(customer: PriceCustomer): Promise<Product[]>;
   basePrices(): Promise<BasePrice[]>;

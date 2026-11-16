@@ -16,3 +16,8 @@ export interface Interpretation {
   newAddress?: boolean;
   confidence: number;
 }
+
+export interface NameReading {
+  name: string | null;
+  isPersonName: boolean;
+}
