@@ -182,6 +182,16 @@ describe('AssistantService', () => {
     );
   });
 
+  it('dúvida com palavra de pedido vira question no prompt', async () => {
+    llm.queueObject({ ...base, intent: 'question' });
+    await service.interpret('quero trocar o casco do botijão mas ele está danificado', context);
+    const system = llm.calls[0]?.messages.find(message => message.role === 'system')?.content ?? '';
+    expect(system).toContain(
+      'Se a mensagem traz uma dúvida, um problema ou uma condição sobre o serviço',
+    );
+    expect(system).toContain('quero trocar o casco do botijão mas ele está danificado');
+  });
+
   it('devolve null quando a IA falha', async () => {
     llm.queueError(new LlmUnavailableError('fora'));
     expect(await service.interpret('oi', context)).toBeNull();

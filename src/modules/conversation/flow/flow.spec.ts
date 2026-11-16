@@ -463,6 +463,30 @@ describe('primeira mensagem com pedido', () => {
     expect(tools.calls.map(call => call.name)).not.toContain('findCustomer');
   });
 
+  it('dúvida com palavra de pedido na primeira mensagem é respondida, sem iniciar o pedido', async () => {
+    const tools = createFakeTools({
+      interpret: async () => ({
+        intent: 'question',
+        topic: 'general',
+        products: ['Botijão P13'],
+        confidence: 0.9,
+      }),
+      answerQuestion: async () => ({
+        kind: 'answered',
+        text: 'Cascos amassados podem ser recusados na troca.',
+        sources: ['T1'],
+      }),
+    });
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('quero trocar o casco do botijão mas ele está danificado'));
+    expect(result).toEqual({
+      state: null,
+      replies: [buttons('Cascos amassados podem ser recusados na troca.', [orderBtn])],
+    });
+    expect(chat.state).toBeNull();
+    expect(tools.calls.map(call => call.name)).not.toContain('findCustomer');
+  });
+
   it('dúvida respondida na primeira mensagem e depois "Fazer pedido"', async () => {
     const tools = createFakeTools({
       interpret: async () => ({ intent: 'question', topic: 'general', confidence: 0.9 }),

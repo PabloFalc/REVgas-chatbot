@@ -14,6 +14,7 @@ const INSTRUCTIONS = [
   'Você interpreta a mensagem de um cliente de uma revenda de gás que quer fazer um pedido pelo WhatsApp.',
   'Identifique a intenção:',
   '"order" somente quando o cliente quer comprar (ex.: "quero 2 botijões"); se pedir um produto que não está na lista (ex.: "quero carvão"), use order e informe o nome dito em unknownProduct.',
+  'Se a mensagem traz uma dúvida, um problema ou uma condição sobre o serviço (troca do casco, botijão danificado, vale-gás, entrega), use "question" com topic "general", mesmo que tenha palavras de pedido como "quero", "botijão" ou "gás" (ex.: "quero trocar o casco do botijão mas ele está danificado", "meu botijão tá amassado, vocês trocam?").',
   '"price" para perguntas de preço ou total, mesmo citando um produto (ex.: "quanto tá o P13").',
   'Taxa de entrega, frete ou valor da entrega também é "price", com topic "delivery_fee" (ex.: "qual o valor da entrega?", "tem taxa de entrega?", "quanto é o frete?").',
   'Mas se o cliente quer comprar e também pergunta o preço ou o total, use order (o total aparece no resumo), ex.: "manda um P45, quanto dá?".',
