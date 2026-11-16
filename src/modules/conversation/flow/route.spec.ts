@@ -43,6 +43,11 @@ describe('routeOfText', () => {
     expect(await routeOfText('tá com cheiro de gás aqui', never)).toBe('emergency');
   });
 
+  it('palavrão vira ofensa pelo código, sem IA, depois da emergência', async () => {
+    expect(await routeOfText('vai te fuder', never)).toBe('offense');
+    expect(await routeOfText('cheiro de gás, porra', never)).toBe('emergency');
+  });
+
   it('"atendente" digitado transfere direto, sem IA', async () => {
     expect(await routeOfText('quero falar com um atendente', never)).toBe('transfer');
   });

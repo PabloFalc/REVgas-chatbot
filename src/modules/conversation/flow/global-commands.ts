@@ -1,3 +1,5 @@
+import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
+import { hasProfanity } from 'src/utils/profanity';
 import { normalizeText } from 'src/utils/text';
 import { detectEmergency } from './emergency';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
@@ -9,6 +11,7 @@ import {
   requestReasonFor,
 } from './handoff';
 import { textOf } from './input';
+import { routeIntent } from './intent';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
 import { text as textReply } from './replies';
@@ -17,6 +20,7 @@ import { cancelAfterFailedSale } from './steps/summary.step';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
 const DISCOUNT = ['desconto', 'promocao', 'mais barato'];
+const OFFENSE: Interpretation = { intent: 'offense', confidence: 1 };
 
 export async function globalCommand(
   state: OrderState | null,
@@ -33,6 +37,8 @@ export async function globalCommand(
     const outcome = await handoff(state, input.phone, 'emergency', tools);
     return { ...outcome, replies: [textReply(msg.emergency), ...outcome.replies] };
   }
+
+  if (raw !== null && hasProfanity(raw)) return routeIntent(state, OFFENSE, raw, tools);
 
   if (input.content.type === 'choice' && input.content.id === HANDOFF_CHOICE) {
     return handoff(state, input.phone, requestReasonFor(state), tools);

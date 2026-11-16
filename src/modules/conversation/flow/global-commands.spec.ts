@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FlowInput, OrderState } from './flow.types';
 import { globalCommand } from './global-commands';
+import { handoffButton, offer, orderStartButton } from './handoff';
 import { msg } from './messages';
-import { text } from './replies';
+import { buttons, text } from './replies';
 import { asks } from './steps';
 import { createFakeTools, FAKE_PHONE } from './testing/fake-tools';
 
@@ -218,5 +219,56 @@ describe('globalCommand', () => {
     expect(await globalCommand(state, say('Maria da Silva'), tools)).toBeNull();
     const button = { phone: FAKE_PHONE, content: { type: 'choice', id: 'qty:1' } } as const;
     expect(await globalCommand(state, button, tools)).toBeNull();
+  });
+  describe('palavrão no texto, sem IA', () => {
+    const named: OrderState = { step: 'askCpf', customer: { name: 'Maria da Silva' } };
+
+    it('no askName não vira nome: ofensa e repete a pergunta, sem IA', async () => {
+      asks.askName = async current => ({ state: current, replies: [question] });
+      const tools = createFakeTools();
+      const interpret = vi.spyOn(tools, 'interpret');
+      const result = await globalCommand(state, say('vai te fuder filho da puta'), tools);
+      expect(result).toEqual({ state, replies: [text(msg.offense), question] });
+      expect(interpret).not.toHaveBeenCalled();
+      expect(tools.calls.map(call => call.name)).toContain('registerOffense');
+    });
+
+    it('da 2ª ofensa em diante oferece o atendente', async () => {
+      const result = await globalCommand(
+        named,
+        say('cono viado'),
+        createFakeTools({ registerOffense: async () => 2 }),
+      );
+      expect(result?.state).toEqual(named);
+      expect(result?.replies[0]).toEqual(offer(msg.offense));
+      expect(result?.replies).toHaveLength(2);
+    });
+
+    it('na primeira mensagem responde com o botão "Fazer pedido", sem criar pedido', async () => {
+      const result = await globalCommand(null, say('porra'), createFakeTools());
+      expect(result).toEqual({
+        state: null,
+        replies: [buttons(msg.offense, [orderStartButton()])],
+      });
+      const again = await globalCommand(
+        null,
+        say('porra'),
+        createFakeTools({ registerOffense: async () => 2 }),
+      );
+      expect(again?.replies).toEqual([buttons(msg.offense, [handoffButton(), orderStartButton()])]);
+    });
+
+    it('emergência vem antes do palavrão', async () => {
+      const result = await globalCommand(
+        state,
+        say('tá vazando a porra do gás'),
+        createFakeTools(),
+      );
+      expect(result?.replies[0]).toEqual(text(msg.emergency));
+    });
+
+    it('nome de rua com pedaço de palavrão não é ofensa', async () => {
+      expect(await globalCommand(state, say('Rua Fodor Cunha'), createFakeTools())).toBeNull();
+    });
   });
 });
