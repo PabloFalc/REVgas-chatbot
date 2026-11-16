@@ -6,8 +6,10 @@ import type {
 import type {
   Interpretation,
   InterpretContext,
+  NameReading,
 } from 'src/modules/assistant/contracts/assistant.types';
 import type {
+  BasePrice,
   PaymentOption,
   PriceCustomer,
   Product,
@@ -24,6 +26,7 @@ import type {
   HandoffRequest,
   ServiceHoursInfo,
 } from 'src/modules/handoff/contracts/handoff.types';
+import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
 import type { SaleOrder } from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
@@ -94,6 +97,7 @@ export interface StepResult {
   state: OrderState | null;
   replies: Reply[];
   saleId?: number;
+  misunderstood?: true;
 }
 
 export type AskFn = (state: OrderState, tools: FlowTools) => Promise<StepResult>;
@@ -105,6 +109,7 @@ export type HandleFn = (
 ) => Promise<StepResult>;
 
 export interface FlowTools {
+  phone: string;
   findCustomer(phone: string): Promise<Customer | null>;
   createCustomer(input: NewCustomer): Promise<Customer>;
   customerHistory(customerId: number): Promise<CustomerHistory>;
@@ -112,10 +117,17 @@ export interface FlowTools {
   markVerified(phone: string, customerId: number): Promise<void>;
   registerCpfMismatch(phone: string): Promise<number>;
   isBlocked(phone: string): Promise<boolean>;
+  registerMisunderstood(): Promise<number>;
+  resetMisunderstood(): Promise<void>;
+  registerOffense(): Promise<number>;
   addressFromCep(cep: string): Promise<AddressDraft | null>;
   addressFromText(text: string): Promise<AddressDraft | null>;
   interpret(text: string, context: InterpretContext): Promise<Interpretation | null>;
+  readName(text: string): Promise<NameReading | null>;
+  answerQuestion(text: string): Promise<KnowledgeAnswer>;
+  knowledgeTopics(): Promise<string[]>;
   listProducts(customer: PriceCustomer): Promise<Product[]>;
+  basePrices(): Promise<BasePrice[]>;
   listPaymentOptions(): Promise<PaymentOption[]>;
   quote(
     customer: PriceCustomer,

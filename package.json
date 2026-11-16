@@ -31,7 +31,10 @@
     "test:debug": "vitest --reporter=verbose",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "revgas:check": "vitest run --config vitest.config.live.ts scripts/revgas.live-check.spec.ts",
-    "llm:check": "vitest run --config vitest.config.live.ts scripts/llm.live-check.spec.ts"
+    "kb:ingest": "nest build && node dist/cli/kb-ingest.js",
+    "llm:check": "vitest run --config vitest.config.live.ts scripts/llm.live-check.spec.ts",
+    "rag:check": "vitest run --config vitest.config.live.ts scripts/rag.live-check.spec.ts",
+    "chat": "nest build && node dist/cli/chat.js"
   },
   "dependencies": {
     "@fastify/compress": "^8.3.1",

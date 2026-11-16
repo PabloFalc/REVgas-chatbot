@@ -13,6 +13,12 @@ export interface Quote {
   total: number;
 }
 
+export interface BasePrice {
+  product: Product;
+  minPrice: number;
+  varies: boolean;
+}
+
 export interface PriceCustomer {
   id?: number;
   tagId?: number | null;

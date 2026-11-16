@@ -20,6 +20,10 @@ export const db = drizzle(pool, {
   casing: 'snake_case',
 });
 
+export async function closeDatabasePool(): Promise<void> {
+  if (!pool.ended) await pool.end();
+}
+
 // ? DI do Nest para utilizar como provider
 export const drizzleClient = {
   provide: DRIZZLE,

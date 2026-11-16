@@ -1,7 +1,7 @@
 import type { Address } from 'src/modules/address/contracts/address.types';
-import type { Product } from 'src/modules/catalog/contracts/catalog.types';
+import type { BasePrice, Product } from 'src/modules/catalog/contracts/catalog.types';
 import { formatMoney } from 'src/utils/money';
-import type { Opening } from 'src/utils/service-hours';
+import type { Opening, ServiceWindow } from 'src/utils/service-hours';
 import type { OrderState, RepeatOffer } from './flow.types';
 
 function storeContact(phone?: string): string {
@@ -32,6 +32,56 @@ function openingWhen(opening: Opening): string {
   if (opening.inDays === 0) return `hoje às ${time}`;
   if (opening.inDays === 1) return `amanhã às ${time}`;
   return `${WEEKDAYS[opening.weekday]} às ${time}`;
+}
+
+const SHORT_DAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+function joinList(items: string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} e ${items.at(-1)}`;
+}
+
+function clock(minutes: number): string {
+  const hours = String(Math.floor(minutes / 60)).padStart(2, '0');
+  return `${hours}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function dayHours(windows: ServiceWindow[], day: number): string {
+  return joinList(
+    windows
+      .filter(window => window.day === day)
+      .sort((a, b) => a.start - b.start)
+      .map(window => `${clock(window.start)} às ${clock(window.end)}`),
+  );
+}
+
+function dayRange(days: number[]): string {
+  const names = days.map(day => SHORT_DAYS[day]);
+  if (names.length <= 2) return joinList(names);
+  return `${names[0]} a ${names.at(-1)}`;
+}
+
+function formatWindows(windows: ServiceWindow[]): string {
+  const groups: { days: number[]; hours: string }[] = [];
+  let previous: number | null = null;
+  for (const day of WEEK_ORDER) {
+    const hours = dayHours(windows, day);
+    if (!hours) {
+      previous = null;
+      continue;
+    }
+    const last = groups.at(-1);
+    if (last && previous !== null && last.hours === hours) last.days.push(day);
+    else groups.push({ days: [day], hours });
+    previous = day;
+  }
+  return groups.map(group => `${dayRange(group.days)}, ${group.hours}`).join('; ');
+}
+
+function priceLine({ product, minPrice, varies }: BasePrice): string {
+  const price = formatMoney(minPrice);
+  return `- ${product.name}: ${varies ? `a partir de ${price}` : price}`;
 }
 
 export const msg = {
@@ -107,6 +157,11 @@ export const msg = {
   cancelled: 'Pedido cancelado. É só mandar mensagem quando quiser pedir.',
   talkToStore: (phone?: string) => storeContact(phone),
   talkToAgent: 'Falar com atendente',
+  orderStart: 'Fazer pedido',
+  wantToOrder: 'Quer fazer um pedido?',
+  wantAgentOrOrder: 'Quer falar com um atendente ou fazer um pedido?',
+  emergency:
+    'Se você sente cheiro de gás ou suspeita de vazamento: feche o registro do botijão, não acenda fogo nem mexa em interruptores ou tomadas, abra portas e janelas, saia do local e ligue para os Bombeiros no 193.',
   handoffQueued: 'Já chamei um atendente. Enquanto isso, posso continuar te ajudando por aqui.',
   handoffAlreadyQueued: 'Você já está na fila, um atendente vai te chamar.',
   handoffClosed: (opening: Opening | null) =>
@@ -114,8 +169,33 @@ export const msg = {
       ? `Estamos fechados agora. Abrimos ${openingWhen(opening)}. Quando abrirmos, mande um "oi" aqui que um atendente te responde.`
       : 'Estamos fechados agora. Quando abrirmos, mande um "oi" aqui que um atendente te responde.',
   noDiscount: 'O preço é o da tabela da revenda.',
-  offTopic: (phone?: string) =>
-    `Essa dúvida eu não consigo responder por aqui. ${storeContact(phone)}`,
+  offTopicRefusal:
+    'Sou o assistente da revenda: posso te ajudar com pedidos e dúvidas sobre gás e entrega.',
+  offense: 'Vamos manter a conversa respeitosa. Posso te ajudar com seu pedido de gás.',
+  notKnown: 'Não tenho essa informação. Quer falar com um atendente?',
+  questionInvite:
+    'Claro! Pode perguntar. Consigo te ajudar com horário, entrega, formas de pagamento, vale-gás, troca de botijão e segurança.',
+  capabilities: (topics: string[]) =>
+    ['Posso tirar dúvidas sobre:', ...topics.map(topic => `- ${topic}`), 'É só perguntar.'].join(
+      '\n',
+    ),
+  offerAgent: 'Se quiser falar com um atendente, é só tocar no botão.',
+  deliveryFee:
+    'Não tenho o valor da entrega por aqui. O resumo do pedido mostra o total antes de você confirmar. Quer falar com um atendente?',
+  stuck: 'Não estou conseguindo entender. Quer falar com um atendente?',
+  noServiceHours:
+    'Não tenho o horário de atendimento cadastrado aqui. Quer falar com um atendente?',
+  noPrice: 'Não consegui consultar os preços agora. Quer falar com um atendente?',
+  serviceHours: (windows: ServiceWindow[], open: boolean) =>
+    `Nosso horário de atendimento: ${formatWindows(windows)}.\n${open ? 'Estamos abertos agora.' : 'Estamos fechados agora.'}`,
+  paymentsAccepted: (labels: string[]) => `Aceitamos: ${joinList(labels)}.`,
+  prices: (list: BasePrice[]) =>
+    ['Preços de hoje:', ...list.map(priceLine), 'O total aparece no resumo do pedido.'].join('\n'),
+  notCarried: (item: string | null) => (item ? `Não temos ${item}.` : 'Não temos esse produto.'),
+  notSold: (item: string | null, products: string[]) => {
+    const missing = msg.notCarried(item);
+    return products.length > 0 ? `${missing} Temos: ${joinList(products)}.` : missing;
+  },
   notUnderstood: 'Não entendi.',
   chooseAmbiguousProduct: 'Qual desses você quer?',
   noted: (parts: string[]) => `Anotado: ${parts.join(', ')}.`,

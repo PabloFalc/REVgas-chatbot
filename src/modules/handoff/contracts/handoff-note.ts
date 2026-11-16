@@ -4,7 +4,10 @@ import type { HandoffOrderSummary, HandoffReason } from './handoff.types';
 export const REASON_LABELS: Record<HandoffReason, string> = {
   customer_request: 'Cliente pediu atendente',
   sale_failed: 'Falha ao registrar a venda na RevGás',
+  emergency: 'Emergência: cliente relatou possível vazamento de gás',
 };
+
+export const EMERGENCY_NOTE = REASON_LABELS.emergency;
 
 export const EXPIRED_NOTE = 'Handoff expirado, o bot voltou a atender.';
 

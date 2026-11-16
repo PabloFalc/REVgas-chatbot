@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: revgas-pg
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-docker}
@@ -9,7 +9,7 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_pgvector_data:/var/lib/postgresql/data
     healthcheck:
       test:
         [
@@ -105,7 +105,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  postgres_pgvector_data:
   redis_data:
   chatwoot_pg_data:
   chatwoot_redis_data:

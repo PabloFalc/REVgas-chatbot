@@ -3,7 +3,7 @@ import { FakeChatwootClient } from 'src/integrations/chatwoot/fake-chatwoot.clie
 import { parseServiceHours, type ServiceWindow } from 'src/utils/service-hours';
 import { describe, expect, it, vi } from 'vitest';
 import type { DeskContact, DeskThread, HandoffState } from './contracts/handoff.types';
-import { EXPIRED_NOTE } from './contracts/handoff-note';
+import { EMERGENCY_NOTE, EXPIRED_NOTE } from './contracts/handoff-note';
 import { DeskGateway } from './desk.gateway';
 import type { HandoffRepository } from './handoff.repository';
 import { HandoffService, type TurnRecord } from './handoff.service';
@@ -123,6 +123,38 @@ describe('HandoffService', () => {
       const outcome = await service.requestHandoff(request);
       expect(outcome.status).toBe('alreadyQueued');
       expect(allMessages(client)).toHaveLength(before);
+    });
+
+    it('emergência já na fila deixa a nota de emergência e devolve alreadyQueued', async () => {
+      const { service, client } = setup();
+      await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+      const before = allMessages(client).length;
+      const outcome = await service.requestHandoff({
+        phone: PHONE,
+        reason: 'emergency',
+        summary: null,
+      });
+      expect(outcome.status).toBe('alreadyQueued');
+      const messages = allMessages(client);
+      expect(messages).toHaveLength(before + 1);
+      expect(messages.at(-1)).toMatchObject({ content: EMERGENCY_NOTE, private: true });
+    });
+
+    it('emergência na fila com o Chatwoot fora avisa e ainda devolve alreadyQueued', async () => {
+      const { service, client, logger } = setup();
+      await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+      client.failNext();
+      const outcome = await service.requestHandoff({
+        phone: PHONE,
+        reason: 'emergency',
+        summary: null,
+      });
+      expect(outcome.status).toBe('alreadyQueued');
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ component: 'handoff', error: 'unavailable' }),
+        expect.any(String),
+      );
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
     });
 
     it('estado active devolve active', async () => {
@@ -579,6 +611,61 @@ describe('HandoffService', () => {
       await expect(
         service.forwardToAgent(PHONE, { type: 'text', text: 'oi' }),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('flagEmergency', () => {
+    it('deixa a nota interna de emergência na conversa do atendimento', async () => {
+      const { service, client, states } = setup();
+      const { id } = await client.createConversation({
+        contactId: 1,
+        sourceId: 's',
+        status: 'open',
+      });
+      states.set(PHONE, {
+        status: 'active',
+        conversationId: id,
+        reason: 'agent',
+        since: minutesAgo(10),
+        lastAgentAt: minutesAgo(5),
+      });
+      await service.flagEmergency(PHONE);
+      const messages = client.conversations.get(id)?.messages ?? [];
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({
+        content: 'Emergência: cliente relatou possível vazamento de gás',
+        private: true,
+      });
+    });
+
+    it('sem handoff ou com o desk desativado não faz nada', async () => {
+      const { service, client } = setup();
+      const spy = vi.spyOn(client, 'createMessage');
+      await service.flagEmergency(PHONE);
+      expect(spy).not.toHaveBeenCalled();
+      const off = setup({ disabled: true });
+      off.states.set(PHONE, {
+        status: 'active',
+        conversationId: 1,
+        reason: 'agent',
+        since: minutesAgo(5),
+      });
+      await expect(off.service.flagEmergency(PHONE)).resolves.toBeUndefined();
+    });
+
+    it('falha do Chatwoot avisa sem o telefone e não lança', async () => {
+      const { service, client, states, logger } = setup();
+      states.set(PHONE, {
+        status: 'active',
+        conversationId: 1,
+        reason: 'agent',
+        since: minutesAgo(5),
+        lastAgentAt: minutesAgo(1),
+      });
+      client.failNext();
+      await expect(service.flagEmergency(PHONE)).resolves.toBeUndefined();
+      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
     });
   });
 

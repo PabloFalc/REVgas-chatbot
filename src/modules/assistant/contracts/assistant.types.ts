@@ -3,12 +3,27 @@ export interface InterpretContext {
   payments: { type: string; label: string }[];
 }
 
+export type InterpretationTopic =
+  | 'hours'
+  | 'payments'
+  | 'general'
+  | 'invite'
+  | 'capabilities'
+  | 'delivery_fee';
+
 export interface Interpretation {
-  intent: 'order' | 'question' | 'other';
+  intent: 'order' | 'question' | 'price' | 'handoff' | 'off_topic' | 'offense' | 'other';
+  topic?: InterpretationTopic;
+  unknownProduct?: string;
   products?: string[];
   quantity?: number;
   payment?: string;
   address?: string;
   newAddress?: boolean;
   confidence: number;
+}
+
+export interface NameReading {
+  name: string | null;
+  isPersonName: boolean;
 }

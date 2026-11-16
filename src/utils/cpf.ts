@@ -25,6 +25,19 @@ export function removeCpfs(text: string): string {
   return text.replace(CPF_PATTERN, '');
 }
 
+const DIGIT_RUN_PATTERN = /\d+(?:[\s./-]+\d+)*/g;
+
+export function removeLongDigitRuns(text: string, minDigits = 8): string {
+  return text.replace(DIGIT_RUN_PATTERN, run => (onlyDigits(run).length >= minDigits ? '' : run));
+}
+
+const CPF_MENTION_PATTERN =
+  /(?<![\p{L}\p{N}])(c\.?p\.?f\.?(?:(?:[\s:;,.-]+[^\s\d]+){0,2}?)[\s:;,.#-]*)\d+(?:[\s./-]+\d+)*/giu;
+
+export function removeCpfMentions(text: string): string {
+  return text.replace(CPF_MENTION_PATTERN, '$1');
+}
+
 export function hideCpfs(text: string): string {
   return text.replace(CPF_PATTERN, '[CPF ocultado]');
 }

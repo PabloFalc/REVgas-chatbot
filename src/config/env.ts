@@ -13,6 +13,7 @@ export const envConfigSchema = z
       emptyAsUndefined,
       z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
     ),
+    LOG_FILE: z.preprocess(emptyAsUndefined, z.string().min(1).optional()),
 
     // BETTER AUTH (standby)
     BETTER_AUTH_SECRET: z.preprocess(emptyAsUndefined, z.string().min(32).optional()),
@@ -91,6 +92,42 @@ export const envConfigSchema = z
     LLM_TIMEOUT_MS: z.preprocess(
       emptyAsUndefined,
       z.coerce.number().int().positive().default(8_000),
+    ),
+
+    // EMBEDDING (busca semantica da base de conhecimento; cai nas variaveis LLM_*)
+    EMBEDDING_API_URL: z.preprocess(emptyAsUndefined, z.url().optional()),
+    EMBEDDING_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
+    EMBEDDING_MODEL: z.preprocess(
+      emptyAsUndefined,
+      z.string().min(1).default('gemini-embedding-001'),
+    ),
+    EMBEDDING_DIMENSIONS: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().positive().default(768),
+    ),
+    EMBEDDING_BATCH_SIZE: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().min(1).max(100).default(16),
+    ),
+
+    AI_CALLS_PER_PHONE_HOUR: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().min(1).default(30),
+    ),
+
+    // KNOWLEDGE (base de conhecimento; limiares ainda nao calibrados, ver pnpm rag:check)
+    KNOWLEDGE_DIR: z.preprocess(emptyAsUndefined, z.string().min(1).default('knowledge/base')),
+    KNOWLEDGE_TOP_K: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().int().min(1).max(10).default(3),
+    ),
+    KNOWLEDGE_MIN_SIMILARITY: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().min(0).max(1).default(0.7),
+    ),
+    KNOWLEDGE_MIN_SIMILARITY_TEXT: z.preprocess(
+      emptyAsUndefined,
+      z.coerce.number().min(0).max(1).default(0.6),
     ),
 
     // VIACEP (consulta de CEP, API publica sem chave)

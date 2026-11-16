@@ -2,12 +2,20 @@ import type {
   HandoffOrderSummary,
   HandoffReason,
 } from 'src/modules/handoff/contracts/handoff.types';
-import type { ReplyOption } from '../contracts/conversation.types';
+import { normalizeText } from 'src/utils/text';
+import type { Reply, ReplyOption } from '../contracts/conversation.types';
 import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
 import { msg, paymentLine } from './messages';
-import { text } from './replies';
+import { buttons, text } from './replies';
 
 export const HANDOFF_CHOICE = 'handoff:request';
+
+const AGENT_WORDS = ['atendente', 'falar com alguem', 'humano'];
+
+export function asksForAgent(raw: string): boolean {
+  const text = normalizeText(raw);
+  return AGENT_WORDS.some(word => text.includes(word));
+}
 
 const STEP_LABELS: Record<Step, string> = {
   askName: 'Nome do cliente',
@@ -32,8 +40,18 @@ const STEP_LABELS: Record<Step, string> = {
   saleFailed: 'Falha ao criar a venda',
 };
 
+export const ORDER_START_CHOICE = 'order:start';
+
+export function orderStartButton(): ReplyOption {
+  return { id: ORDER_START_CHOICE, title: msg.orderStart };
+}
+
 export function handoffButton(): ReplyOption {
   return { id: HANDOFF_CHOICE, title: msg.talkToAgent };
+}
+
+export function offer(body: string): Reply {
+  return buttons(body, [handoffButton()]);
 }
 
 export function handoffSummary(state: OrderState | null): HandoffOrderSummary | null {
@@ -54,6 +72,10 @@ export function handoffSummary(state: OrderState | null): HandoffOrderSummary | 
     payment: payment ? paymentLine(state) : undefined,
     total: quote?.total,
   };
+}
+
+export function requestReasonFor(state: OrderState | null): HandoffReason {
+  return state?.step === 'saleFailed' ? 'sale_failed' : 'customer_request';
 }
 
 export async function handoff(

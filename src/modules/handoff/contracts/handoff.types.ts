@@ -1,6 +1,6 @@
 import type { Opening, ServiceWindow } from 'src/utils/service-hours';
 
-export type HandoffReason = 'customer_request' | 'sale_failed';
+export type HandoffReason = 'customer_request' | 'sale_failed' | 'emergency';
 
 export interface HandoffOrderSummary {
   stepLabel: string;

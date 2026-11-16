@@ -60,7 +60,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: docker
           POSTGRES_PASSWORD: docker
@@ -81,5 +81,5 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm db:push
+      - run: pnpm db:migrate
       - run: pnpm test:e2e

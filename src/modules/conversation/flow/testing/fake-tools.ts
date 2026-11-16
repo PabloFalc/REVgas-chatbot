@@ -1,5 +1,7 @@
-import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
+import type { Interpretation, NameReading } from 'src/modules/assistant/contracts/assistant.types';
+import type { BasePrice } from 'src/modules/catalog/contracts/catalog.types';
 import type { HandoffOutcome, ServiceHoursInfo } from 'src/modules/handoff/contracts/handoff.types';
+import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
 import type { FlowTools } from '../flow.types';
 
 export const FAKE_PHONE = '5586999990000';
@@ -40,6 +42,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
   ];
 
   const base = {
+    phone: FAKE_PHONE,
     findCustomer: async (phone: string) => {
       calls.push({ name: 'findCustomer', args: [phone] });
       return phone === FAKE_PHONE ? customer : null;
@@ -52,7 +55,17 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
     isBlocked: record('isBlocked', false),
     addressFromCep: record('addressFromCep', { ...addresses[0], number: undefined }),
     addressFromText: record('addressFromText', addresses[0]),
+    answerQuestion: record('answerQuestion', {
+      kind: 'unknown',
+      reason: 'no_match',
+    } as KnowledgeAnswer),
+    knowledgeTopics: record('knowledgeTopics', [] as string[]),
+    basePrices: record('basePrices', [] as BasePrice[]),
+    registerMisunderstood: record('registerMisunderstood', 1),
+    resetMisunderstood: record('resetMisunderstood', undefined),
+    registerOffense: record('registerOffense', 1),
     interpret: record('interpret', null as Interpretation | null),
+    readName: record('readName', null as NameReading | null),
     listProducts: record('listProducts', [
       { id: 1, name: 'Botijão P13' },
       { id: 2, name: 'Botijão P45' },

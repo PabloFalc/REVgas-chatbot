@@ -1,4 +1,5 @@
-import { isValidCpf, onlyDigits } from 'src/utils/cpf';
+import { isValidCpf, onlyDigits, removeLongDigitRuns } from 'src/utils/cpf';
+import { normalizeText } from 'src/utils/text';
 import {
   type AskFn,
   type FlowInput,
@@ -9,7 +10,13 @@ import {
   type Step,
   type StepResult,
 } from '../flow.types';
-import { freeText, freeTextOr, keepOfferedProduct, looksLikeOrder } from '../free-text';
+import {
+  fixedQuestion,
+  freeText,
+  freeTextOr,
+  keepOfferedProduct,
+  looksLikeOrder,
+} from '../free-text';
 import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -17,6 +24,12 @@ import { text } from '../replies';
 import { offerOrNext } from './repeat.step';
 
 const MAX_NAME_LENGTH = 100;
+const MAX_NAME_TEXT = 200;
+const CPF_LIKE_DIGITS = 9;
+
+function hasCpfLikeDigits(raw: string): boolean {
+  return removeLongDigitRuns(raw, CPF_LIKE_DIGITS) !== raw;
+}
 
 function parseName(raw: string | null): string | null {
   if (raw === null) return null;
@@ -24,6 +37,26 @@ function parseName(raw: string | null): string | null {
   const name = words.join(' ');
   if (words.length < 2 || name.length > MAX_NAME_LENGTH) return null;
   return words.every(word => /\p{L}/u.test(word)) ? name : null;
+}
+
+function wordsOf(value: string): string[] {
+  return normalizeText(value)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+function writtenIn(name: string, raw: string): boolean {
+  const said = new Set(wordsOf(raw));
+  return wordsOf(name).every(word => said.has(word));
+}
+
+async function nameFromText(raw: string, tools: FlowTools): Promise<string | null> {
+  if (raw.trim().length > MAX_NAME_TEXT) return null;
+  const reading = await tools.readName(raw);
+  if (reading === null) return parseName(raw);
+  if (!reading.isPersonName || reading.name === null) return null;
+  const name = parseName(reading.name);
+  return name && writtenIn(name, raw) ? name : null;
 }
 
 async function withHistory(
@@ -97,16 +130,22 @@ const handleAskName: HandleFn = async (state, input, tools) => {
   const name = parseName(raw);
   const acceptName = (valid: string) =>
     askCpf({ ...state, customer: { ...state.customer, name: valid } }, tools);
-  if (raw !== null && looksLikeOrder(raw)) {
-    return freeText(state, raw, tools, name ? () => acceptName(name) : undefined);
+  if (raw !== null && (looksLikeOrder(raw) || raw.includes('?') || fixedQuestion(raw))) {
+    return freeText(state, raw, tools, {
+      whenNothingApplied: name ? () => acceptName(name) : undefined,
+    });
   }
-  if (!name) return { state, replies: [text(msg.invalidName)] };
-  return acceptName(name);
+  const read = raw === null || !raw.trim() ? null : await nameFromText(raw, tools);
+  if (!read) return { state, replies: [text(msg.invalidName)] };
+  return acceptName(read);
 };
 
 const handleAskCpf: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
-  if (raw === null || !isValidCpf(raw)) return freeTextOr(state, raw, tools, msg.invalidCpf);
+  if (raw === null || !isValidCpf(raw)) {
+    if (raw !== null && hasCpfLikeDigits(raw)) return { state, replies: [text(msg.invalidCpf)] };
+    return freeTextOr(state, raw, tools, msg.invalidCpf);
+  }
   return nextStep({ ...state, customer: { ...state.customer, cpf: onlyDigits(raw) } }, tools);
 };
 
@@ -126,6 +165,9 @@ const handleAskCpfPrefix: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
   const digits = prefixAttempt(raw);
   if (digits === null) {
+    if (raw !== null && hasCpfLikeDigits(raw)) {
+      return { state, replies: [text(msg.cpfPrefixFormat)] };
+    }
     const rest = raw?.replace(STANDALONE_PREFIX, '').trim() ?? '';
     if (!rest) return { state, replies: [text(msg.cpfPrefixFormat)] };
     return freeTextOr(state, rest, tools, msg.cpfPrefixFormat);

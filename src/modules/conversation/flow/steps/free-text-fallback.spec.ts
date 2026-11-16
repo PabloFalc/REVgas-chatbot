@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { FlowInput, OrderState, Step } from '../flow.types';
+import type { FlowInput, FlowTools, OrderState, Step } from '../flow.types';
+import { offer } from '../handoff';
 import { msg } from '../messages';
 import { text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
@@ -56,6 +57,51 @@ async function run(step: Step, input: string, state: Partial<OrderState> = {}) {
   const out = await handler?.({ ...full, ...state, step }, say(input), fake);
   return { fake, out };
 }
+
+describe('texto guiado da etapa quando a IA não entende', () => {
+  const withAi = (overrides: Partial<FlowTools> = {}) =>
+    createFakeTools({ interpret: async () => null, ...overrides });
+
+  it.each([
+    ['askCpf', 'não tenho CPF', msg.invalidCpf],
+    ['askCpfPrefix', 'não lembro', msg.cpfPrefixFormat],
+    ['askQuantity', 'uns dois', msg.invalidQuantity],
+    ['askChangeAmount', 'não sei ainda', msg.invalidChange(110)],
+  ] as [Step, string, string][])('%s: "%s" recebe o texto da etapa', async (step, raw, guided) => {
+    const tools = withAi();
+    const state = { ...full, step };
+    const out = await handlers[step]?.(state, say(raw), tools);
+    expect(out).toEqual({ state, replies: [text(guided)], misunderstood: true });
+    expect(tools.calls.map(call => call.name)).toContain('registerMisunderstood');
+  });
+
+  it('pedido sem nada aplicável também recebe o texto da etapa', async () => {
+    const tools = withAi({
+      interpret: async () => ({ intent: 'order', products: ['Lenha'], confidence: 0.9 }),
+    });
+    const out = await handlers.askQuantity?.({ ...full, step: 'askQuantity' }, say('lenha'), tools);
+    expect(out?.replies).toEqual([text(msg.invalidQuantity)]);
+    expect(out?.misunderstood).toBe(true);
+  });
+
+  it('3ª vez seguida oferece o atendente e repete a pergunta', async () => {
+    const tools = withAi({ registerMisunderstood: async () => 3 });
+    const state = { ...full, step: 'askQuantity' as Step };
+    const out = await handlers.askQuantity?.(state, say('uns dois'), tools);
+    expect(out?.replies).toEqual([offer(msg.stuck), text(msg.askQuantity)]);
+    expect(out?.misunderstood).toBe(true);
+  });
+
+  it('dúvida continua roteada', async () => {
+    const tools = withAi({
+      interpret: async () => ({ intent: 'off_topic', confidence: 0.9 }),
+    });
+    const state = { ...full, step: 'askQuantity' as Step };
+    const out = await handlers.askQuantity?.(state, say('receita de bolo'), tools);
+    expect(out?.replies).toEqual([text(msg.offTopicRefusal), text(msg.askQuantity)]);
+    expect(out?.misunderstood).toBeUndefined();
+  });
+});
 
 describe('fallback de texto livre nas etapas', () => {
   it.each([
@@ -129,13 +175,15 @@ describe('fallback de texto livre nas etapas', () => {
   it.each([
     ['askQuantity', msg.invalidQuantity],
     ['askChangeAmount', msg.invalidChange(110)],
-  ] as [Step, string][])('%s: erro de hoje sem IA e IA com pedido', async (step, error) => {
-    const bad = await run(step, 'abc');
+  ] as [Step, string][])('%s: número inválido sem IA e texto com IA', async (step, error) => {
+    const bad = await run(step, '0');
     expect(bad.out?.replies).toEqual([text(error)]);
     expect(interpretCalls(bad.fake)).toHaveLength(0);
 
-    const order = await run(step, 'quero no pix');
-    expect(interpretCalls(order.fake)).toHaveLength(1);
+    for (const loose of ['quero no pix', 'abc']) {
+      const { fake } = await run(step, loose);
+      expect(interpretCalls(fake)).toHaveLength(1);
+    }
   });
 
   it.each([

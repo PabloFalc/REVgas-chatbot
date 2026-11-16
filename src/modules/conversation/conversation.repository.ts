@@ -11,12 +11,16 @@ export const LOCK_PREFIX = 'conversation:lock';
 export const VERIFIED_PREFIX = 'conversation:verified';
 export const CPF_ATTEMPTS_PREFIX = 'conversation:cpf-attempts';
 export const BLOCKED_PREFIX = 'conversation:cpf-blocked';
+export const MISUNDERSTOOD_PREFIX = 'conversation:misunderstood';
+export const OFFENSE_PREFIX = 'conversation:offense';
 export const REMINDER_SET = 'conversation:reminders';
 export { MAX_CPF_ATTEMPTS };
 
 const VERIFIED_TTL_SECONDS = 1_296_000;
 const CPF_WINDOW_SECONDS = 3_600;
 const BLOCK_TTL_SECONDS = 3_600;
+const MISUNDERSTOOD_TTL_SECONDS = 900;
+const OFFENSE_TTL_SECONDS = 3_600;
 const INBOUND_TTL_SECONDS = 24 * 60 * 60;
 const ORDER_TTL_SECONDS = 900;
 const LOCK_TTL_SECONDS = 120;
@@ -113,6 +117,22 @@ export class ConversationRepository {
       );
     }
     return attempts;
+  }
+
+  registerMisunderstood(phone: string): Promise<number> {
+    return this.cache.increment({
+      prefix: MISUNDERSTOOD_PREFIX,
+      key: phone,
+      ttl: MISUNDERSTOOD_TTL_SECONDS,
+    });
+  }
+
+  async resetMisunderstood(phone: string): Promise<void> {
+    await this.cache.delete({ prefix: MISUNDERSTOOD_PREFIX, key: phone });
+  }
+
+  registerOffense(phone: string): Promise<number> {
+    return this.cache.increment({ prefix: OFFENSE_PREFIX, key: phone, ttl: OFFENSE_TTL_SECONDS });
   }
 
   isBlocked(phone: string): Promise<boolean> {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FlowInput, OrderState } from '../flow.types';
 import { msg } from '../messages';
 import { text } from '../replies';
@@ -44,6 +44,35 @@ describe('choosePayment', () => {
     expect(result?.state?.paymentOptions).toEqual(options);
   });
 
+  it('mostra só as formas com preço para o produto e o cliente', async () => {
+    const tools = createFakeTools({
+      quote: async (_customer, _productId, paymentType, quantity) =>
+        paymentType === 'CARTAO_DE_CREDITO' ? null : { unitPrice: 110, total: 110 * quantity },
+    });
+    const spy = vi.spyOn(tools, 'quote');
+    const result = await asks.choosePayment?.(base, tools);
+    const reply = result?.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(reply.buttons.map(b => b.id)).toEqual(['pay:PIX', 'pay:MONEY']);
+    expect(result?.state?.paymentOptions).toEqual(options.slice(0, 2));
+    expect(spy).toHaveBeenCalledWith({ id: 1, tagId: null }, 1, 'PIX', 2);
+  });
+
+  it('nenhuma forma com preço avisa a instabilidade e mantém o estado', async () => {
+    const tools = createFakeTools({ quote: async () => null });
+    const result = await asks.choosePayment?.(base, tools);
+    expect(result).toEqual({ state: base, replies: [text(msg.unavailable)] });
+  });
+
+  it('sem produto escolhido mostra todas as formas, sem cotar', async () => {
+    const { product: _product, ...withoutProduct } = base;
+    const tools = createFakeTools();
+    const spy = vi.spyOn(tools, 'quote');
+    const result = await asks.choosePayment?.(withoutProduct, tools);
+    expect(result?.state?.paymentOptions).toEqual(options);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('4 formas viram lista', async () => {
     const four = [...options, { type: 'BOLETO', label: 'Boleto' }];
     const result = await asks.choosePayment?.(
@@ -84,14 +113,18 @@ describe('choosePayment', () => {
     expect(result?.replies[0].type).toBe('buttons');
   });
 
-  it('sem preço para a forma avisa e volta a escolher o pagamento', async () => {
-    const tools = createFakeTools({ quote: async () => null });
+  it('sem preço para a forma avisa e volta a escolher entre as que têm preço', async () => {
+    const tools = createFakeTools({
+      quote: async (_customer, _productId, paymentType, quantity) =>
+        paymentType === 'PIX' ? null : { unitPrice: 110, total: 110 * quantity },
+    });
     const state: OrderState = { ...base, paymentOptions: options };
     const result = await handlers.choosePayment?.(state, pick('pay:PIX'), tools);
     expect(result?.state?.step).toBe('choosePayment');
     expect(result?.state?.payment).toBeUndefined();
     expect(result?.replies[0]).toEqual(text(msg.noPriceForPayment));
     expect(result?.replies[1].type).toBe('buttons');
+    expect(result?.state?.paymentOptions).toEqual(options.slice(1));
   });
 });
 
@@ -132,9 +165,65 @@ describe('troco', () => {
   it('valor igual ao total é recusado e texto inválido também', async () => {
     const state: OrderState = { ...money, step: 'askChangeAmount' };
     const equal = await handlers.askChangeAmount?.(state, say('220'), createFakeTools());
-    const junk = await handlers.askChangeAmount?.(state, say('abc'), createFakeTools());
+    const junk = await handlers.askChangeAmount?.(state, say('0'), createFakeTools());
+    const loose = await handlers.askChangeAmount?.(state, say('abc'), createFakeTools());
     expect(equal?.replies).toEqual([text(msg.invalidChange(220))]);
     expect(junk?.replies).toEqual([text(msg.invalidChange(220))]);
+    expect(loose?.replies).toEqual([text(msg.invalidChange(220))]);
+    expect(loose?.misunderstood).toBe(true);
+  });
+
+  describe('valor com palavras', () => {
+    const asking: OrderState = {
+      ...money,
+      step: 'askChangeAmount',
+      quantity: 1,
+      quote: { unitPrice: 110, total: 110 },
+    };
+
+    it.each([
+      ['200 reais', 200],
+      ['troco pra 200', 200],
+      ['R$ 200,00', 200],
+      ['para 150', 150],
+      ['Troco de 120 reais', 120],
+    ])('%s é aceito sem IA', async (raw, value) => {
+      const tools = createFakeTools();
+      const spy = vi.spyOn(tools, 'interpret');
+      const result = await handlers.askChangeAmount?.(asking, say(raw), tools);
+      expect(result?.state?.changeFor).toBe(value);
+      expect(result?.state?.step).toBe('summary');
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('"100 reais" abaixo do total pede outro valor sem IA', async () => {
+      const tools = createFakeTools();
+      const spy = vi.spyOn(tools, 'interpret');
+      const result = await handlers.askChangeAmount?.(asking, say('100 reais'), tools);
+      expect(result).toEqual({ state: asking, replies: [text(msg.invalidChange(110))] });
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it.each(['troco de 50 e 100', '100 e 50', '1e3', '200 ou 300 reais', '200 300', '1 000'])(
+      '"%s" com mais de um valor não é aceito',
+      async raw => {
+        const tools = createFakeTools();
+        const result = await handlers.askChangeAmount?.(asking, say(raw), tools);
+        expect(result?.state).toEqual(asking);
+        expect(result?.state?.changeFor).toBeUndefined();
+        expect(result?.replies).toEqual([text(msg.invalidChange(110))]);
+      },
+    );
+
+    it('a IA não muda a quantidade no troco', async () => {
+      const tools = createFakeTools({
+        interpret: async () => ({ intent: 'order', quantity: 200, confidence: 0.9 }),
+      });
+      const result = await handlers.askChangeAmount?.(asking, say('quero de 200 mangos'), tools);
+      expect(result?.state).toEqual(asking);
+      expect(result?.replies).toEqual([text(msg.invalidChange(110))]);
+      expect(result?.misunderstood).toBe(true);
+    });
   });
 
   it('troco válido em formato brasileiro segue ao resumo', async () => {

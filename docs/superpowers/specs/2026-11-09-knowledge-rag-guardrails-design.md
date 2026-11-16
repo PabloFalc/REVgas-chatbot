@@ -30,6 +30,28 @@ a busca é por embeddings (RAG) desde já, e não "colar o FAQ inteiro no prompt
   o plano gratuito do Gemini.
 - **Duas fases no mesmo documento:** fase 1, conhecimento + RAG + interpretação; fase 2, guard rails.
 - O quadro de interpretação e guard rails proposto na conversa foi aprovado como está (seções 5 e 6).
+- **Transferência só com pedido claro (2026-11-15, muda a seção 5).** Vão direto para a fila só as
+  palavras `atendente`, `humano` e `falar com alguem`, o botão "Falar com atendente" (inclusive o da
+  etapa `saleFailed`) e a emergência. Quando só a IA classifica a mensagem como pedido de atendente,
+  o bot oferece o botão e repete a pergunta da etapa, sem transferir. Motivo: no teste com o
+  `pnpm chat`, "não quero tirar minhas dúvidas" em `askNeedsChange` virou handoff e o cliente entrou
+  na fila sem pedir.
+- **Ajustes do teste com o `pnpm chat` (2026-11-15).** Decisões do usuário:
+  - **Filtro de palavrões no código, sem IA**, antes de qualquer etapa e em qualquer texto livre:
+    responde com a resposta de ofensa (oferta de atendente da 2ª em diante) e repete a pergunta da
+    etapa, sem gravar nada. A ofensa pela IA fica como segunda camada. Motivo: "vai te fuder filho da
+    puta" foi aceito como nome em `askName`.
+  - **Dúvida na primeira mensagem não vira pedido**, mesmo com palavra de pedido ("quero trocar o
+    casco do botijão mas ele está danificado"): responde a dúvida com o botão "Fazer pedido"; só
+    `order` inicia o cadastro.
+  - **"O que você sabe responder?"** responde com a lista de assuntos montada dos títulos das seções
+    da base (atualiza quando a base muda) mais os que o código responde (horário, formas de
+    pagamento, preço), sem passar pelo corte de relevância.
+  - **Listas e resumos no formato pedido** (listar, resumir, tópicos, passo a passo, curto ou
+    detalhado, comparar, juntar seções), com mais trechos na busca e até 1200 caracteres para lista
+    e resumo (o resto continua 600). Guard rails inalterados: só os trechos enviados, citação
+    obrigatória (de um ou vários), sem R$/%/palavra de preço, números e nomes só dos trechos
+    citados, "não sei" quando a base não cobre.
 
 ## Objetivos
 
@@ -129,7 +151,7 @@ a busca é por embeddings (RAG) desde já, e não "colar o FAQ inteiro no prompt
 | Pedido | Como hoje: extrai os dados e segue o fluxo |
 | Dúvida da revenda | RAG: busca trechos → a IA responde **só com eles** → repete a pergunta da etapa |
 | Pergunta de preço | **Código**, não a IA: consulta o catálogo/preço da RevGás e responde com texto fixo |
-| Pedir atendente | Handoff (ver dependência abaixo) |
+| Pedir atendente | Handoff (ver dependência abaixo). Desde 2026-11-15, só a IA não basta: oferece o botão |
 | Fora do assunto | Recusa fixa e educada (fase 2) → repete a pergunta da etapa |
 | Ofensa | Resposta fixa e neutra (fase 2) |
 | Outro / confiança baixa | Como hoje: "Não entendi" + repete a pergunta |
@@ -158,8 +180,9 @@ a busca é por embeddings (RAG) desde já, e não "colar o FAQ inteiro no prompt
   (por exemplo `handoff:offer`) e é tratado como **comando global**, valendo em qualquer etapa. Um
   "sim" digitado nunca é lido como aceite. Digitar "atendente" continua funcionando. Usado em "não
   sei", falha nas checagens de saída, cliente travado e ofensa repetida.
-- **Transferir direto** (`requestHandoff`): só quando o cliente pede ou toca o botão, e na
-  **emergência** (vazamento).
+- **Transferir direto** (`requestHandoff`): só quando o cliente digita a palavra de atendente ou
+  toca o botão, e na **emergência** (vazamento). A intenção `handoff` vinda só da IA vira oferta
+  (decisão do usuário de 2026-11-15).
 
 **Dinheiro, horário e pagamento: quem é a fonte.**
 - **A base não contém valores em R$.** Qualquer resposta da IA com R$ ou porcentagem é descartada.
@@ -284,3 +307,42 @@ junto com a fase 2.
   código.
 - A resposta de preço mostra só o preço base, nunca o preço especial do cliente.
 - Primeira mensagem que é só dúvida: o bot responde com o botão "Fazer pedido", sem iniciar o pedido.
+- **Convite para perguntar (2026-11-15).** "tenho dúvidas", "posso perguntar uma coisa?", "quero que
+  você tire dúvidas comigo" e parecidas, sem a pergunta, recebem um texto fixo ("Claro! Pode
+  perguntar...") e a pergunta da etapa; não vão à base nem oferecem atendente. Detecção em duas
+  camadas: um detector no código (`flow/question-invite.ts`, frase inteira, sem negação, sem IA) para
+  as formas comuns, e o `topic: 'invite'` da IA para as variações. Em `askName` o convite não vira
+  nome.
+- **Taxa de entrega e frete (2026-11-15).** A IA classifica como `price` com `topic: 'delivery_fee'`
+  e o código responde com texto fixo: não tem o valor, o resumo do pedido mostra o total antes de
+  confirmar, e oferece o atendente. A cotação da RevGás não traz taxa de entrega, então o bot não
+  informa valor. Compra com pergunta de total ("quero 2 P13, quanto fica no pix?") segue `order`.
+  Sem detector no código aqui: a taxa aparece no meio de pedidos, e quem decide entre pedido e
+  pergunta é a IA.
+- **Rotas nomeadas (2026-11-15).** `routeIntent` decide pela rota (`intentRoute`, `FLOW_ROUTES`), e o
+  `rag:check` mede a mesma rota no grupo `routing`.
+- **Implementação dos ajustes de 2026-11-15** (as decisões do usuário estão em
+  [Decisões do usuário](#decisões-do-usuário)):
+  - Palavrões: `src/utils/profanity.ts`, lista própria comparada por palavra inteira, com letras
+    repetidas juntadas, troca de números e símbolos por letras e plural simples. Vem logo depois da
+    emergência nos comandos globais (e no `routeOfText`), antes de cancelar e de atendente. Ficaram
+    fora palavras que também são nome, lugar ou animal ("veado", "piranha", "rola", "pica") e "fds"
+    (fim de semana).
+  - Nome com IA: `readName` devolve `{ name, isPersonName }`; o código só aceita nome com nome e
+    sobrenome cujas palavras estão todas no texto do cliente. Custo 1 no limite por telefone; texto
+    com mais de 200 caracteres nem vai à IA.
+  - Dúvida na primeira mensagem: o código já respondia toda `question` sem criar pedido; a correção
+    foi no prompt de interpretação (dúvida, problema ou condição sobre o serviço é `question`).
+  - Assuntos: `topic: 'capabilities'` na IA e um detector no código (`flow/capabilities.ts`, para
+    "quais dúvidas…", "o que você sabe/consegue/pode…", "sobre o que posso…", sem "sobre" de um tema
+    específico). A lista vem de `KnowledgeService.topics()` (títulos do modelo atual no banco, sem
+    "(parte N)"); banco fora do ar mostra só os assuntos do código. Rota nova `capabilities`.
+  - Pedido amplo: detector `answerStyleOf` no código. Base com até 20 trechos vai inteira, na ordem
+    da base; acima disso, busca híbrida com top 8. Critério: a base de hoje tem 13 trechos (uns 4 mil
+    caracteres) e um resumo de várias seções não deve depender do corte de similaridade de cada uma.
+    Até 800 tokens de saída. Nas checagens, só a numeração de lista no começo da linha deixou de
+    contar como número; item de lista começando com maiúscula continua checado como nome.
+  - Formas de pagamento: `choosePayment` cota cada forma e mostra só as com preço (fake, `hybrid` e
+    `live`); nenhuma com preço mantém a falha de antes ("Estou com instabilidade...").
+  - Base: a seção "Taxa de entrega" agora diz que o valor final aparece no resumo, sem prometer uma
+    taxa que a cotação não traz.

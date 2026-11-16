@@ -16,11 +16,13 @@ Package manager is **pnpm** — use it for everything.
 | Install / build | `pnpm install` · `pnpm build` |
 | Lint | `pnpm lint` · fix: `pnpm lint:fix` |
 | Unit tests | `pnpm test` |
-| E2e tests | `pnpm test:e2e` (needs `pnpm docker:init` for Postgres/Redis) |
+| E2e tests | `pnpm test:e2e` (needs `pnpm docker:init` + `pnpm db:migrate` for Postgres/Redis) |
 | Dev | `pnpm start:dev` |
 | Migrations | `pnpm db:generate` → `pnpm db:migrate` |
-| Integration checks | `pnpm revgas:check` · `pnpm llm:check` |
+| Integration checks | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` |
+| Knowledge base | `pnpm kb:ingest` (embeds `knowledge/base`; needs the migrations applied) |
 | Local Chatwoot (Docker profile) | `pnpm chatwoot:prepare` · `pnpm chatwoot:up` · `pnpm chatwoot:stop` |
+| Terminal chat simulator (instead of `start:dev`) | `pnpm chat` · `pnpm chat --phone 5586988887777 --revgas hybrid` |
 
 **Commits:** `git commit` directly, conventional commits (`feat:`, `fix:`, `chore:`…).
 
@@ -38,19 +40,24 @@ src/
                 parse-json, iso-datetime. Check here before writing a new helper.
   modules/      conversation/ (webhook + order flow), customer/, catalog/, order/, address/,
                 assistant/ (LLM interpretation of free text), handoff/ (queue to a human
-                agent via Chatwoot), auth/ (on standby)
+                agent via Chatwoot), knowledge/ (RAG over the base, answers questions in the
+                flow), auth/ (on standby)
+  cli/          dev entry points run from dist/: kb-ingest, chat (terminal simulator, `pnpm chat`)
+  server.ts     createServer() — the Fastify app shared by main.ts and `pnpm chat`
+knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluation/ (rag:check questions)
 ```
 
 - `AppModule` = `CoreModule` + `RoutesModule` + `InfraModule`. `RoutesModule` imports only
-  `ConversationModule`, which also hosts the Chatwoot webhook route (`POST /webhooks/chatwoot`,
-  validated by `X-Chatwoot-Signature`).
+  `ConversationModule` (which imports `KnowledgeModule`), which also hosts the Chatwoot webhook
+  route (`POST /webhooks/chatwoot`, validated by `X-Chatwoot-Signature`).
 - `CoreModule` registers the global filters in the order `unexpected` → `betterAuth` → `drizzle`
   → `http` (Nest checks the last registered first, so the catch-all stays first), plus
   `rateLimit` and `zodValidationPipe`.
 - **Auth is on standby**: no `/auth/*` routes and no global auth guard, so routes are public.
-  Postgres is only used by Better Auth today. The WhatsApp webhook is validated by the Meta
-  signature (`X-Hub-Signature-256`, needs `rawBody: true` in `main.ts`). To turn auth on and for
-  its conventions, see `docs/guides/modules/auth.md`.
+  Postgres runs with pgvector and is used by Better Auth and by the knowledge base (via
+  `pnpm kb:ingest`). The WhatsApp webhook is validated by the Meta signature
+  (`X-Hub-Signature-256`, needs `rawBody: true` in `main.ts`). To turn auth on and for its
+  conventions, see `docs/guides/modules/auth.md`.
 
 Dependency rules:
 
@@ -81,7 +88,7 @@ Dependency rules:
 
 - **No explanatory `//` comments in code.** (Comments in docs/markdown are fine.)
 - **Secrets** (`REVGAS_API_KEY`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `LLM_API_KEY`,
-  `CHATWOOT_API_TOKEN`, `CHATWOOT_BOT_TOKEN`, `CHATWOOT_WEBHOOK_SECRET`)
+  `EMBEDDING_API_KEY`, `CHATWOOT_API_TOKEN`, `CHATWOOT_BOT_TOKEN`, `CHATWOOT_WEBHOOK_SECRET`)
   stay server-side — never in responses, logs or AI prompts.
 - **LGPD:** mask customer CPF, phone and address in logs with `src/utils/mask`. CPF digits never
   go to logs, replies, AI prompts or Chatwoot (`[CPF ocultado]`).
@@ -99,7 +106,7 @@ Read the matching guide before touching an area:
 
 - `docs/guides/integrations/` — `revgas.md` (modes, never retry POST), `whatsapp.md`,
   `llm.md`, `viacep.md`, `chatwoot.md` (human handoff desk, local Docker)
-- `docs/guides/modules/auth.md` · `docs/guides/services/email-service.md`
-- `docs/guides/conventions/` — `environment.md` (env vars), `testing.md`, `api-doc.md`,
-  `ci-cd.md` (develop/staging/main gitflow)
+- `docs/guides/modules/auth.md` · `docs/guides/modules/knowledge.md` · `docs/guides/services/email-service.md`
+- `docs/guides/conventions/` — `environment.md` (env vars), `testing.md`, `chat-simulator.md`
+  (`pnpm chat`), `api-doc.md`, `ci-cd.md` (develop/staging/main gitflow)
 - `docs/security/SECURITY.md` — attack vectors, mitigations, secrets

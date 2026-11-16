@@ -134,9 +134,11 @@ O estado fica no Redis, por telefone, separado do pedido (que expira em 15 min).
 | `active` | Atendente (o bot só repassa ao Chatwoot) | 1ª mensagem humana | Conversa resolvida no Chatwoot → nenhum; 24 h sem mensagem do atendente → nenhum |
 
 - **Gatilhos:** o botão "Falar com atendente" (id `handoff:request`, comando global, vale em qualquer
-  etapa), as palavras de `global-commands.ts` (`atendente`, `falar com alguem`, `humano`) e a etapa
-  `saleFailed` ("Tentar de novo" ou "Falar com atendente"). Os guard rails usam o mesmo ponto de
-  entrada (`FlowTools.requestHandoff`) com outros motivos.
+  etapa), as palavras de `asksForAgent` (`flow/handoff.ts`: `atendente`, `falar com alguem`,
+  `humano`) e a etapa `saleFailed` ("Tentar de novo" ou "Falar com atendente"). Os guard rails usam
+  o mesmo ponto de entrada (`FlowTools.requestHandoff`) com outros motivos. Quando só a IA entende
+  que o cliente quer um atendente, o bot **não** transfere: oferece o botão (decisão de 2026-11-15,
+  ver [fluxo.md](../../project/fluxo.md#handoff-para-atendente)).
 - **Entrada na fila:** o bot cria ou reaproveita o contato e a conversa, muda para `open` (sem
   atendente) e deixa uma nota interna com o resumo (motivo, etapa, produto, quantidade, endereço,
   pagamento, total, nome). Sem CPF. Se a identidade ainda não foi confirmada, a nota diz isso e não
@@ -146,7 +148,11 @@ O estado fica no Redis, por telefone, separado do pedido (que expira em 15 min).
   fechado, diz quando abre e pede que o cliente mande "oi" quando abrir. Segue na fila.
 - **Ao virar `active`:** o pedido em andamento e o lembrete são apagados. As mensagens do cliente vão
   só para o Chatwoot e o bot não responde. Mensagens não suportadas viram `[cliente enviou áudio]`
-  etc.
+  etc. Mensagem de vazamento ou cheiro de gás também não recebe resposta do bot (decisão do usuário,
+  2026-11-10): ela é repassada e o bot deixa a nota interna "Emergência: cliente relatou possível
+  vazamento de gás" (`HandoffService.flagEmergency`).
+- **Emergência em `queued`:** o cliente recebe o texto de segurança e "Você já está na fila...", e a
+  conversa ganha a mesma nota interna de emergência.
 - **Mensagem do atendente → WhatsApp:** `*Maria (atendente):* texto`. Notas internas não vão ao
   cliente. Se a Meta recusar por janela de 24 h (código 131047), o bot deixa uma nota avisando. A
   recusa chega tanto na resposta do envio quanto, de forma assíncrona, como status `failed` do

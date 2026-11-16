@@ -76,6 +76,9 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   **No plano gratuito do Gemini as mensagens vão ao Google e podem ser usadas para treino**
   (decisão aceita em 2026-10-20): mande à IA só o texto necessário e nunca CPF. Ver
   [llm.md](../guides/integrations/llm.md).
+- **Embedding:** `EMBEDDING_API_KEY` (cai em `LLM_API_KEY` se vazia) segue as mesmas regras: só no
+  header da chamada server-side, nunca em log, erro, resposta HTTP nem prompt. O log do embedding
+  leva só a operação, o modelo, o status e a contagem de textos.
 - **Redis:** `REDIS_PASSWORD` e `REDIS_TLS` (opcionais em dev, obrigatórios na prática em prod) —
   sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
 - **Swagger** protegido por `DOC_TOKEN` (header `x-doc-token`) e não montado em produção.
@@ -127,6 +130,87 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   vezes.
 - Logs do webhook e dos envios: telefone mascarado (`*******1234`), sem corpo das mensagens nem
   token (o conteúdo só aparece no log do modo `fake` fora de produção).
+
+## IA e base de conhecimento
+
+Camadas que protegem as respostas da IA sobre a base ([knowledge.md](../guides/modules/knowledge.md)).
+
+Respostas da base (módulo ligado ao fluxo):
+
+- **Corte de relevância:** só entram trechos com similaridade mínima; sem trecho, a IA nem é chamada.
+- **Pergunta higienizada:** CPF (`removeCpfs`), dígitos que vêm até 3 palavras depois de "cpf"
+  (`removeCpfMentions`, pega pedaço de CPF como "meu cpf termina em 0909") e qualquer sequência de
+  8 dígitos ou mais (`removeLongDigitRuns`, inclui celular e fixo) saem do texto, que é cortado em
+  500 caracteres antes do embedding e do prompt.
+- **Trechos e pergunta como dado:** vão escapados em `<trecho>`, com regras fixas mandando ignorar
+  ordens dentro deles; a IA responde `{ answer, sources }` validado por Zod.
+- **Checagens de saída:** a resposta é descartada se estiver vazia, passar de 600 caracteres (1200
+  em pedido de lista ou resumo), não
+  citar trechos ou citar id inexistente, tiver `R$`/"reais"/"centavos" ou `%`/"por cento", usar
+  palavra de preço que não está nos trechos citados, trouxer nome próprio (palavra com maiúscula
+  fora do começo de frase, como um bairro inventado: `name_not_in_sources`) que não está neles,
+  ou trouxer número (algarismo ou por extenso) que não está neles. A base não guarda valores,
+  porcentagens, horários nem formas de pagamento.
+- **Pedido amplo com as mesmas regras:** lista, resumo, comparação e passo a passo mandam mais
+  trechos (a base inteira quando tem até 20 trechos, senão os 8 melhores da busca) e aceitam até
+  1200 caracteres, mas passam pelas mesmas checagens. Só a numeração de lista no começo da linha
+  (`1.`, `2)`) deixa de contar como número; a palavra depois de `- ` continua checada como nome, para
+  barrar bairro inventado numa lista.
+- **Falha vira "não sei":** Postgres, embedding ou IA fora do ar nunca lançam; o resultado é
+  `unknown` com log de aviso. Uma tentativa por chamada, sem retry.
+- **Sem texto do cliente no log:** só motivo, rejeição, quantidade de trechos e nome do erro.
+- **Isolamento por modelo:** a busca só compara vetores do modelo de embedding atual. Índice sem
+  trecho do modelo atual gera aviso `index_empty` no log.
+- **Vetores reais protegidos:** `kb:ingest` em modo fake recusa sobrescrever índice com vetores de
+  outro modelo sem `--force`, e o CLI não imprime query nem parâmetros do Drizzle.
+- **`rag:check` só em dev:** recusa `NODE_ENV=production` e banco com trecho de fonte fora da base
+  fictícia, para nunca sobrescrever a base real de staging ou produção.
+- **Medição de invenção:** as perguntas da checagem podem ter `forbidden`; resposta que traz um
+  desses termos (por exemplo um bairro fora da lista) conta como violação.
+
+Guard rails do fluxo (entregues, etapa B):
+
+- **Emergência de gás sem IA:** vazamento ou cheiro de gás (`flow/emergency.ts`, frases mais regra de
+  proximidade entre palavra de gás e de vazamento) é tratado antes de qualquer comando, em qualquer
+  etapa e sem pedido em andamento. Resposta: texto fixo de segurança (Bombeiros, 193) e fila do
+  atendente com o motivo `emergency`; se o cliente já está na fila (`queued`), o bot também deixa a
+  nota interna "Emergência: cliente relatou possível vazamento de gás" no Chatwoot.
+  **Decisão do usuário (2026-11-10):** com o atendente no controle (`active`) o bot fica em
+  silêncio: não manda o texto de segurança, repassa a mensagem e deixa a mesma nota interna. Falha
+  do Chatwoot vira aviso no log e não impede o repasse.
+- **Só `order` altera o pedido:** dúvida, preço, fora do assunto e ofensa nunca chamam
+  `applyInterpretation`; texto de cliente não muda produto, quantidade nem pagamento por essas
+  intenções.
+- **Preço só pelo código:** a IA apenas classifica a pergunta; o texto vem do acordo base da RevGás.
+  A base não guarda valores e as checagens de saída descartam `R$` e `%`.
+- **Horário e pagamento pelo código:** `SERVICE_HOURS` e as formas ativas da RevGás, nunca a base
+  nem a IA.
+- **Recusa e ofensa com texto fixo:** fora do assunto recebe recusa fixa; ofensa recebe texto fixo e,
+  da 2ª vez, a oferta de atendente. O atendente só entra por toque no botão.
+- **Filtro de palavrões no código:** antes de qualquer etapa (e na primeira mensagem), depois só da
+  emergência, `src/utils/profanity.ts` procura palavrões por palavra inteira, sem acento, com letras
+  repetidas juntadas e troca de números e símbolos por letras ("p0rra", "c@ralho"). Se casar, o bot
+  responde com o texto fixo de ofensa e repete a pergunta da etapa, sem gravar nada: nome, rua,
+  bairro, número e busca de produto nunca recebem palavrão, mesmo sem IA. A ofensa pela IA continua
+  como segunda camada. **Decisão do usuário (2026-11-15).**
+- **Nome lido pela IA com conferência no código:** em `askName`, a IA (`readName`, custo 1 no limite
+  por telefone) tira o nome de frases como "meu nome é João Silva". O texto vai sem CPF
+  (`removeCpfs`) e com as regras mandando tratá-lo como dado. O nome só é aceito se a IA disser que
+  parece nome de pessoa, tiver nome e sobrenome e todas as palavras estiverem no texto do cliente,
+  então a IA não consegue inventar nem completar um nome. Sem IA, vale a validação de sempre.
+- **Lista de assuntos sem IA:** "quais dúvidas posso tirar?" responde com os títulos das seções da
+  base e os assuntos do código, sem busca, sem IA e sem texto do cliente no prompt.
+- **Cliente travado:** 3 "não entendi" seguidos oferecem o atendente. Contadores no Redis, fora do
+  estado do pedido, sem texto do cliente.
+- **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora; interpretar custa 1,
+  ler endereço em texto livre custa 1, responder dúvida custa 2), contado no Redis. Acima do limite
+  o bot segue sem IA, com log de aviso e telefone mascarado. Falha do Redis no limitador deixa a
+  chamada passar (aviso no log só com o telefone mascarado e o nome do erro, nunca os argumentos do
+  comando, que levam a chave com o telefone), para não derrubar o atendimento.
+- **Produto que não vendemos:** o item citado pela IA é limpo (só letras, números, espaço e hífen,
+  até 30 caracteres) antes de ir na resposta.
+- Os cortes de relevância da busca ainda não foram calibrados (ver
+  [knowledge.md](../guides/modules/knowledge.md#valores-calibrados)).
 
 ## Webhook do Chatwoot
 

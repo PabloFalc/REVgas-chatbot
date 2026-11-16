@@ -1,16 +1,26 @@
+import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
+import { hasProfanity } from 'src/utils/profanity';
 import { normalizeText } from 'src/utils/text';
+import { detectEmergency } from './emergency';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
-import { HANDOFF_CHOICE, handoff } from './handoff';
+import {
+  asksForAgent,
+  HANDOFF_CHOICE,
+  handoff,
+  ORDER_START_CHOICE,
+  requestReasonFor,
+} from './handoff';
 import { textOf } from './input';
+import { routeIntent } from './intent';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
 import { text as textReply } from './replies';
-import { start } from './steps';
+import { asks, start } from './steps';
 import { cancelAfterFailedSale } from './steps/summary.step';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
-const STORE = ['atendente', 'falar com alguem', 'humano'];
 const DISCOUNT = ['desconto', 'promocao', 'mais barato'];
+const OFFENSE: Interpretation = { intent: 'offense', confidence: 1 };
 
 export async function globalCommand(
   state: OrderState | null,
@@ -22,12 +32,25 @@ export async function globalCommand(
     return repeatQuestion(state, tools, textReply(msg.textOnly));
   }
 
-  if (input.content.type === 'choice' && input.content.id === HANDOFF_CHOICE) {
-    const reason = state?.step === 'saleFailed' ? 'sale_failed' : 'customer_request';
-    return handoff(state, input.phone, reason, tools);
+  const raw = textOf(input);
+  if (raw !== null && detectEmergency(raw)) {
+    const outcome = await handoff(state, input.phone, 'emergency', tools);
+    return { ...outcome, replies: [textReply(msg.emergency), ...outcome.replies] };
   }
 
-  const raw = textOf(input);
+  if (raw !== null && hasProfanity(raw)) return routeIntent(state, OFFENSE, raw, tools);
+
+  if (input.content.type === 'choice' && input.content.id === HANDOFF_CHOICE) {
+    return handoff(state, input.phone, requestReasonFor(state), tools);
+  }
+
+  if (input.content.type === 'choice' && input.content.id === ORDER_START_CHOICE) {
+    if (!state) return start(input, tools);
+    const ask = asks[state.step];
+    if (!ask) return { state, replies: [] };
+    return ask(state, tools);
+  }
+
   if (raw === null) return null;
   const text = normalizeText(raw);
 
@@ -37,8 +60,8 @@ export async function globalCommand(
     return { state: null, replies: [textReply(msg.cancelled)] };
   }
 
-  if (STORE.some(word => text.includes(word))) {
-    return handoff(state, input.phone, 'customer_request', tools);
+  if (asksForAgent(raw)) {
+    return handoff(state, input.phone, requestReasonFor(state), tools);
   }
 
   if (DISCOUNT.some(word => text.includes(word))) {
