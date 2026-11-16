@@ -2,10 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import { createLogger } from '../../config/plugins/pino.config';
 import { removeCpfMentions, removeCpfs, removeLongDigitRuns } from '../../utils/cpf';
 import { AnswerGateway } from './answer.gateway';
-import { checkAnswer } from './answer-checks';
+import { ANSWER_MAX_LENGTH, BROAD_ANSWER_MAX_LENGTH, checkAnswer } from './answer-checks';
+import { answerStyleOf } from './answer-style';
 import type {
   AnswerRejection,
   AnswerSource,
+  AnswerStyle,
   DraftAnswer,
   KnowledgeAnswer,
   SearchOutcome,
@@ -16,8 +18,15 @@ import { KNOWLEDGE_CONFIG, type KnowledgeConfig } from './knowledge.config';
 import { KnowledgeRepository } from './knowledge.repository';
 import { MAX_QUESTION_CHARS } from './search-query';
 
+export const FULL_BASE_CHUNKS = 20;
+export const BROAD_TOP_K = 8;
+
 const SEARCH_OPERATION = 'kb-search';
 const PART_SUFFIX = /\s*\(parte \d+\)$/;
+const MAX_LENGTH: Record<AnswerStyle, number> = {
+  focused: ANSWER_MAX_LENGTH,
+  broad: BROAD_ANSWER_MAX_LENGTH,
+};
 
 type UnknownReason = Extract<KnowledgeAnswer, { kind: 'unknown' }>['reason'];
 
@@ -25,6 +34,10 @@ type SearchResult =
   | Extract<SearchOutcome, { status: 'ok' }>
   | { status: 'index_empty' }
   | { status: 'unavailable'; errorName: string };
+
+type Retrieved =
+  | { status: 'ok'; chunks: { title: string; content: string }[] }
+  | Exclude<SearchResult, { status: 'ok' }>;
 
 type LoggedReason = UnknownReason | 'index_empty';
 
@@ -89,7 +102,8 @@ export class KnowledgeService {
     const clean = sanitizeQuestion(question);
     if (!clean) return this.unknown('no_match', 0);
 
-    const result = await this.searchSanitized(clean);
+    const style = answerStyleOf(clean);
+    const result = await this.retrieve(clean, style);
     if (result.status === 'unavailable') {
       return this.unknown('unavailable', 0, { errorName: result.errorName });
     }
@@ -104,27 +118,48 @@ export class KnowledgeService {
 
     let draft: DraftAnswer;
     try {
-      draft = await this.answers.draft(clean, sources);
+      draft = await this.answers.draft(clean, sources, style);
     } catch (error) {
       return this.unknown('unavailable', sources.length, { errorName: nameOf(error) });
     }
 
     if (draft.answer === null) return this.unknown('not_in_sources', sources.length);
 
-    const checked = checkAnswer({ answer: draft.answer, sources: draft.sources }, sources);
+    const checked = checkAnswer(
+      { answer: draft.answer, sources: draft.sources },
+      sources,
+      MAX_LENGTH[style],
+    );
     if (!checked.ok) {
       return this.unknown('rejected', sources.length, { rejection: checked.reason });
     }
 
     const titles = [...new Set(checked.used.map(source => source.title))];
     this.logger.info(
-      { component: 'knowledge', chunks: sources.length, sources: titles },
+      {
+        component: 'knowledge',
+        chunks: sources.length,
+        sources: titles,
+        ...(style === 'broad' ? { style } : {}),
+      },
       'Dúvida respondida',
     );
     return { kind: 'answered', text: checked.text, sources: titles };
   }
 
-  private async searchSanitized(question: string): Promise<SearchResult> {
+  private async retrieve(question: string, style: AnswerStyle): Promise<Retrieved> {
+    if (style === 'focused') return this.searchSanitized(question);
+    try {
+      const all = await this.repository.listChunks(this.embeddings.model, FULL_BASE_CHUNKS + 1);
+      if (all.length === 0) return { status: 'index_empty' };
+      if (all.length <= FULL_BASE_CHUNKS) return { status: 'ok', chunks: all };
+    } catch (error) {
+      return { status: 'unavailable', errorName: nameOf(error) };
+    }
+    return this.searchSanitized(question, BROAD_TOP_K);
+  }
+
+  private async searchSanitized(question: string, topK = this.config.topK): Promise<SearchResult> {
     try {
       const [embedding] = await this.embeddings.embed([question], SEARCH_OPERATION);
       const { byVector, byText } = await this.repository.findCandidates({
@@ -134,7 +169,7 @@ export class KnowledgeService {
         limit: CANDIDATES_PER_LIST,
       });
       if (byVector.length === 0) return { status: 'index_empty' };
-      return { status: 'ok', chunks: fuseCandidates(byVector, byText, this.config) };
+      return { status: 'ok', chunks: fuseCandidates(byVector, byText, { ...this.config, topK }) };
     } catch (error) {
       return { status: 'unavailable', errorName: nameOf(error) };
     }

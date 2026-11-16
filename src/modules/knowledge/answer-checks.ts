@@ -2,6 +2,7 @@ import { normalizeText } from '../../utils/text';
 import type { AnswerRejection, AnswerSource } from './contracts/knowledge.types';
 
 export const ANSWER_MAX_LENGTH = 600;
+export const BROAD_ANSWER_MAX_LENGTH = 1200;
 
 const NUMBER_WORDS = new Set([
   'dois',
@@ -80,10 +81,15 @@ const MONEY_PATTERN = /r\$|\bre(al|ais)\b|\bcentavos?\b/i;
 const PERCENT_PATTERN = /%|\bpor ?cento\b/;
 const NAME_PATTERN = /(?<![\p{L}\p{N}])\p{Lu}\p{L}{2,}(?![\p{L}\p{N}])/gu;
 const SENTENCE_START_PATTERN = /(?:^\s*|[.!?:]\s+|\n\s*)$/u;
+const LIST_NUMBER_PATTERN = /^(\s*)\d{1,2}[.)](?=\s)/gm;
 
 export type AnswerCheck =
   | { ok: true; text: string; used: AnswerSource[] }
   | { ok: false; reason: AnswerRejection };
+
+function withoutListNumbers(text: string): string {
+  return text.replace(LIST_NUMBER_PATTERN, '$1');
+}
 
 function numbersIn(text: string): Set<string> {
   return new Set((text.match(/\d+/g) ?? []).map(run => run.replace(/^0+(?=\d)/, '')));
@@ -165,10 +171,11 @@ function onlyKnownNumbers(normalized: string, sources: string): boolean {
 export function checkAnswer(
   draft: { answer: string; sources: string[] },
   sent: AnswerSource[],
+  maxLength = ANSWER_MAX_LENGTH,
 ): AnswerCheck {
   const text = draft.answer.trim();
   if (text.length === 0) return { ok: false, reason: 'empty' };
-  if (text.length > ANSWER_MAX_LENGTH) return { ok: false, reason: 'too_long' };
+  if (text.length > maxLength) return { ok: false, reason: 'too_long' };
   if (draft.sources.length === 0) return { ok: false, reason: 'no_sources' };
 
   const used = citedSources(draft.sources, sent);
@@ -180,7 +187,7 @@ export function checkAnswer(
   const sources = textOfSources(used);
   if (!onlyKnownPriceWords(normalized, sources)) return { ok: false, reason: 'price_claim' };
   if (!onlyKnownNames(text, sources)) return { ok: false, reason: 'name_not_in_sources' };
-  if (!onlyKnownNumbers(normalized, sources)) {
+  if (!onlyKnownNumbers(withoutListNumbers(normalized), sources)) {
     return { ok: false, reason: 'number_not_in_sources' };
   }
 

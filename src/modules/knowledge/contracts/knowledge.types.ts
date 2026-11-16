@@ -13,11 +13,14 @@ export interface KnowledgeChunkDraft {
   hash: string;
 }
 
-export interface Candidate {
+export interface BaseChunk {
   id: string;
   source: string;
   title: string;
   content: string;
+}
+
+export interface Candidate extends BaseChunk {
   similarity: number;
 }
 
@@ -50,6 +53,8 @@ export interface IndexedChunk {
   model: string;
   dimensions: number;
 }
+
+export type AnswerStyle = 'focused' | 'broad';
 
 export interface AnswerSource {
   ref: string;

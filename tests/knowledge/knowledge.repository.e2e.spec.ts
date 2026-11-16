@@ -145,4 +145,18 @@ describe('KnowledgeRepository (e2e)', () => {
     expect(titles).toHaveLength(new Set(titles).size);
     await expect(repository.listTitles('fake-e2e-outro')).resolves.toEqual([]);
   });
+  it('listChunks devolve os trechos do modelo até o limite, e nada de outro modelo', async () => {
+    const all = await repository.listChunks(MODEL, 100);
+    expect(new Set(all.map(chunk => chunk.title))).toEqual(
+      new Set(stored.map(chunk => chunk.title)),
+    );
+    expect(all[0]).toEqual({
+      id: expect.any(String),
+      source: expect.any(String),
+      title: expect.any(String),
+      content: expect.any(String),
+    });
+    await expect(repository.listChunks(MODEL, 2)).resolves.toHaveLength(2);
+    await expect(repository.listChunks('fake-e2e-outro', 5)).resolves.toEqual([]);
+  });
 });

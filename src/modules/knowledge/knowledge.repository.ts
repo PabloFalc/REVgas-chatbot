@@ -4,7 +4,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DRIZZLE } from 'src/infra/database/drizzle-client';
 import type * as schema from 'src/infra/database/schemas/index';
 import { knowledgeChunks } from 'src/infra/database/schemas/knowledge/knowledge-chunks.table';
-import type { Candidate, IndexedChunk, StoredChunk } from './contracts/knowledge.types';
+import type { BaseChunk, Candidate, IndexedChunk, StoredChunk } from './contracts/knowledge.types';
 import { toTextQuery } from './search-query';
 
 export interface CandidateQuery {
@@ -78,6 +78,20 @@ export class KnowledgeRepository {
       .groupBy(knowledgeChunks.source, knowledgeChunks.title)
       .orderBy(asc(knowledgeChunks.source), asc(min(knowledgeChunks.id)));
     return rows.map(row => row.title);
+  }
+
+  async listChunks(model: string, limit: number): Promise<BaseChunk[]> {
+    return this.db
+      .select({
+        id: knowledgeChunks.id,
+        source: knowledgeChunks.source,
+        title: knowledgeChunks.title,
+        content: knowledgeChunks.content,
+      })
+      .from(knowledgeChunks)
+      .where(eq(knowledgeChunks.embeddingModel, model))
+      .orderBy(asc(knowledgeChunks.source), asc(knowledgeChunks.id))
+      .limit(limit);
   }
 
   async findCandidates(

@@ -8,7 +8,7 @@ import { EmbeddingGateway } from './embedding.gateway';
 import { CANDIDATES_PER_LIST } from './fuse';
 import type { KnowledgeConfig } from './knowledge.config';
 import type { CandidateQuery, KnowledgeRepository } from './knowledge.repository';
-import { KnowledgeService } from './knowledge.service';
+import { BROAD_TOP_K, FULL_BASE_CHUNKS, KnowledgeService } from './knowledge.service';
 
 const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
@@ -46,6 +46,14 @@ class FakeRepository {
   error?: Error;
   titles: string[] = [];
   titleModels: string[] = [];
+  all: Candidate[] = [BAIRROS, REGISTRO];
+  listed: { model: string; limit: number }[] = [];
+
+  async listChunks(model: string, limit: number) {
+    this.listed.push({ model, limit });
+    if (this.error) throw this.error;
+    return this.all.slice(0, limit);
+  }
 
   async listTitles(model: string) {
     this.titleModels.push(model);
@@ -373,6 +381,87 @@ describe('KnowledgeService', () => {
       expect(JSON.stringify(repo.queries.map(q => q.question))).not.toContain('123');
     });
   });
+  describe('pedido amplo (lista, resumo, comparação)', () => {
+    const BROAD = 'me resume tudo sobre entrega';
+
+    function manyChunks(count: number): Candidate[] {
+      return Array.from({ length: count }, (_, index) => ({
+        ...BAIRROS,
+        id: `m${index}`,
+        title: `Seção ${index + 1}`,
+      }));
+    }
+
+    it('base pequena vai inteira, na ordem da base, sem busca', async () => {
+      repo.all = [REGISTRO, BAIRROS];
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion(BROAD);
+      expect(repo.listed).toEqual([{ model: embeddings.model, limit: FULL_BASE_CHUNKS + 1 }]);
+      expect(repo.queries).toEqual([]);
+      expect(embeddings.calls).toEqual([]);
+      const system = llm.calls[0].messages[0].content;
+      expect(system).toContain('<trecho id="T1" titulo="Troca do registro">');
+      expect(system).toContain('<trecho id="T2" titulo="Bairros atendidos">');
+      expect(system).toContain('Siga o formato que o cliente pedir');
+    });
+
+    it('base grande usa a busca com mais trechos', async () => {
+      repo.all = manyChunks(FULL_BASE_CHUNKS + 1);
+      repo.byVector = manyChunks(BROAD_TOP_K + 2).map(chunk => ({ ...chunk, similarity: 0.9 }));
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion(BROAD);
+      expect(repo.queries).toHaveLength(1);
+      const system = llm.calls[0].messages[0].content;
+      expect(system.match(/<trecho /g)).toHaveLength(BROAD_TOP_K);
+    });
+
+    it('resposta de até 1200 caracteres citando vários trechos passa', async () => {
+      const answer = `Entregamos no Jóquei e no Fátima. ${'a'.repeat(900)}`;
+      llm.queueObject({ answer, sources: ['T1', 'T2'] });
+      await expect(service.answerQuestion(BROAD)).resolves.toEqual({
+        kind: 'answered',
+        text: answer,
+        sources: ['Bairros atendidos', 'Troca do registro'],
+      });
+      expect(logger.info).toHaveBeenCalledWith(
+        {
+          component: 'knowledge',
+          chunks: 2,
+          sources: ['Bairros atendidos', 'Troca do registro'],
+          style: 'broad',
+        },
+        'Dúvida respondida',
+      );
+    });
+
+    it('pergunta direta continua com o limite de 600', async () => {
+      llm.queueObject({ answer: `Entregamos no Jóquei. ${'a'.repeat(700)}`, sources: ['T1'] });
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'rejected',
+      });
+      expect(repo.listed).toEqual([]);
+    });
+
+    it('base vazia → no_match com index_empty', async () => {
+      repo.all = [];
+      await expect(service.answerQuestion(BROAD)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'no_match',
+      });
+      expect(llm.calls).toEqual([]);
+      expect(warnCalls()).toEqual([{ component: 'knowledge', reason: 'index_empty', chunks: 0 }]);
+    });
+
+    it('banco fora do ar → unavailable', async () => {
+      repo.error = new Error('down');
+      await expect(service.answerQuestion(BROAD)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'unavailable',
+      });
+    });
+  });
+
   describe('topics', () => {
     it('devolve os títulos das seções do modelo atual, sem "(parte N)" e sem repetir', async () => {
       repo.titles = ['Bairros atendidos', 'Vale-gás', 'Vale-gás (parte 2)', 'Troco'];

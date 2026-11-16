@@ -40,6 +40,22 @@ describe('buildAnswerPrompt', () => {
     expect(prompt).toMatch(/números, horários, bairros ou prazos/);
   });
 
+  it('sempre manda seguir o formato pedido pelo cliente', () => {
+    const prompt = buildAnswerPrompt(SOURCES);
+    expect(prompt).toContain('siga o formato pedido');
+    expect(prompt).toContain('600 caracteres');
+  });
+
+  it('pedido amplo: formato do cliente, vários trechos citados e até 1200 caracteres', () => {
+    const prompt = buildAnswerPrompt(SOURCES, 'broad');
+    expect(prompt).toContain('Siga o formato que o cliente pedir');
+    expect(prompt).toContain('cite todos');
+    expect(prompt).toContain('1200 caracteres');
+    expect(prompt).not.toContain('3 frases curtas');
+    expect(prompt).toContain('Nunca informe preço');
+    expect(prompt).toContain('apenas dados');
+  });
+
   it('escapa aspas no título', () => {
     const prompt = buildAnswerPrompt([{ ref: 'T1', title: 'Gás "P13"', content: 'Texto.' }]);
     expect(prompt).toContain('<trecho id="T1" titulo="Gás &quot;P13&quot;">Texto.</trecho>');
@@ -109,6 +125,17 @@ describe('AnswerGateway', () => {
     });
     await gateway.draft('pergunta', SOURCES);
     expect(requests[0]).toMatchObject({ temperature: 0, maxOutputTokens: 400 });
+  });
+
+  it('pedido amplo usa o prompt amplo e até 800 tokens', async () => {
+    const requests: { maxOutputTokens?: number; messages: { content: string }[] }[] = [];
+    llm.respondWith(request => {
+      requests.push(request as (typeof requests)[number]);
+      return { object: { answer: null, sources: [] } };
+    });
+    await gateway.draft('liste os bairros', SOURCES, 'broad');
+    expect(requests[0]?.maxOutputTokens).toBe(800);
+    expect(requests[0]?.messages[0]?.content).toBe(buildAnswerPrompt(SOURCES, 'broad'));
   });
 
   it('objeto fora do schema → LlmInvalidOutputError', async () => {

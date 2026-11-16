@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANSWER_MAX_LENGTH, checkAnswer } from './answer-checks';
+import { ANSWER_MAX_LENGTH, BROAD_ANSWER_MAX_LENGTH, checkAnswer } from './answer-checks';
 import type { AnswerSource } from './contracts/knowledge.types';
 
 const T1: AnswerSource = {
@@ -264,6 +264,49 @@ describe('checkAnswer', () => {
     expect(ANSWER_MAX_LENGTH).toBe(600);
     expect(check('a'.repeat(601))).toEqual({ ok: false, reason: 'too_long' });
     expect(check('a'.repeat(600))).toMatchObject({ ok: true });
+  });
+
+  it('pedido de lista ou resumo aceita até 1200 caracteres', () => {
+    expect(BROAD_ANSWER_MAX_LENGTH).toBe(1200);
+    const sent = [T1, T2];
+    const long = 'a'.repeat(1200);
+    expect(
+      checkAnswer({ answer: long, sources: ['T1'] }, sent, BROAD_ANSWER_MAX_LENGTH),
+    ).toMatchObject({ ok: true });
+    expect(
+      checkAnswer({ answer: `${long}a`, sources: ['T1'] }, sent, BROAD_ANSWER_MAX_LENGTH),
+    ).toEqual({ ok: false, reason: 'too_long' });
+  });
+
+  it('lista com itens dos trechos passa', () => {
+    expect(check('Bairros atendidos:\n- Jóquei\n- Fátima')).toMatchObject({ ok: true });
+  });
+
+  it('palavra maiúscula depois de "- " continua checada como nome', () => {
+    expect(check('Resumo:\n- Normalmente entregamos no Jóquei.')).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it('nome depois de "- " que não está no trecho continua barrado', () => {
+    expect(check('Bairros:\n- Jóquei\n- Esplanada')).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it('numeração de passo a passo não conta como número', () => {
+    expect(
+      check('1. Entregamos no Jóquei.\n2. Entregamos no Fátima.\n3. Em até 40 minutos.'),
+    ).toMatchObject({ ok: true });
+  });
+
+  it('número dentro do passo continua checado', () => {
+    expect(check('1. Entregamos em até 50 minutos.')).toEqual({
+      ok: false,
+      reason: 'number_not_in_sources',
+    });
   });
 
   it('vazio vem antes de no_sources e too_long antes de money', () => {

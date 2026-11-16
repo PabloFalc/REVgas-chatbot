@@ -115,6 +115,41 @@
       "section": "Cuidados e segurança",
       "fact": "5 anos"
     },
+    {
+      "id": "ans-lista-bairros",
+      "group": "answerable",
+      "question": "liste os bairros que vocês atendem",
+      "section": "Bairros atendidos",
+      "fact": "Mocambinho"
+    },
+    {
+      "id": "ans-diferenca-p13-p45",
+      "group": "answerable",
+      "question": "qual a diferença entre P13 e P45?",
+      "section": "Botijões P13 e P45",
+      "fact": "restaurantes"
+    },
+    {
+      "id": "ans-antes-de-pedir",
+      "group": "answerable",
+      "question": "o que eu preciso saber antes de pedir?",
+      "section": "Como pedir",
+      "fact": "CPF"
+    },
+    {
+      "id": "ans-tudo-entrega",
+      "group": "answerable",
+      "question": "me conta tudo sobre entrega",
+      "section": "Prazo de entrega",
+      "fact": "40 minutos"
+    },
+    {
+      "id": "ans-troca-passo-a-passo",
+      "group": "answerable",
+      "question": "me explica a troca do botijão vazio passo a passo",
+      "section": "Troca de botijão (casco vazio)",
+      "fact": "válvula fechada"
+    },
     { "id": "unk-estacionamento", "group": "unknown", "question": "a loja tem estacionamento?" },
     {
       "id": "unk-vaga-emprego",
@@ -277,6 +312,18 @@
       "group": "routing",
       "question": "Certo, e no que mais você consegue me ajudar além de pedido?",
       "expectedRoute": "capabilities"
+    },
+    {
+      "id": "rot-pagar-topicos",
+      "group": "routing",
+      "question": "me resume as formas de pagar em tópicos",
+      "expectedRoute": "payments"
+    },
+    {
+      "id": "rot-lista-bairros",
+      "group": "routing",
+      "question": "liste os bairros que vocês atendem",
+      "expectedRoute": "knowledge"
     }
   ]
 }
