@@ -17,6 +17,7 @@ import { KnowledgeRepository } from './knowledge.repository';
 import { MAX_QUESTION_CHARS } from './search-query';
 
 const SEARCH_OPERATION = 'kb-search';
+const PART_SUFFIX = /\s*\(parte \d+\)$/;
 
 type UnknownReason = Extract<KnowledgeAnswer, { kind: 'unknown' }>['reason'];
 
@@ -69,6 +70,19 @@ export class KnowledgeService {
       'Busca na base indisponível',
     );
     return { status: 'unavailable' };
+  }
+
+  async topics(): Promise<string[]> {
+    try {
+      const titles = await this.repository.listTitles(this.embeddings.model);
+      return [...new Set(titles.map(title => title.replace(PART_SUFFIX, '')))];
+    } catch (error) {
+      this.logger.warn(
+        { component: 'knowledge', reason: 'unavailable', errorName: nameOf(error) },
+        'Assuntos da base indisponíveis',
+      );
+      return [];
+    }
   }
 
   async answerQuestion(question: string): Promise<KnowledgeAnswer> {

@@ -12,6 +12,7 @@ import { repeatQuestion } from './repeat-question';
 import { BUTTONS_BODY_LIMIT, buttons, text } from './replies';
 
 const ITEM_LIMIT = 30;
+const CODE_TOPICS = ['Horário de atendimento', 'Formas de pagamento', 'Preços dos produtos'];
 
 interface Answer {
   body: string;
@@ -58,6 +59,14 @@ async function paymentsAnswer(tools: FlowTools): Promise<Answer> {
   return plain(msg.paymentsAccepted(options.map(option => option.label)));
 }
 
+async function capabilitiesAnswer(tools: FlowTools): Promise<Answer> {
+  const known = new Set(CODE_TOPICS.map(topic => normalizeText(topic)));
+  const fromBase = (await tools.knowledgeTopics()).filter(
+    topic => !known.has(normalizeText(topic)),
+  );
+  return plain(msg.capabilities([...CODE_TOPICS, ...fromBase]));
+}
+
 async function knowledgeAnswer(raw: string, tools: FlowTools): Promise<Answer> {
   const answer = await tools.answerQuestion(raw);
   return answer.kind === 'answered' ? plain(answer.text) : offering(msg.notKnown);
@@ -77,6 +86,7 @@ async function priceAnswer(result: Interpretation, tools: FlowTools): Promise<An
 
 const QUESTION_ROUTES: Partial<Record<InterpretationTopic, FlowRoute>> = {
   invite: 'invite',
+  capabilities: 'capabilities',
   hours: 'hours',
   payments: 'payments',
 };
@@ -119,6 +129,8 @@ async function answerFor(
   switch (intentRoute(result)) {
     case 'invite':
       return plain(msg.questionInvite);
+    case 'capabilities':
+      return capabilitiesAnswer(tools);
     case 'hours':
       return hoursAnswer(tools);
     case 'payments':

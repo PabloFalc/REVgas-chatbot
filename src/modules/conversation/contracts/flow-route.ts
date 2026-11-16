@@ -2,6 +2,7 @@ export const FLOW_ROUTES = [
   'emergency',
   'transfer',
   'invite',
+  'capabilities',
   'offer_agent',
   'delivery_fee',
   'price',

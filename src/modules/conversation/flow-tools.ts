@@ -67,6 +67,7 @@ export class FlowToolsService {
         }
         return this.knowledge.answerQuestion(text);
       },
+      knowledgeTopics: () => this.knowledge.topics(),
       basePrices: () => this.catalog.basePrices(),
       listProducts: customer => this.catalog.listProducts(customer),
       listPaymentOptions: () => this.catalog.listPaymentOptions(),

@@ -125,6 +125,7 @@ export interface FlowTools {
   interpret(text: string, context: InterpretContext): Promise<Interpretation | null>;
   readName(text: string): Promise<NameReading | null>;
   answerQuestion(text: string): Promise<KnowledgeAnswer>;
+  knowledgeTopics(): Promise<string[]>;
   listProducts(customer: PriceCustomer): Promise<Product[]>;
   basePrices(): Promise<BasePrice[]>;
   listPaymentOptions(): Promise<PaymentOption[]>;

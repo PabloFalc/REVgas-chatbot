@@ -6,6 +6,7 @@ import type { PaymentOption, Product } from 'src/modules/catalog/contracts/catal
 import { removeCpfMentions, removeLongDigitRuns } from 'src/utils/cpf';
 import { normalizeText } from 'src/utils/text';
 import type { Reply } from '../contracts/conversation.types';
+import { isCapabilitiesQuestion } from './capabilities';
 import {
   CPF_STEPS,
   type FlowTools,
@@ -56,6 +57,13 @@ const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askCpfPrefix'];
 const MONEY_STEPS: Step[] = ['askChangeAmount'];
 const OTHER_ADDRESS_NOTE = 'entrega em outro endereço';
 const INVITE: Interpretation = { intent: 'question', topic: 'invite', confidence: 1 };
+const CAPABILITIES: Interpretation = { intent: 'question', topic: 'capabilities', confidence: 1 };
+
+export function fixedQuestion(text: string): Interpretation | null {
+  if (isQuestionInvite(text)) return INVITE;
+  if (isCapabilitiesQuestion(text)) return CAPABILITIES;
+  return null;
+}
 
 export interface Catalog {
   products: Product[];
@@ -214,9 +222,10 @@ export function seedFromInterpretation(result: Interpretation, catalog: Catalog)
 
 export async function readFirstMessage(raw: string, tools: FlowTools): Promise<FirstMessage> {
   if (isGreetingOnly(raw) || !shouldInterpret(raw)) return { kind: 'seed', seed: EMPTY_SEED };
-  if (isQuestionInvite(raw)) {
-    const invited = await routeIntent(null, INVITE, raw, tools);
-    if (invited) return { kind: 'routed', result: invited };
+  const fixed = fixedQuestion(raw);
+  if (fixed) {
+    const answered = await routeIntent(null, fixed, raw, tools);
+    if (answered) return { kind: 'routed', result: answered };
   }
   const catalog: Catalog = {
     products: await tools.listProducts({}),
@@ -287,9 +296,10 @@ export async function freeText(
 ): Promise<StepResult> {
   const { whenNothingApplied, fallback } = options;
   const spoken = spokenText(state, raw);
-  if (isQuestionInvite(spoken)) {
-    const invited = await routeIntent(state, INVITE, spoken, tools);
-    if (invited) return invited;
+  const fixed = fixedQuestion(spoken);
+  if (fixed) {
+    const answered = await routeIntent(state, fixed, spoken, tools);
+    if (answered) return answered;
   }
   const catalog = await loadCatalog(state, tools);
   const interpreted = await tools.interpret(spoken, contextOf(catalog));

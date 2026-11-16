@@ -553,6 +553,26 @@ describe('primeira mensagem com pedido', () => {
     });
   });
 
+  it('primeira mensagem perguntando os assuntos: lista e "Fazer pedido", sem IA nem pedido', async () => {
+    const tools = createFakeTools({ knowledgeTopics: async () => ['Troco'] });
+    const spy = vi.spyOn(tools, 'interpret');
+    const chat = new Conversation(tools, '5586988887777');
+    const result = await chat.send(say('quais dúvidas posso tirar com você?'));
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.replies).toEqual([
+      buttons(
+        msg.capabilities([
+          'Horário de atendimento',
+          'Formas de pagamento',
+          'Preços dos produtos',
+          'Troco',
+        ]),
+        [orderBtn],
+      ),
+    ]);
+    expect(chat.state).toBeNull();
+  });
+
   it('pedir atendente só pela IA na primeira mensagem oferece o botão, sem transferir', async () => {
     const tools = createFakeTools({
       interpret: async () => ({ intent: 'handoff', confidence: 0.9 }),

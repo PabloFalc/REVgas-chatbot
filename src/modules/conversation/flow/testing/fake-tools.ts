@@ -59,6 +59,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
       kind: 'unknown',
       reason: 'no_match',
     } as KnowledgeAnswer),
+    knowledgeTopics: record('knowledgeTopics', [] as string[]),
     basePrices: record('basePrices', [] as BasePrice[]),
     registerMisunderstood: record('registerMisunderstood', 1),
     resetMisunderstood: record('resetMisunderstood', undefined),

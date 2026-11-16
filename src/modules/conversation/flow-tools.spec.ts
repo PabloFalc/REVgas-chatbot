@@ -44,6 +44,7 @@ function setup() {
   };
   const knowledge = {
     answerQuestion: vi.fn(async () => ({ kind: 'answered', text: 'ok', sources: ['a'] })),
+    topics: vi.fn(async () => ['Troco']),
   };
   const aiUsage = { consume: vi.fn(async () => true) };
   const logger = { setContext: vi.fn(), warn: vi.fn() };
@@ -182,6 +183,15 @@ describe('FlowToolsService.forPhone', () => {
     expect(assistant.interpret).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledOnce();
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
+  });
+
+  it('knowledgeTopics lê os assuntos da base sem gastar o limite de IA', async () => {
+    const { service, aiUsage, knowledge } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await expect(tools.knowledgeTopics()).resolves.toEqual(['Troco']);
+    expect(knowledge.topics).toHaveBeenCalledOnce();
+    expect(aiUsage.consume).not.toHaveBeenCalled();
   });
 
   it('readName consome 1 e, dentro do limite, chama o assistente', async () => {

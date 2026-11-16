@@ -44,6 +44,14 @@ class FakeRepository {
   byVector: Candidate[] = [BAIRROS, REGISTRO];
   byText: Candidate[] = [];
   error?: Error;
+  titles: string[] = [];
+  titleModels: string[] = [];
+
+  async listTitles(model: string) {
+    this.titleModels.push(model);
+    if (this.error) throw this.error;
+    return this.titles;
+  }
 
   async findCandidates(query: CandidateQuery) {
     this.queries.push(query);
@@ -363,6 +371,23 @@ describe('KnowledgeService', () => {
       await service.search('cpf 123.456.789-09 entregam no Jóquei');
       expect(JSON.stringify(embeddings.calls)).not.toContain('123');
       expect(JSON.stringify(repo.queries.map(q => q.question))).not.toContain('123');
+    });
+  });
+  describe('topics', () => {
+    it('devolve os títulos das seções do modelo atual, sem "(parte N)" e sem repetir', async () => {
+      repo.titles = ['Bairros atendidos', 'Vale-gás', 'Vale-gás (parte 2)', 'Troco'];
+      await expect(service.topics()).resolves.toEqual(['Bairros atendidos', 'Vale-gás', 'Troco']);
+      expect(repo.titleModels).toEqual([embeddings.model]);
+      expect(llm.calls).toEqual([]);
+      expect(embeddings.calls).toEqual([]);
+    });
+
+    it('banco fora do ar → lista vazia e log warn', async () => {
+      repo.error = new Error('down');
+      await expect(service.topics()).resolves.toEqual([]);
+      expect(warnCalls()).toEqual([
+        { component: 'knowledge', reason: 'unavailable', errorName: 'Error' },
+      ]);
     });
   });
 });

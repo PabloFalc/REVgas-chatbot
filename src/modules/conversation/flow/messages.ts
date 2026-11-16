@@ -175,6 +175,10 @@ export const msg = {
   notKnown: 'Não tenho essa informação. Quer falar com um atendente?',
   questionInvite:
     'Claro! Pode perguntar. Consigo te ajudar com horário, entrega, formas de pagamento, vale-gás, troca de botijão e segurança.',
+  capabilities: (topics: string[]) =>
+    ['Posso tirar dúvidas sobre:', ...topics.map(topic => `- ${topic}`), 'É só perguntar.'].join(
+      '\n',
+    ),
   offerAgent: 'Se quiser falar com um atendente, é só tocar no botão.',
   deliveryFee:
     'Não tenho o valor da entrega por aqui. O resumo do pedido mostra o total antes de você confirmar. Quer falar com um atendente?',

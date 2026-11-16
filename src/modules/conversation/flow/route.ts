@@ -1,6 +1,7 @@
 import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
 import { hasProfanity } from 'src/utils/profanity';
 import type { FlowRoute } from '../contracts/flow-route';
+import { isCapabilitiesQuestion } from './capabilities';
 import { detectEmergency } from './emergency';
 import { MIN_CONFIDENCE } from './free-text';
 import { asksForAgent } from './handoff';
@@ -15,6 +16,7 @@ export async function routeOfText(
   if (hasProfanity(raw)) return 'offense';
   if (asksForAgent(raw)) return 'transfer';
   if (isQuestionInvite(raw)) return 'invite';
+  if (isCapabilitiesQuestion(raw)) return 'capabilities';
   const result = await interpret();
   if (!result || result.confidence < MIN_CONFIDENCE) return 'not_understood';
   return intentRoute(result);

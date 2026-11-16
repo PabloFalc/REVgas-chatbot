@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { cosineDistance, desc, eq, inArray, sql } from 'drizzle-orm';
+import { asc, cosineDistance, desc, eq, inArray, min, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DRIZZLE } from 'src/infra/database/drizzle-client';
 import type * as schema from 'src/infra/database/schemas/index';
@@ -68,6 +68,16 @@ export class KnowledgeRepository {
           });
       }
     });
+  }
+
+  async listTitles(model: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ title: knowledgeChunks.title })
+      .from(knowledgeChunks)
+      .where(eq(knowledgeChunks.embeddingModel, model))
+      .groupBy(knowledgeChunks.source, knowledgeChunks.title)
+      .orderBy(asc(knowledgeChunks.source), asc(min(knowledgeChunks.id)));
+    return rows.map(row => row.title);
   }
 
   async findCandidates(

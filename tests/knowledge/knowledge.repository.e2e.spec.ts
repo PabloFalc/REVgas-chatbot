@@ -139,4 +139,10 @@ describe('KnowledgeRepository (e2e)', () => {
     expect(byVector).toEqual([]);
     expect(byText).toEqual([]);
   });
+  it('listTitles devolve os títulos do modelo, um por seção, e nada de outro modelo', async () => {
+    const titles = await repository.listTitles(MODEL);
+    expect(new Set(titles)).toEqual(new Set(stored.map(chunk => chunk.title)));
+    expect(titles).toHaveLength(new Set(titles).size);
+    await expect(repository.listTitles('fake-e2e-outro')).resolves.toEqual([]);
+  });
 });

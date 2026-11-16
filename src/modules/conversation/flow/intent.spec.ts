@@ -71,6 +71,9 @@ describe('textos fixos da etapa B', () => {
     expect(msg.offTopicRefusal).toBe(
       'Sou o assistente da revenda: posso te ajudar com pedidos e dúvidas sobre gás e entrega.',
     );
+    expect(msg.capabilities(['Troco', 'Vale-gás'])).toBe(
+      'Posso tirar dúvidas sobre:\n- Troco\n- Vale-gás\nÉ só perguntar.',
+    );
     expect(msg.offense).toBe(
       'Vamos manter a conversa respeitosa. Posso te ajudar com seu pedido de gás.',
     );
@@ -229,6 +232,41 @@ describe('routeIntent com pedido em andamento', () => {
   it('sem preço oferece o atendente', async () => {
     const out = await route(result({ intent: 'price' }), createFakeTools());
     expect(out?.replies).toEqual([offer(msg.noPrice), paymentButtons]);
+  });
+
+  it('assuntos: lista do código e da base, sem passar pela busca, e repete a pergunta', async () => {
+    const tools = createFakeTools({
+      knowledgeTopics: async () => ['Bairros atendidos', 'Vale-gás', 'Formas de pagamento'],
+    });
+    const out = await route(result({ intent: 'question', topic: 'capabilities' }), tools);
+    expect(out).toEqual({
+      state: paying,
+      replies: [
+        text(
+          msg.capabilities([
+            'Horário de atendimento',
+            'Formas de pagamento',
+            'Preços dos produtos',
+            'Bairros atendidos',
+            'Vale-gás',
+          ]),
+        ),
+        paymentButtons,
+      ],
+    });
+    expect(names(tools)).not.toContain('answerQuestion');
+  });
+
+  it('assuntos sem a base mostram só o que o código responde', async () => {
+    const out = await route(
+      result({ intent: 'question', topic: 'capabilities' }),
+      createFakeTools(),
+    );
+    expect(out?.replies[0]).toEqual(
+      text(
+        msg.capabilities(['Horário de atendimento', 'Formas de pagamento', 'Preços dos produtos']),
+      ),
+    );
   });
 
   it('fora do assunto recusa e repete a pergunta', async () => {
@@ -406,6 +444,25 @@ describe('routeIntent sem pedido em andamento', () => {
   it('sem preço', async () => {
     const out = await route(result({ intent: 'price' }), createFakeTools());
     expect(out?.replies).toEqual([buttons(msg.noPrice, [handoffBtn, orderBtn])]);
+  });
+
+  it('assuntos sem pedido: lista com "Fazer pedido"', async () => {
+    const tools = createFakeTools({ knowledgeTopics: async () => ['Troco'] });
+    const out = await route(result({ intent: 'question', topic: 'capabilities' }), tools);
+    expect(out).toEqual({
+      state: null,
+      replies: [
+        buttons(
+          msg.capabilities([
+            'Horário de atendimento',
+            'Formas de pagamento',
+            'Preços dos produtos',
+            'Troco',
+          ]),
+          [orderBtn],
+        ),
+      ],
+    });
   });
 
   it('fora do assunto', async () => {

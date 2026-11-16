@@ -93,6 +93,19 @@ describe('askName', () => {
     expect(tools.calls.map(call => call.name)).not.toContain('interpret');
   });
 
+  it('pergunta sobre os assuntos não vira nome: lista e pede o nome de novo', async () => {
+    const tools = createFakeTools();
+    const result = await handlers.askName?.(state, say('me resume o que você sabe'), tools);
+    expect(result?.state).toEqual(state);
+    expect(result?.replies).toEqual([
+      text(
+        msg.capabilities(['Horário de atendimento', 'Formas de pagamento', 'Preços dos produtos']),
+      ),
+      text(msg.askName),
+    ]);
+    expect(tools.calls.map(call => call.name)).not.toContain('readName');
+  });
+
   it('texto com palavra de pedido que a IA diz não ser pedido vira o nome', async () => {
     const tools = createFakeTools({
       interpret: async () => ({ intent: 'other', confidence: 0.9 }),

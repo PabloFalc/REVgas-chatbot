@@ -259,6 +259,24 @@
       "group": "routing",
       "question": "quero trocar o casco do botijão mas ele está danificado",
       "expectedRoute": "knowledge"
+    },
+    {
+      "id": "rot-assuntos-duvidas",
+      "group": "routing",
+      "question": "quais dúvidas posso tirar com você?",
+      "expectedRoute": "capabilities"
+    },
+    {
+      "id": "rot-assuntos-resume",
+      "group": "routing",
+      "question": "me resume o que você sabe",
+      "expectedRoute": "capabilities"
+    },
+    {
+      "id": "rot-assuntos-ia",
+      "group": "routing",
+      "question": "Certo, e no que mais você consegue me ajudar além de pedido?",
+      "expectedRoute": "capabilities"
     }
   ]
 }

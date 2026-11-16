@@ -192,6 +192,21 @@ describe('AssistantService', () => {
     expect(system).toContain('quero trocar o casco do botijão mas ele está danificado');
   });
 
+  it('pergunta sobre os assuntos vira question com topic capabilities', async () => {
+    llm.queueObject({ ...base, intent: 'question', topic: 'capabilities' });
+    const result = await service.interpret('me resume o que você sabe', context);
+    expect(result?.topic).toBe('capabilities');
+    const system = llm.calls[0]?.messages.find(message => message.role === 'system')?.content ?? '';
+    expect(system).toContain('"capabilities"');
+    expect(system).toContain('quais dúvidas posso tirar com você?');
+  });
+
+  it('topic capabilities fora de question é descartado', async () => {
+    llm.queueObject({ ...base, intent: 'price', topic: 'capabilities' });
+    const result = await service.interpret('quanto custa', context);
+    expect(result?.topic).toBeUndefined();
+  });
+
   it('devolve null quando a IA falha', async () => {
     llm.queueError(new LlmUnavailableError('fora'));
     expect(await service.interpret('oi', context)).toBeNull();

@@ -20,6 +20,7 @@ describe('intentRoute', () => {
     [reading({ intent: 'question', topic: 'invite' }), 'invite'],
     [reading({ intent: 'question', topic: 'hours' }), 'hours'],
     [reading({ intent: 'question', topic: 'payments' }), 'payments'],
+    [reading({ intent: 'question', topic: 'capabilities' }), 'capabilities'],
     [reading({ intent: 'question', topic: 'general' }), 'knowledge'],
     [reading({ intent: 'question' }), 'knowledge'],
     [reading({ intent: 'price' }), 'price'],
@@ -54,6 +55,10 @@ describe('routeOfText', () => {
 
   it('convite reconhecido pelo código não chama a IA', async () => {
     expect(await routeOfText('tenho dúvidas', never)).toBe('invite');
+  });
+
+  it('pergunta sobre os assuntos reconhecida pelo código não chama a IA', async () => {
+    expect(await routeOfText('quais dúvidas posso tirar com você?', never)).toBe('capabilities');
   });
 
   it('o resto usa a leitura da IA', async () => {

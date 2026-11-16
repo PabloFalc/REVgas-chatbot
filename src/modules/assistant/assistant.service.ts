@@ -18,13 +18,13 @@ const INSTRUCTIONS = [
   '"price" para perguntas de preço ou total, mesmo citando um produto (ex.: "quanto tá o P13").',
   'Taxa de entrega, frete ou valor da entrega também é "price", com topic "delivery_fee" (ex.: "qual o valor da entrega?", "tem taxa de entrega?", "quanto é o frete?").',
   'Mas se o cliente quer comprar e também pergunta o preço ou o total, use order (o total aparece no resumo), ex.: "manda um P45, quanto dá?".',
-  '"question" para dúvidas gerais, com topic: "hours" para horário de funcionamento (ex.: "que horas abre"), "payments" para formas de pagamento (ex.: "aceita pix"), "invite" quando o cliente só avisa que tem uma dúvida, sem dizer qual (ex.: "tenho dúvidas", "posso perguntar uma coisa?", "quero que você tire dúvidas comigo"), "general" para o resto (ex.: "vocês entregam domingo").',
+  '"question" para dúvidas gerais, com topic: "hours" para horário de funcionamento (ex.: "que horas abre"), "payments" para formas de pagamento (ex.: "aceita pix"), "invite" quando o cliente só avisa que tem uma dúvida, sem dizer qual (ex.: "tenho dúvidas", "posso perguntar uma coisa?", "quero que você tire dúvidas comigo"), "capabilities" quando o cliente pergunta quais assuntos ou tipos de dúvida você sabe responder (ex.: "quais dúvidas posso tirar com você?", "me resume o que você sabe"), "general" para o resto (ex.: "vocês entregam domingo").',
   '"handoff" somente quando o cliente pede para falar com uma pessoa (ex.: "quero falar com alguém").',
   'Frase negada não pede nada: "não quero tirar minhas dúvidas" ou "não preciso de atendente" são "other".',
   '"off_topic" para assuntos sem relação com a revenda (ex.: política, receita, futebol).',
   '"offense" para xingamentos e ofensas.',
   '"other" para todo o resto.',
-  'Use topic somente em question (hours, payments, invite, general) e em price (delivery_fee, só para entrega); unknownProduct somente em order; nos demais casos, null.',
+  'Use topic somente em question (hours, payments, invite, capabilities, general) e em price (delivery_fee, só para entrega); unknownProduct somente em order; nos demais casos, null.',
   'Extraia produtos, quantidade, forma de pagamento e endereço de entrega quando aparecerem no texto.',
   'Copie os nomes dos produtos e os types de pagamento EXATAMENTE como aparecem nas listas abaixo.',
   'Devolva mais de um produto somente quando o cliente foi ambíguo e mais de um da lista pode corresponder ao que ele disse.',
@@ -44,7 +44,9 @@ const interpretationSchema = z.object({
   payment: z.string().nullable(),
   address: z.string().nullable(),
   newAddress: z.boolean().nullable(),
-  topic: z.enum(['hours', 'payments', 'general', 'invite', 'delivery_fee']).nullable(),
+  topic: z
+    .enum(['hours', 'payments', 'general', 'invite', 'capabilities', 'delivery_fee'])
+    .nullable(),
   unknownProduct: z.string().nullable(),
   confidence: z.number().min(0).max(1),
 });
@@ -67,7 +69,7 @@ const nameReadingSchema = z.object({
 type ParsedInterpretation = z.infer<typeof interpretationSchema>;
 
 const TOPICS_BY_INTENT: Partial<Record<Interpretation['intent'], InterpretationTopic[]>> = {
-  question: ['hours', 'payments', 'general', 'invite'],
+  question: ['hours', 'payments', 'general', 'invite', 'capabilities'],
   price: ['delivery_fee'],
 };
 
