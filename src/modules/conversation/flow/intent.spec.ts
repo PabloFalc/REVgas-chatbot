@@ -206,11 +206,13 @@ describe('routeIntent com pedido em andamento', () => {
     expect(names(tools)).not.toContain('answerQuestion');
   });
 
-  it('preço pelo código, sem cotar com o cliente', async () => {
-    const tools = createFakeTools({ basePrices: async () => prices });
+  it('preço pela tabela base, nunca pela cotação do cliente', async () => {
+    const tools = createFakeTools({
+      basePrices: async () => prices,
+      quote: async () => ({ unitPrice: 999, total: 999 }),
+    });
     const out = await route(result({ intent: 'price' }), tools);
     expect(out).toEqual({ state: paying, replies: [text(ALL_PRICES), paymentButtons] });
-    expect(names(tools)).not.toContain('quote');
   });
 
   it('"quanto tá o P13" mostra só o P13 e não troca o produto', async () => {

@@ -305,6 +305,7 @@ describe('freeText', () => {
   it('"quanto tá o P13" no meio do pedido não troca o produto', async () => {
     const fake = tools(result({ intent: 'price', products: ['Botijão P13'] }), {
       basePrices: async () => [{ product: p13, minPrice: 110, varies: false }],
+      quote: async () => ({ unitPrice: 999, total: 999 }),
     });
     const withP45: OrderState = { ...paying, product: p45, paymentOptions: [pix, money, credit] };
     const out = await freeText(withP45, 'quanto tá o P13?', fake);
@@ -313,7 +314,6 @@ describe('freeText', () => {
       text('Preços de hoje:\n- Botijão P13: R$ 110,00\nO total aparece no resumo do pedido.'),
       paymentButtons,
     ]);
-    expect(called(fake, 'quote')).toBe(0);
   });
 
   it('pedido aplicado não marca "não entendi"', async () => {

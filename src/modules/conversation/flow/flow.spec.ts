@@ -649,6 +649,7 @@ describe('texto livre no meio do pedido', () => {
         { product: { id: 1, name: 'Botijão P13' }, minPrice: 110, varies: false },
         { product: { id: 2, name: 'Botijão P45' }, minPrice: 400, varies: false },
       ],
+      quote: async () => ({ unitPrice: 999, total: 999 }),
     });
     const result = await runFlow(paying, say('quanto tá o P13?'), tools);
     expect(result.state).toEqual(paying);
@@ -656,7 +657,6 @@ describe('texto livre no meio do pedido', () => {
       text('Preços de hoje:\n- Botijão P13: R$ 110,00\nO total aparece no resumo do pedido.'),
       paymentButtons,
     ]);
-    expect(names(tools)).not.toContain('quote');
   });
 
   it('dúvida que a base não sabe: oferta antes da pergunta e estado igual', async () => {

@@ -1,7 +1,7 @@
 import type { PaymentOption } from 'src/modules/catalog/contracts/catalog.types';
 import { parseMoney } from 'src/utils/money';
 import { normalizeText } from 'src/utils/text';
-import type { AskFn, HandleFn, Step } from '../flow.types';
+import type { AskFn, FlowTools, HandleFn, OrderState, Step } from '../flow.types';
 import { freeText, freeTextOr } from '../free-text';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
@@ -27,8 +27,20 @@ function parseChange(raw: string): number | null {
   return parseMoney(words[0]);
 }
 
+async function pricedOptions(state: OrderState, tools: FlowTools): Promise<PaymentOption[]> {
+  const all = await tools.listPaymentOptions();
+  const { product } = state;
+  if (!product) return all;
+  const customer = { id: state.customer.id, tagId: state.customer.tagId };
+  const quantity = state.quantity ?? 1;
+  const quotes = await Promise.all(
+    all.map(option => tools.quote(customer, product.id, option.type, quantity)),
+  );
+  return all.filter((_, index) => quotes[index] !== null);
+}
+
 const choosePayment: AskFn = async (state, tools) => {
-  const options = await tools.listPaymentOptions();
+  const options = await pricedOptions(state, tools);
   if (options.length === 0) return { state, replies: [text(msg.unavailable)] };
   const next = { ...state, step: 'choosePayment' as Step, paymentOptions: options };
   const entries = options.map(option => ({ id: `pay:${option.type}`, title: option.label }));

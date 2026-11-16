@@ -44,6 +44,35 @@ describe('choosePayment', () => {
     expect(result?.state?.paymentOptions).toEqual(options);
   });
 
+  it('mostra só as formas com preço para o produto e o cliente', async () => {
+    const tools = createFakeTools({
+      quote: async (_customer, _productId, paymentType, quantity) =>
+        paymentType === 'CARTAO_DE_CREDITO' ? null : { unitPrice: 110, total: 110 * quantity },
+    });
+    const spy = vi.spyOn(tools, 'quote');
+    const result = await asks.choosePayment?.(base, tools);
+    const reply = result?.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(reply.buttons.map(b => b.id)).toEqual(['pay:PIX', 'pay:MONEY']);
+    expect(result?.state?.paymentOptions).toEqual(options.slice(0, 2));
+    expect(spy).toHaveBeenCalledWith({ id: 1, tagId: null }, 1, 'PIX', 2);
+  });
+
+  it('nenhuma forma com preço avisa a instabilidade e mantém o estado', async () => {
+    const tools = createFakeTools({ quote: async () => null });
+    const result = await asks.choosePayment?.(base, tools);
+    expect(result).toEqual({ state: base, replies: [text(msg.unavailable)] });
+  });
+
+  it('sem produto escolhido mostra todas as formas, sem cotar', async () => {
+    const { product: _product, ...withoutProduct } = base;
+    const tools = createFakeTools();
+    const spy = vi.spyOn(tools, 'quote');
+    const result = await asks.choosePayment?.(withoutProduct, tools);
+    expect(result?.state?.paymentOptions).toEqual(options);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('4 formas viram lista', async () => {
     const four = [...options, { type: 'BOLETO', label: 'Boleto' }];
     const result = await asks.choosePayment?.(
@@ -84,14 +113,18 @@ describe('choosePayment', () => {
     expect(result?.replies[0].type).toBe('buttons');
   });
 
-  it('sem preço para a forma avisa e volta a escolher o pagamento', async () => {
-    const tools = createFakeTools({ quote: async () => null });
+  it('sem preço para a forma avisa e volta a escolher entre as que têm preço', async () => {
+    const tools = createFakeTools({
+      quote: async (_customer, _productId, paymentType, quantity) =>
+        paymentType === 'PIX' ? null : { unitPrice: 110, total: 110 * quantity },
+    });
     const state: OrderState = { ...base, paymentOptions: options };
     const result = await handlers.choosePayment?.(state, pick('pay:PIX'), tools);
     expect(result?.state?.step).toBe('choosePayment');
     expect(result?.state?.payment).toBeUndefined();
     expect(result?.replies[0]).toEqual(text(msg.noPriceForPayment));
     expect(result?.replies[1].type).toBe('buttons');
+    expect(result?.state?.paymentOptions).toEqual(options.slice(1));
   });
 });
 
