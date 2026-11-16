@@ -10,7 +10,7 @@ A entrega leva em até 40 minutos depois que o pedido é confirmado. Em dias de 
 Entregamos também aos domingos e feriados, em esquema de plantão. Nesses dias o atendimento funciona com uma equipe menor, então o prazo de entrega pode passar um pouco dos 40 minutos normais.
 
 ## Taxa de entrega
-Quando existe taxa de entrega, ela aparece no resumo do pedido, antes de você confirmar. Você só confirma depois de ver o total.
+O valor final do pedido aparece no resumo antes de você confirmar. Você só confirma depois de ver o total.
 
 ## Troco
 Se for pagar em dinheiro, o bot pergunta se você precisa de troco e para quanto. Assim o entregador já sai da loja com o troco separado.

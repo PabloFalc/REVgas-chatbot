@@ -30,6 +30,14 @@ describe('base de conhecimento da revenda', () => {
     expect(text.toLowerCase()).toContain('vale-gás');
   });
 
+  it('taxa de entrega: só o valor final no resumo, sem prometer a taxa', async () => {
+    const fee = (await load()).find(chunk => chunk.title === 'Taxa de entrega');
+    expect(fee?.content).toContain(
+      'O valor final do pedido aparece no resumo antes de você confirmar.',
+    );
+    expect(fee?.content).not.toMatch(/taxa de entrega, ela aparece/i);
+  });
+
   it('chaves únicas', async () => {
     const keys = (await load()).map(c => c.key);
     expect(new Set(keys).size).toBe(keys.length);
