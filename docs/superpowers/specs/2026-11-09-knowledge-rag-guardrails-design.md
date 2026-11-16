@@ -36,6 +36,22 @@ a busca é por embeddings (RAG) desde já, e não "colar o FAQ inteiro no prompt
   o bot oferece o botão e repete a pergunta da etapa, sem transferir. Motivo: no teste com o
   `pnpm chat`, "não quero tirar minhas dúvidas" em `askNeedsChange` virou handoff e o cliente entrou
   na fila sem pedir.
+- **Ajustes do teste com o `pnpm chat` (2026-11-15).** Decisões do usuário:
+  - **Filtro de palavrões no código, sem IA**, antes de qualquer etapa e em qualquer texto livre:
+    responde com a resposta de ofensa (oferta de atendente da 2ª em diante) e repete a pergunta da
+    etapa, sem gravar nada. A ofensa pela IA fica como segunda camada. Motivo: "vai te fuder filho da
+    puta" foi aceito como nome em `askName`.
+  - **Dúvida na primeira mensagem não vira pedido**, mesmo com palavra de pedido ("quero trocar o
+    casco do botijão mas ele está danificado"): responde a dúvida com o botão "Fazer pedido"; só
+    `order` inicia o cadastro.
+  - **"O que você sabe responder?"** responde com a lista de assuntos montada dos títulos das seções
+    da base (atualiza quando a base muda) mais os que o código responde (horário, formas de
+    pagamento, preço), sem passar pelo corte de relevância.
+  - **Listas e resumos no formato pedido** (listar, resumir, tópicos, passo a passo, curto ou
+    detalhado, comparar, juntar seções), com mais trechos na busca e até 1200 caracteres para lista
+    e resumo (o resto continua 600). Guard rails inalterados: só os trechos enviados, citação
+    obrigatória (de um ou vários), sem R$/%/palavra de preço, números e nomes só dos trechos
+    citados, "não sei" quando a base não cobre.
 
 ## Objetivos
 
@@ -305,3 +321,28 @@ junto com a fase 2.
   pergunta é a IA.
 - **Rotas nomeadas (2026-11-15).** `routeIntent` decide pela rota (`intentRoute`, `FLOW_ROUTES`), e o
   `rag:check` mede a mesma rota no grupo `routing`.
+- **Implementação dos ajustes de 2026-11-15** (as decisões do usuário estão em
+  [Decisões do usuário](#decisões-do-usuário)):
+  - Palavrões: `src/utils/profanity.ts`, lista própria comparada por palavra inteira, com letras
+    repetidas juntadas, troca de números e símbolos por letras e plural simples. Vem logo depois da
+    emergência nos comandos globais (e no `routeOfText`), antes de cancelar e de atendente. Ficaram
+    fora palavras que também são nome, lugar ou animal ("veado", "piranha", "rola", "pica") e "fds"
+    (fim de semana).
+  - Nome com IA: `readName` devolve `{ name, isPersonName }`; o código só aceita nome com nome e
+    sobrenome cujas palavras estão todas no texto do cliente. Custo 1 no limite por telefone; texto
+    com mais de 200 caracteres nem vai à IA.
+  - Dúvida na primeira mensagem: o código já respondia toda `question` sem criar pedido; a correção
+    foi no prompt de interpretação (dúvida, problema ou condição sobre o serviço é `question`).
+  - Assuntos: `topic: 'capabilities'` na IA e um detector no código (`flow/capabilities.ts`, para
+    "quais dúvidas…", "o que você sabe/consegue/pode…", "sobre o que posso…", sem "sobre" de um tema
+    específico). A lista vem de `KnowledgeService.topics()` (títulos do modelo atual no banco, sem
+    "(parte N)"); banco fora do ar mostra só os assuntos do código. Rota nova `capabilities`.
+  - Pedido amplo: detector `answerStyleOf` no código. Base com até 20 trechos vai inteira, na ordem
+    da base; acima disso, busca híbrida com top 8. Critério: a base de hoje tem 13 trechos (uns 4 mil
+    caracteres) e um resumo de várias seções não deve depender do corte de similaridade de cada uma.
+    Até 800 tokens de saída. Nas checagens, só a numeração de lista no começo da linha deixou de
+    contar como número; item de lista começando com maiúscula continua checado como nome.
+  - Formas de pagamento: `choosePayment` cota cada forma e mostra só as com preço (fake, `hybrid` e
+    `live`); nenhuma com preço mantém a falha de antes ("Estou com instabilidade...").
+  - Base: a seção "Taxa de entrega" agora diz que o valor final aparece no resumo, sem prometer uma
+    taxa que a cotação não traz.

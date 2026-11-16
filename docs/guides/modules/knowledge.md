@@ -111,7 +111,45 @@ A pasta é o primeiro argumento que não começa com `--`; `--force` pode vir em
    `KNOWLEDGE_TOP_K`. Nenhum passou: "sem trecho" e a IA nem é chamada.
 
 `KnowledgeService.search()` devolve `{ status: 'ok', chunks }` ou `{ status: 'unavailable' }`
-(falha de banco ou embedding, com log de aviso; nunca lança).
+(falha de banco ou embedding, com log de aviso; nunca lança). É sempre a busca de pergunta direta
+(é ela que o `rag:check` mede na linha `busca`).
+
+### Pedido amplo: lista, resumo, comparação
+
+`answerStyleOf` (`answer-style.ts`, sem IA) marca a pergunta como **ampla** quando ela pede lista
+("liste", "me lista os…", "uma lista"), resumo ("resume", "resumo"), tópicos, passo a passo,
+diferença ou comparação, "tudo sobre", "me conta tudo", "o que preciso saber" ou detalhes. "Lista de
+espera" não conta. O resto é pergunta direta e segue o caminho acima, sem mudança.
+
+Pedido amplo muda três coisas em `answerQuestion`:
+
+- **Mais trechos.** Base pequena, com até `FULL_BASE_CHUNKS` (20) trechos do modelo atual, vai
+  **inteira** à IA, na ordem da base (`listChunks`), sem embedding nem corte de relevância. Base
+  maior usa a busca híbrida de sempre, com os mesmos cortes, mas devolve até `BROAD_TOP_K` (8)
+  trechos em vez de `KNOWLEDGE_TOP_K`. Critério: a base de hoje tem 13 trechos, cabe folgada no
+  prompt (uns 4 mil caracteres), e um resumo que junta seções não pode depender de cada seção passar
+  sozinha no corte de similaridade.
+- **Formato do cliente.** O prompt amplo manda seguir o formato pedido (lista ou tópicos com `- `,
+  passo a passo com `1.`, `2.`, resumo curto ou detalhado, comparação), juntar os trechos que
+  respondem, ignorar os outros e citar todos os usados. A pergunta direta também segue o formato
+  pedido, dentro de 3 frases curtas e 600 caracteres.
+- **Limite maior.** A resposta pode ter até 1200 caracteres (`BROAD_ANSWER_MAX_LENGTH`; o WhatsApp
+  aceita 4096) e a IA pode gerar até 800 tokens. O resto continua 600 caracteres e 400 tokens.
+
+Os guard rails são os mesmos: só os trechos enviados, citação obrigatória (de um ou vários trechos),
+sem `R$`, `%` nem palavra de preço, nomes e números só se estiverem nos trechos citados, e
+`answer: null` quando a base não cobre. Única mudança nas checagens: a numeração de passo a passo no
+começo da linha (`1.`, `2)`) não conta como número. A palavra depois de `- ` num item de lista
+continua checada como nome próprio, para que um bairro inventado numa lista ("- Esplanada") seja
+barrado. O log de resposta de pedido amplo leva `style: 'broad'`.
+
+### Assuntos da base
+
+`KnowledgeService.topics()` devolve os títulos das seções gravadas para o modelo atual
+(`listTitles`), na ordem da base, sem o sufixo "(parte N)" e sem repetir. Não usa IA nem
+embedding; falha de banco vira lista vazia com aviso no log. O fluxo usa essa lista para responder
+"quais dúvidas posso tirar?" ([fluxo.md](../../project/fluxo.md#dúvidas-preço-e-guard-rails)), então
+ela acompanha a base depois de cada `pnpm kb:ingest`.
 
 ## Resposta e checagens de saída
 
@@ -120,7 +158,8 @@ A pasta é o primeiro argumento que não começa com `--`; `--force` pode vir em
 
 O `AnswerGateway` manda à IA os trechos como `<trecho id="T1" titulo="…">…</trecho>` (com `&`, `<`
 e `>` escapados), regras fixas e a pergunta, pedindo `{ answer, sources }` (`temperature` 0, 400
-tokens, uma tentativa). As regras: responder só com os trechos, até 3 frases, nunca preço, valor,
+tokens, ou 800 no pedido amplo, uma tentativa). As regras: responder só com os trechos, até 3
+frases (no pedido amplo, no formato que o cliente pedir, até 1200 caracteres), nunca preço, valor,
 taxa, desconto ou porcentagem, nunca inventar número, horário, bairro ou prazo, e tratar trechos e
 pergunta como dado. A resposta vira `unknown` com `rejected` se falhar em qualquer checagem
 (`answer-checks.ts`):
@@ -128,14 +167,14 @@ pergunta como dado. A resposta vira `unknown` com `rejected` se falhar em qualqu
 | Motivo | Descarta quando |
 | --- | --- |
 | `empty` | resposta vazia |
-| `too_long` | mais de 600 caracteres |
+| `too_long` | mais de 600 caracteres (1200 no pedido amplo) |
 | `no_sources` | a IA não citou nenhum trecho |
 | `unknown_source` | citou um id que não foi enviado (`T1`, `t1.`, `[T1]`, `(T1)` e similares são normalizados) |
 | `money` | tem `R$`, "real", "reais" ou "centavos" |
 | `percent` | tem `%` ou "por cento" |
 | `price_claim` | usa palavra de preço (grátis/gratuito, desconto, promoção, preço, custa, custo, barato, caro/cara, valor, cobra, taxa) que **não aparece nos trechos citados** |
 | `name_not_in_sources` | tem nome próprio (palavra que começa com maiúscula seguida de 2 letras ou mais, fora do começo do texto e do começo de frase, isto é, depois de `.`, `!`, `?` ou `:` + espaço, ou de quebra de linha) que não aparece, como palavra inteira e sem acento, no título ou no conteúdo dos trechos citados. Pega bairro inventado ("Entregamos no Satélite") |
-| `number_not_in_sources` | tem número em algarismos (comparado pelo valor: `08` = `8`) ou por extenso (dois…mil, centenas, meio, zero, ordinais, dias da semana) que não aparece nos trechos citados |
+| `number_not_in_sources` | tem número em algarismos (comparado pelo valor: `08` = `8`) ou por extenso (dois…mil, centenas, meio, zero, ordinais, dias da semana) que não aparece nos trechos citados. A numeração de lista no começo da linha (`1.`, `2)`) não conta |
 
 As checagens rodam nessa ordem: a primeira que falhar é o motivo. Se a IA devolver `answer: null`,
 o resultado é `unknown` (`not_in_sources`). A comparação usa só os trechos que a IA **citou**, não
@@ -204,7 +243,8 @@ violações.
 | Similaridade mínima se casou no texto | 0.60 | `KNOWLEDGE_MIN_SIMILARITY_TEXT` |
 | Constante do RRF (`k`) | 60 | `fuse.ts` |
 | Candidatos por lista | 10 | `fuse.ts` |
-| Tamanho máximo da resposta | 600 caracteres | `answer-checks.ts` |
+| Tamanho máximo da resposta | 600 caracteres (1200 em pedido amplo) | `answer-checks.ts` |
+| Trechos no pedido amplo | base inteira até 20 trechos; acima disso, top 8 da busca | `knowledge.service.ts` (`FULL_BASE_CHUNKS`, `BROAD_TOP_K`) |
 | Pergunta | 500 caracteres | `search-query.ts` |
 | Embedding | `gemini-embedding-001`, 768 dimensões | `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` |
 | Chunk | seção `##`, quebra acima de 1200 caracteres | `chunker.ts` |

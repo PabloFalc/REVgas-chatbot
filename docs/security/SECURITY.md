@@ -144,12 +144,18 @@ Respostas da base (módulo ligado ao fluxo):
   500 caracteres antes do embedding e do prompt.
 - **Trechos e pergunta como dado:** vão escapados em `<trecho>`, com regras fixas mandando ignorar
   ordens dentro deles; a IA responde `{ answer, sources }` validado por Zod.
-- **Checagens de saída:** a resposta é descartada se estiver vazia, passar de 600 caracteres, não
+- **Checagens de saída:** a resposta é descartada se estiver vazia, passar de 600 caracteres (1200
+  em pedido de lista ou resumo), não
   citar trechos ou citar id inexistente, tiver `R$`/"reais"/"centavos" ou `%`/"por cento", usar
   palavra de preço que não está nos trechos citados, trouxer nome próprio (palavra com maiúscula
   fora do começo de frase, como um bairro inventado: `name_not_in_sources`) que não está neles,
   ou trouxer número (algarismo ou por extenso) que não está neles. A base não guarda valores,
   porcentagens, horários nem formas de pagamento.
+- **Pedido amplo com as mesmas regras:** lista, resumo, comparação e passo a passo mandam mais
+  trechos (a base inteira quando tem até 20 trechos, senão os 8 melhores da busca) e aceitam até
+  1200 caracteres, mas passam pelas mesmas checagens. Só a numeração de lista no começo da linha
+  (`1.`, `2)`) deixa de contar como número; a palavra depois de `- ` continua checada como nome, para
+  barrar bairro inventado numa lista.
 - **Falha vira "não sei":** Postgres, embedding ou IA fora do ar nunca lançam; o resultado é
   `unknown` com log de aviso. Uma tentativa por chamada, sem retry.
 - **Sem texto do cliente no log:** só motivo, rejeição, quantidade de trechos e nome do erro.
@@ -181,6 +187,19 @@ Guard rails do fluxo (entregues, etapa B):
   nem a IA.
 - **Recusa e ofensa com texto fixo:** fora do assunto recebe recusa fixa; ofensa recebe texto fixo e,
   da 2ª vez, a oferta de atendente. O atendente só entra por toque no botão.
+- **Filtro de palavrões no código:** antes de qualquer etapa (e na primeira mensagem), depois só da
+  emergência, `src/utils/profanity.ts` procura palavrões por palavra inteira, sem acento, com letras
+  repetidas juntadas e troca de números e símbolos por letras ("p0rra", "c@ralho"). Se casar, o bot
+  responde com o texto fixo de ofensa e repete a pergunta da etapa, sem gravar nada: nome, rua,
+  bairro, número e busca de produto nunca recebem palavrão, mesmo sem IA. A ofensa pela IA continua
+  como segunda camada. **Decisão do usuário (2026-11-15).**
+- **Nome lido pela IA com conferência no código:** em `askName`, a IA (`readName`, custo 1 no limite
+  por telefone) tira o nome de frases como "meu nome é João Silva". O texto vai sem CPF
+  (`removeCpfs`) e com as regras mandando tratá-lo como dado. O nome só é aceito se a IA disser que
+  parece nome de pessoa, tiver nome e sobrenome e todas as palavras estiverem no texto do cliente,
+  então a IA não consegue inventar nem completar um nome. Sem IA, vale a validação de sempre.
+- **Lista de assuntos sem IA:** "quais dúvidas posso tirar?" responde com os títulos das seções da
+  base e os assuntos do código, sem busca, sem IA e sem texto do cliente no prompt.
 - **Cliente travado:** 3 "não entendi" seguidos oferecem o atendente. Contadores no Redis, fora do
   estado do pedido, sem texto do cliente.
 - **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora; interpretar custa 1,
