@@ -15,6 +15,10 @@ Comandos:
 | E2e | `pnpm test:e2e` (precisa de infra: `pnpm docker:init`) |
 | Infra local | `pnpm docker:init` / `pnpm docker:stop` |
 
+> **Testar a conversa na mão, sem WhatsApp:** `pnpm chat` sobe o app e abre um chat no terminal,
+> com o Chatwoot local mostrando a mesma conversa. Passo a passo em
+> [chat-simulator.md](./chat-simulator.md).
+
 ## Testes unitários
 
 Para classes com dependências, monte um módulo de teste com `Test.createTestingModule` e
@@ -56,6 +60,11 @@ describe('HealthService', () => {
 O arquivo fica ao lado da unidade testada (`*.spec.ts` dentro de `src/`).
 
 ## Testes e2e
+
+> O Postgres do e2e precisa ter o **pgvector** (imagem `pgvector/pgvector:pg17`, já no
+> `docker-compose.yml`) e as migrations aplicadas (`pnpm db:migrate`). A suíte
+> `tests/knowledge/` usa a tabela `knowledge_chunks`; veja
+> [knowledge.md](../modules/knowledge.md#banco-local-pgvector).
 
 E2e sobe o app **inteiro** (Fastify + DI + plugins) e faz requisições HTTP de verdade via
 `supertest`. O app é criado pelo helper `createApp` (`tests/setup-e2e.ts`), que já roda
@@ -228,6 +237,22 @@ guard global. Esqueceu o `authModule` numa suíte de auth? É isso.
 
 `sign-in` e `sign-up` respondem `409` quando a request já traz um token válido. Não reaproveite o
 header `bearer(token)` nessas chamadas, a menos que seja exatamente isso que o teste verifica.
+
+### WhatsApp sempre simulado
+
+`vitest.config.e2e.ts` força `REVGAS_MODE`, `VIACEP_MODE`, `LLM_MODE`, `WHATSAPP_MODE` e `CHATWOOT_MODE` para `fake`, independentemente do `.env` local.
+
+`vitest.config.e2e.ts` define `WHATSAPP_MODE=fake` (e um app secret/verify token de teste), então
+o e2e nunca envia mensagem real, mesmo com token no `.env`. Para ver o que o bot respondeu, pegue o
+simulador com `app.get(WHATSAPP_CLIENT)` (é um `FakeWhatsappClient`: `sent`, `read`, `clear()`) e
+assine o corpo com `signPayload` (`src/integrations/whatsapp/webhook/signature.ts`). Use ids de
+mensagem únicos: ids repetidos são ignorados por 24h no Redis. O webhook responde 200 antes de
+processar, então espere o envio com `vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1))`. Exemplo:
+`tests/conversation/whatsapp-webhook.e2e.spec.ts`.
+
+### Chatwoot sempre simulado
+
+O mesmo arquivo define `CHATWOOT_MODE=fake`, `CHATWOOT_INBOX_ID=1` e um `CHATWOOT_WEBHOOK_SECRET` de teste, então nenhum teste depende de um Chatwoot rodando. Pegue o simulador com `app.get(CHATWOOT_CLIENT)` para conferir contatos, conversas, mensagens e notas, e assine o corpo do webhook com `signChatwootPayload` (`src/integrations/chatwoot/webhook/signature.ts`). Use ids de mensagem únicos (dedup de 24h no Redis). Exemplo: `tests/conversation/chatwoot-webhook.e2e.spec.ts`.
 
 ## Checklist para uma suíte e2e nova
 

@@ -54,4 +54,18 @@ const HEALTH_THROTTLE = {
   },
 };
 
-export { HEALTH_THROTTLE, RateLimitGuard, rateLimit, STRICT_AUTH_THROTTLE, throttler };
+const WEBHOOK_THROTTLE = {
+  default: {
+    ttl: 60_000,
+    limit: env.NODE_ENV === 'test' ? 9999 : 1_000,
+  },
+};
+
+export {
+  HEALTH_THROTTLE,
+  RateLimitGuard,
+  rateLimit,
+  STRICT_AUTH_THROTTLE,
+  throttler,
+  WEBHOOK_THROTTLE,
+};

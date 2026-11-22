@@ -17,7 +17,7 @@ export async function createApp(
   const app = await NestFactory.create<NestFastifyApplication>(
     TestAppModule,
     new FastifyAdapter({ trustProxy: true, bodyLimit: 2 * 1024 * 1024 }),
-    { bufferLogs: true, logger: false },
+    { bufferLogs: true, logger: false, rawBody: true },
   );
 
   await setupPlugins(app);

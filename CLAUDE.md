@@ -1,120 +1,112 @@
 # CLAUDE.md
 
 **revgas-chatbot** — a WhatsApp chatbot for a gas (GLP) reseller that walks the customer through
-an order and creates the sale in the **RevGás ERP** via its public API (Projeto de Extensão
-2026.2, ICEV, client Flow). Stack: NestJS 11 (**Fastify** adapter, Node), Drizzle ORM (Postgres),
-Redis (ioredis), nestjs-zod/Zod (validation/DTOs), Better Auth + Resend (reseller panel login,
-bearer token — **on standby**), Pino (logging), Biome (lint/format), Vitest (unit + e2e).
+an order and creates the sale in the **RevGás ERP** via its public API. Stack: NestJS 11
+(**Fastify**), Redis (ioredis), Drizzle ORM (Postgres), nestjs-zod/Zod, Pino, Biome, Vitest.
 
-> The `docs/` guides are written in Portuguese — this file points to them by path. Product
-> context: `docs/project/specs.md`, `requisitos.md`, `funcionalidades.md`, `fluxo.md`.
+> The `docs/` guides are in Portuguese. Product context: `docs/project/specs.md`,
+> `requisitos.md`, `funcionalidades.md`, `fluxo.md`. Index: `docs/README.md`.
 
 ## Commands
 
-The project's package manager is **pnpm** (`pnpm@10.33.0`). Use `pnpm` for everything.
+Package manager is **pnpm** — use it for everything.
 
 | Task | Command |
 | --- | --- |
-| Install deps | `pnpm install` |
-| Build | `pnpm build` |
+| Install / build | `pnpm install` · `pnpm build` |
 | Lint | `pnpm lint` · fix: `pnpm lint:fix` |
 | Unit tests | `pnpm test` |
-| E2e tests | `pnpm test:e2e` (needs Postgres/Redis up — `pnpm docker:init`) |
+| E2e tests | `pnpm test:e2e` (needs `pnpm docker:init` + `pnpm db:migrate` for Postgres/Redis) |
 | Dev | `pnpm start:dev` |
-| Migrations | `pnpm db:generate` → `pnpm db:migrate` (Drizzle Kit) |
-| Local infra | `pnpm docker:init` / `pnpm docker:stop` |
+| Migrations | `pnpm db:generate` → `pnpm db:migrate` |
+| Integration checks | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` |
+| Knowledge base | `pnpm kb:ingest` (embeds `knowledge/base`; needs the migrations applied) |
+| Local Chatwoot (Docker profile) | `pnpm chatwoot:prepare` · `pnpm chatwoot:up` · `pnpm chatwoot:stop` |
+| Terminal chat simulator (instead of `start:dev`) | `pnpm chat` · `pnpm chat --phone 5586988887777 --revgas hybrid` |
 
-**Commits:** use `git commit` directly with conventional commits (`feat:`, `fix:`, `chore:`…).
+**Commits:** `git commit` directly, conventional commits (`feat:`, `fix:`, `chore:`…).
 
 ## Architecture
 
-Current:
-
 ```
 src/
-  config/      env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
-  core/        cross-cutting — guards, filters, interceptors, pipes, decorators, errors,
-               services/email (EmailService + Resend)
-  infra/       database (Drizzle + schemas), cache (Redis), health
-  modules/     domain — auth/ (on standby, not wired in routes.module.ts)
+  config/       env.ts (dotenv + Zod, imported directly — no ConfigService) and Fastify plugins
+  core/         global guards, filters, pipes, interceptors, decorators; erros/ (app errors at the
+                root, one folder per integration: revgas/, whatsapp/, llm/, viacep/, chatwoot/); services/email
+  infra/        database (Drizzle + schemas), cache (Redis), health
+  integrations/ revgas/, whatsapp/ (client + webhook), chatwoot/ (client + webhook), llm/, viacep/ —
+                each with a fake mode
+  utils/        pure helpers, no Nest/domain: mask, cpf, money, text, guards, safe-equal,
+                parse-json, iso-datetime. Check here before writing a new helper.
+  modules/      conversation/ (webhook + order flow), customer/, catalog/, order/, address/,
+                assistant/ (LLM interpretation of free text), handoff/ (queue to a human
+                agent via Chatwoot), knowledge/ (RAG over the base, answers questions in the
+                flow), auth/ (on standby)
+  cli/          dev entry points run from dist/: kb-ingest, chat (terminal simulator, `pnpm chat`)
+  server.ts     createServer() — the Fastify app shared by main.ts and `pnpm chat`
+knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluation/ (rag:check questions)
 ```
 
-- **App is assembled in `AppModule`**: `CoreModule`, `RoutesModule`, `InfraModule`. Config comes from `src/config/env.ts` (dotenv + Zod), imported directly — there is no ConfigModule/ConfigService.
-- **`CoreModule`** registers the globals (`APP_*`): guard `rateLimit`, filters
-  (`unexpected` → `betterAuth` → `drizzle` → `http`; Nest checks the last registered first, so the catch-all `unexpected` stays first), `zodValidationPipe`. Global behavior changes go here.
-  It does **not** register `authGuard`.
-- **Auth/email are on standby** (code present, switched off): `RoutesModule` has `imports: []`,
-  so no `/auth/*` routes exist (404) and there is **no global auth guard** — routes are public by
-  default (the future WhatsApp webhook is validated by the provider's signature). `AuthModule`
-  itself provides the `AuthGuard` (`APP_GUARD`) and imports `EmailModule`; `AppModule` does not
-  import `EmailModule`. **To turn it on:** add `...authModule` (from `./auth/auth.module`) to
-  `RoutesModule.imports` and set `BETTER_AUTH_SECRET`. Then every route requires a session by
-  default — mark public ones with `@Public()`. See `docs/guides/modules/auth.md`.
-- **Better Auth is a module singleton** (`src/modules/auth/auth.ts`), created outside the DI
-  container. The native HTTP handler (`/api/auth/*`) is **not** mounted; controllers wrap
-  `auth.api.*` in our own typed routes (keeps guards/rate-limit/validation/Swagger).
-
-Planned (from `docs/project/specs.md`, names still to be validated with the group):
-
-```
-src/
-  modules/     conversation, customer, catalog, order, assistant, handoff, metrics
-  infra/       cache (conversation state with TTL), database (Postgres + Drizzle)
-  lib/         revgas, whatsapp, llm — clients for external services
-```
+- `AppModule` = `CoreModule` + `RoutesModule` + `InfraModule`. `RoutesModule` imports only
+  `ConversationModule` (which imports `KnowledgeModule`), which also hosts the Chatwoot webhook
+  route (`POST /webhooks/chatwoot`, validated by `X-Chatwoot-Signature`).
+- `CoreModule` registers the global filters in the order `unexpected` → `betterAuth` → `drizzle`
+  → `http` (Nest checks the last registered first, so the catch-all stays first), plus
+  `rateLimit` and `zodValidationPipe`.
+- **Auth is on standby**: no `/auth/*` routes and no global auth guard, so routes are public.
+  Postgres runs with pgvector and is used by Better Auth and by the knowledge base (via
+  `pnpm kb:ingest`). The WhatsApp webhook is validated by the Meta signature
+  (`X-Hub-Signature-256`, needs `rawBody: true` in `main.ts`). To turn auth on and for its
+  conventions, see `docs/guides/modules/auth.md`.
 
 Dependency rules:
 
-- `modules/` depends on `infra/` and `lib/`, never the reverse.
-- `lib/` knows nothing about the domain: it talks to the external service and validates responses with Zod.
-- Module services don't import SDKs (Redis, Drizzle, `lib/`) directly — that goes through repositories.
-- Every `lib/` client has a mock for tests.
-- `conversation.service` does no I/O: (state, message) → (new state, replies), testable without WhatsApp or AI.
-- Zod schemas live in the module that uses them (`*.schema.ts`); Drizzle tables live in `infra/database/schemas`.
+- `modules/` depends on `infra/` and `integrations/`, never the reverse. `integrations/` knows
+  nothing about the domain and validates responses with Zod. Every client has a fake for tests.
+- Module services never import SDKs or `integrations/` directly. They go through
+  **repositories** (`*.repository.ts`, read/write data in Redis, Postgres or the RevGás API) or
+  **gateways** (`*.gateway.ts`, outbound actions that store nothing, e.g. `messaging.gateway`).
+  Only exception: `ConversationService` imports the webhook event **types** from
+  `integrations/whatsapp/webhook/webhook.schemas`.
+- Zod schemas live in the module that uses them (`*.schemas.ts`); in `modules/`, DTOs and domain
+  types go in the module's `contracts/` folder. Drizzle tables live in `infra/database/schemas`.
 
-## Conventions (important)
+### Conversation flow
 
-- **No explanatory `//` comments in code.** Do not add inline comments; the code should speak
-  for itself. (Comments in docs/markdown are fine.)
-- **Auth is bearer-token only** (Better Auth `bearer()` plugin, no cookies, `cookieCache` off).
-  Clients send `Authorization: Bearer <token>`; sign-in/sign-up return `{ token, user }`. When on,
-  the `AuthGuard` is fail-closed: `@Public()` skips it, `@AllowAnonymous()` lets requests through
-  without a session (but attaches it if present), no session → 401, session without verified
-  email → 403 unless the route has `@AllowUnverified()` (get-session, sign-out, verify-email,
-  verify). Email flows (verify, reset password, change email) go through `EmailService`.
-- **Routes that wrap `auth.api.*`**: no `try/catch` — the global `BetterAuthExceptionFilter`
-  translates Better Auth's `APIError` → the project's `AppError`s. Just delegate to `auth.api.*`
-  with the request headers.
-- **Response docs/validation** via `@ApiDoc(doc)` — generates Swagger and validates the output
-  with Zod (and injects `@HttpCode`). `security` only supports `{ bearer: true }`. See
-  `docs/guides/conventions/api-doc.md`.
-- **DTOs** are Zod schemas via `nestjs-zod` (`createZodDto`), validated by the global `zodValidationPipe`.
-- **Auth split:** global at `/auth/*` (session) and `/auth/me/*` (user); method at `/auth/email/*`.
-- **Secrets:** `REVGAS_API_KEY` stays server-side only (RNF02) — never in responses, logs or AI
-  prompts. Customer CPF/phone/address must be masked in logs (LGPD).
+- `ConversationService` handles each WhatsApp event: dedup, a per-phone lock, mark as read, run
+  the flow, send the replies. Order state lives in Redis with a 15 min TTL.
+  `ReminderScheduler` sends the 10 min idle reminder and must not renew that TTL
+  (`saveOrderKeepingTtl`).
+- The flow lives in `conversation/flow/`. Step files (`flow/steps/`) receive `FlowTools` and
+  **never import Nest, Redis, integrations, services or repositories** — only flow files,
+  `src/utils` and modules' `contracts/`. Test them with `createFakeTools`.
+- `flow-tools.ts` is the only place that wires `FlowTools` to the real services. Keep new flow
+  logic inside the steps.
+- Behaviour rules (CPF check, reminder, repeat order) are in `docs/project/fluxo.md`.
 
-## Documentation
+## Conventions
 
-Index: `docs/README.md`. Area guides (read before touching the matching area):
-
-- `docs/project/specs.md` — technical spec (stack, planned structure, AI contracts, RevGás API integration)
-- `docs/guides/modules/auth.md` — auth (standby + how to turn on), bearer-only, `AuthGuard`, email flows, routes
-- `docs/guides/services/email-service.md` — `EmailService` (Resend), standby, log-only in dev/test
-- `docs/guides/conventions/api-doc.md` — the `@ApiDoc` decorator
-- `docs/guides/conventions/environment.md` — env vars (purpose, requiredness, defaults, consequences)
-- `docs/guides/conventions/testing.md` — writing tests (unit + e2e), `createApp(extraImports)`, the `deleteBy`/`signIn`/`signUpVerified`/`bearer` helpers, scoped cleanup and e2e gotchas
-- `docs/guides/conventions/ci-cd.md` — the `.github` workflows and the develop/staging/main gitflow
-- `docs/security/SECURITY.md` — living security reference (attack vectors, mitigations, secrets)
-- `docs/architecture/` — architecture notes
+- **No explanatory `//` comments in code.** (Comments in docs/markdown are fine.)
+- **Secrets** (`REVGAS_API_KEY`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `LLM_API_KEY`,
+  `EMBEDDING_API_KEY`, `CHATWOOT_API_TOKEN`, `CHATWOOT_BOT_TOKEN`, `CHATWOOT_WEBHOOK_SECRET`)
+  stay server-side — never in responses, logs or AI prompts.
+- **LGPD:** mask customer CPF, phone and address in logs with `src/utils/mask`. CPF digits never
+  go to logs, replies, AI prompts or Chatwoot (`[CPF ocultado]`).
+- **DTOs** are Zod schemas via `createZodDto`. Routes document and validate their output with
+  `@ApiDoc(doc)` (`docs/guides/conventions/api-doc.md`).
 
 ## Testing
 
-- **Unit + e2e with Vitest** (e2e in `tests/`, own config `vitest.config.e2e.ts`).
-- E2e needs Postgres/Redis (`pnpm docker:init`). In `NODE_ENV=test` rate limits are relaxed,
-  email is log-only and the logger is silent.
-- `createApp(extraImports = [])` (`tests/setup-e2e.ts`) wraps `[AppModule, ...extraImports]`;
-  auth suites use `createApp(authModule)` since auth is on standby. `tests/app.e2e.spec.ts`
-  asserts `/health` → 200 and `/auth/email/sign-in` → 404.
-- E2e pattern: cleanup scoped per suite with `deleteBy`; authenticate with
-  `signUpVerified(request, account)` (or `signIn`) → token, then `.set(bearer(token))`.
-- Full guide: `docs/guides/conventions/testing.md`.
+Vitest for unit (next to the code) and e2e (`tests/`, config `vitest.config.e2e.ts`). E2e uses
+`createApp(extraImports)` from `tests/setup-e2e.ts`. Guide: `docs/guides/conventions/testing.md`.
+
+## Area guides
+
+Read the matching guide before touching an area:
+
+- `docs/guides/integrations/` — `revgas.md` (modes, never retry POST), `whatsapp.md`,
+  `llm.md`, `viacep.md`, `chatwoot.md` (human handoff desk, local Docker)
+- `docs/guides/modules/auth.md` · `docs/guides/modules/knowledge.md` · `docs/guides/services/email-service.md`
+- `docs/guides/conventions/` — `environment.md` (env vars), `testing.md`, `chat-simulator.md`
+  (`pnpm chat`), `api-doc.md`, `ci-cd.md` (develop/staging/main gitflow)
+- `docs/security/SECURITY.md` — attack vectors, mitigations, secrets

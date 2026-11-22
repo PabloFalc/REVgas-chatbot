@@ -24,6 +24,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder --chown=app:nodejs /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/knowledge ./knowledge
 
 USER app
 

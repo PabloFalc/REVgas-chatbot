@@ -7,6 +7,18 @@ export default defineConfig({
     globals: true,
     include: ['tests/**/*.e2e.spec.ts'],
     fileParallelism: false,
+    env: {
+      REVGAS_MODE: 'fake',
+      LLM_MODE: 'fake',
+      VIACEP_MODE: 'fake',
+      WHATSAPP_MODE: 'fake',
+      WHATSAPP_PHONE_NUMBER_ID: '1122334455',
+      WHATSAPP_APP_SECRET: 'e2e-whatsapp-app-secret-0123456789',
+      WHATSAPP_VERIFY_TOKEN: 'e2e-whatsapp-verify-token',
+      CHATWOOT_MODE: 'fake',
+      CHATWOOT_INBOX_ID: '1',
+      CHATWOOT_WEBHOOK_SECRET: 'e2e-chatwoot-webhook-secret',
+    },
     alias: {
       src: resolve(__dirname, './src'),
     },

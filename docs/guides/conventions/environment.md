@@ -27,6 +27,7 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 | `PORT` | Não | `3100` | Porta HTTP. |
 | `HOST` | Não | `0.0.0.0` | Interface de bind. `0.0.0.0` aceita conexões externas (necessário em container). |
 | `LOG_LEVEL` | Não | por `NODE_ENV` (ver abaixo) | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace` \| `silent`. Sobrescreve o nível do logger (Pino). Sem ela, o default é `debug` em dev, `info` em produção e `silent` em test. Use para subir/baixar a verbosidade sem editar código — ex.: `LOG_LEVEL=trace` ao caçar um bug, ou `LOG_LEVEL=debug` para ligar logs ao depurar um teste. |
+| `LOG_FILE` | Não | — | Caminho de um arquivo para os logs (a pasta é criada; acrescenta ao fim). Com ela, nada de log sai no terminal: em dev o texto é o mesmo do `pino-pretty`, sem cores; fora de dev, JSON. O `pnpm chat` liga sozinho (`logs/chat.log`, ver [chat-simulator.md](./chat-simulator.md)). |
 
 > **Logger (`src/config/plugins/pino.config.ts`).** Em **dev** a saída é colorida e legível
 > (`pino-pretty`, prefixo `[Contexto]`); em **produção** é JSON estruturado; em **test** é silenciada
@@ -85,15 +86,109 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
-| `REVGAS_API_URL` | Não (por enquanto) | vazio = não definida | URL base da API pública do ERP RevGás. Validada como URL quando preenchida. |
-| `REVGAS_API_KEY` | Não (por enquanto) | vazio = não definida | API Key solicitada ao suporte da RevGás. **Fica só no servidor** (RNF02): nunca vai para o front, para o prompt da IA nem para logs. Vazar = qualquer um cria/consulta vendas no ERP da revenda. |
+| `REVGAS_MODE` | Não | vazio = automático | `live`, `hybrid` ou `fake`. Vazio: `hybrid` se houver `REVGAS_API_KEY`, senão `fake`. Valor fora da lista derruba o boot. `fake` em produção = demo (dados simulados, nada vai ao ERP) e gera aviso. |
+| `REVGAS_API_URL` | Não | `https://api.revgas.com/v1` | URL base da API pública do ERP RevGás. Vazio usa o default; validada como URL. |
+| `REVGAS_API_KEY` | Obrigatória em `live`/`hybrid` | vazio = não definida | API Key solicitada ao suporte da RevGás. **Fica só no servidor** (RNF02): nunca vai para o front, para o prompt da IA nem para logs. Vazar = qualquer um cria/consulta vendas no ERP da revenda. Sem ela nesses modos, `resolveRevgasConfig` lança erro. |
+| `REVGAS_ESTABLISHMENT_ID` | Obrigatória em `live`/`hybrid` | vazio = não definida | ID do estabelecimento (revenda) no ERP, numérico inteiro positivo. Sem ele nesses modos, `resolveRevgasConfig` lança erro; valor não numérico derruba o boot. |
+| `REVGAS_TIMEOUT_MS` | Não | `10000` | Timeout de cada chamada à API. Muito baixo = falsos erros; muito alto = cliente espera no WhatsApp. |
+| `REVGAS_MIN_INTERVAL_MS` | Não | `1100` | Intervalo mínimo entre chamadas à API, para respeitar o limite de requisições do ERP. Menor que o limite = respostas 429. |
 
-> Ambas viram obrigatórias quando o cliente `lib/revgas` for implementado.
+> A chave e o estabelecimento só são exigidos em `live`/`hybrid` (checagem em `resolveRevgasConfig`, não no schema global), então o app sobe em `fake` sem nada configurado.
 
-## WhatsApp e LLM
+## WhatsApp (Cloud API da Meta)
 
-A definir — o provedor de WhatsApp (Cloud API, Evolution ou Z-API) e o modelo de IA ainda não
-foram escolhidos. As variáveis entram aqui quando forem.
+Onde achar cada valor no painel da Meta: [whatsapp.md](../integrations/whatsapp.md).
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `WHATSAPP_MODE` | Não | vazio = automático | `live` ou `fake`. Vazio: `live` se houver `WHATSAPP_ACCESS_TOKEN`, senão `fake`. Em `fake` nada sai para o WhatsApp (as respostas vão para o log em dev); em produção gera aviso. |
+| `WHATSAPP_API_URL` | Não | `https://graph.facebook.com` | URL base da Graph API. Validada como URL. |
+| `WHATSAPP_API_VERSION` | Não | `v23.0` | Versão da Graph API (`vNN.N`). Versões antigas são desativadas pela Meta (~2 anos); atualize quando a Meta avisar. |
+| `WHATSAPP_PHONE_NUMBER_ID` | Obrigatória em `live` | vazio | ID do número que envia as mensagens (não é o telefone). Só dígitos. Também filtra o webhook: eventos de outros números da conta são ignorados. |
+| `WHATSAPP_ACCESS_TOKEN` | Obrigatória em `live` | vazio | Token da Graph API. **Fica só no servidor**: vazado, permite mandar mensagens em nome da revenda. O token temporário do painel expira em 24h; em produção use token de usuário do sistema. Mínimo de 32 caracteres. Expirado → envios falham com `unauthorized` (código 190) no log. |
+| `WHATSAPP_APP_SECRET` | Obrigatória em `live` e em produção | vazio | Chave secreta do app (≥ 32 caracteres); confere o `X-Hub-Signature-256` de cada POST no webhook. Sem ela (só possível em `fake` fora de produção), o webhook aceita qualquer requisição. |
+| `WHATSAPP_VERIFY_TOKEN` | Obrigatória em `live` e em produção | vazio | Texto escolhido por você (≥ 16 caracteres), repetido na configuração do webhook na Meta. Sem ele, a verificação (`GET /webhooks/whatsapp`) sempre responde 403. |
+| `WHATSAPP_TIMEOUT_MS` | Não | `10000` | Timeout de cada envio. Timeout vira resultado desconhecido (a mensagem pode ter saído) e não é repetido. |
+
+> As quatro obrigatórias só são exigidas em `live` (checagem em `resolveWhatsappConfig`), então o app sobe em `fake` sem nada configurado. **Em produção**, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` são exigidos em qualquer modo: sem eles a rota pública do webhook ficaria sem autenticação, e o boot falha. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
+
+## Chatwoot (handoff para atendente)
+
+Como obter cada valor no painel do Chatwoot: [chatwoot.md](../integrations/chatwoot.md).
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `CHATWOOT_MODE` | Não | vazio = automático | `live`, `fake` ou `off`. Vazio: `live` se houver `CHATWOOT_API_TOKEN`, senão `off`. Em `off` o pedido de atendente responde com `STORE_PHONE`, não há espelho e o webhook recusa tudo (401). |
+| `CHATWOOT_URL` | Não | `http://localhost:3000` | URL base do Chatwoot. Validada como URL; a barra final é removida. |
+| `CHATWOOT_ACCOUNT_ID` | Obrigatória em `live` | vazio | Id numérico da conta (aparece na URL do painel). |
+| `CHATWOOT_INBOX_ID` | Obrigatória em `live` | vazio | Id numérico da caixa do tipo API. Eventos de outra caixa são ignorados no webhook. |
+| `CHATWOOT_API_TOKEN` | Obrigatória em `live` | vazio | Token de acesso do usuário administrador; usado só para contatos. **Fica só no servidor**: nunca em log, resposta ou prompt. |
+| `CHATWOOT_BOT_TOKEN` | Obrigatória em `live` | vazio | Token do Agent Bot (não conectado à caixa); usado para conversas, mensagens, notas e status. **Fica só no servidor.** |
+| `CHATWOOT_WEBHOOK_SECRET` | Obrigatória em `live` | vazio | Segredo do canal da caixa (≥ 16 caracteres); confere `X-Chatwoot-Signature`. Sem ele o webhook recusa tudo. **Fica só no servidor.** |
+| `CHATWOOT_TIMEOUT_MS` | Não | `5000` | Timeout de cada chamada. Estourou, a chamada falha, o erro é engolido no espelho (log `warn`) e nada é repetido. |
+| `SERVICE_HOURS` | Não | vazio = sempre aberto | Horário de atendimento da revenda (fuso fixo `America/Fortaleza`), por exemplo `seg-sex 08:00-18:00; sab 08:00-12:00`. Entradas separadas por `;`; dias `dom seg ter qua qui sex sab` (intervalo `seg-sex` ou lista `seg,qua,sex`, sem diferenciar maiúsculas e acentos); horário `HH:MM-HH:MM` com fim maior que o início (`24:00` vale como fim). Valor inválido derruba o boot. Fora do horário o bot avisa e mantém o cliente na fila. |
+
+> `live` exige as cinco variáveis (checagem em `resolveChatwootConfig`), então o app sobe em `off` ou `fake` sem nada configurado. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
+
+O Chatwoot local (Docker) tem o próprio arquivo de segredos, `docker/chatwoot.env` (fora do git, modelo em `docker/chatwoot.env.example`); não é lido pelo app.
+
+## LLM (Gemini via API compatível com OpenAI)
+
+Chave gratuita em [aistudio.google.com](https://aistudio.google.com) (plano gratuito).
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `LLM_MODE` | Não | vazio = automático | `live` ou `fake`. Vazio: `live` se houver `LLM_API_KEY`, senão `fake`. Em `fake` a LLM não é chamada. |
+| `LLM_API_URL` | Não | `https://generativelanguage.googleapis.com/v1beta/openai` | URL base da API compatível com OpenAI. Validada como URL; a barra final é removida. |
+| `LLM_API_KEY` | Obrigatória em `live` | vazio | Chave da API. **Fica só no servidor**: nunca em log, erro ou resposta HTTP. |
+| `LLM_MODEL` | Não | `gemini-3.5-flash` | Nome do modelo enviado em cada chamada. |
+| `LLM_TIMEOUT_MS` | Não | `8000` | Timeout de cada chamada. Sem retry: estourou, a chamada falha e o bot segue pelos botões. |
+
+> `live` exige a chave (checagem em `resolveLlmConfig`), então o app sobe em `fake` sem nada configurado. `fake` em produção só loga um aviso e o bot fica só com botões. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
+
+## Embedding (busca semântica da base de conhecimento)
+
+Usa a mesma API compatível com OpenAI do LLM (`POST {URL}/embeddings`). O modo segue `LLM_MODE`.
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `EMBEDDING_API_URL` | Não | vazio = `LLM_API_URL` | URL base da API de embedding. Validada como URL; a barra final é removida. |
+| `EMBEDDING_API_KEY` | Não | vazio = `LLM_API_KEY` | Chave da API de embedding. **Segredo, fica só no servidor**: nunca em log, erro, resposta HTTP ou prompt. |
+| `EMBEDDING_MODEL` | Não | `gemini-embedding-001` | Nome do modelo enviado em cada chamada. Trocar exige reingerir a base (`pnpm kb:ingest`). |
+| `EMBEDDING_DIMENSIONS` | Não | `768` | Tamanho do vetor (inteiro positivo). Se mudar, a coluna do banco precisa de migration e a base deve ser reingerida. |
+| `EMBEDDING_BATCH_SIZE` | Não | `16` | Textos por chamada (1 a 100). Lotes maiores são divididos em chamadas em sequência. |
+
+> Em `live`, é preciso `EMBEDDING_API_KEY` ou `LLM_API_KEY` (checagem em `resolveEmbeddingConfig`). O timeout é o `LLM_TIMEOUT_MS`. Os testes e2e forçam `fake` via `LLM_MODE` (`vitest.config.e2e.ts`).
+
+## Knowledge (base de conhecimento)
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `AI_CALLS_PER_PHONE_HOUR` | Não | `30` | Máximo de chamadas de IA por telefone em 1 hora (mínimo 1). Interpretar mensagem custa 1 e responder dúvida custa 2. Acima disso o bot segue sem IA. |
+| `KNOWLEDGE_DIR` | Não | `knowledge/base` | Pasta dos arquivos `.md` ingeridos por `pnpm kb:ingest` (relativa ao diretório de execução). |
+| `KNOWLEDGE_TOP_K` | Não | `3` | Máximo de trechos enviados à IA por pergunta (1 a 10). |
+| `KNOWLEDGE_MIN_SIMILARITY` | Não | `0.7` | Similaridade mínima (0 a 1) para um trecho valer só pelo vetor. Ainda não calibrado (`pnpm rag:check`). |
+| `KNOWLEDGE_MIN_SIMILARITY_TEXT` | Não | `0.6` | Similaridade mínima (0 a 1) quando o trecho também casa na busca por texto. Não pode ser maior que `KNOWLEDGE_MIN_SIMILARITY`. |
+
+## ViaCEP (consulta de CEP)
+
+API pública e gratuita, sem chave. Detalhes em `docs/guides/integrations/viacep.md`.
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `VIACEP_MODE` | Não | vazio = automático | `live` ou `fake`. Vazio: `fake` com `NODE_ENV=test`, `live` nos demais casos. Em `fake` a rede não é usada. |
+| `VIACEP_API_URL` | Não | `https://viacep.com.br/ws` | URL base. Validada como URL; a barra final é removida. |
+| `VIACEP_TIMEOUT_MS` | Não | `5000` | Timeout de cada consulta. Estourou, a consulta falha com `ViacepError`. |
+
+## Loja (endereço padrão)
+
+Usadas pelo módulo `address` quando o cliente digita o endereço sem cidade ou UF.
+
+| Variável | Obrigatória | Default | Função e consequências |
+|---|---|---|---|
+| `STORE_CITY` | Não | `Teresina` | Cidade assumida quando o endereço não traz cidade. |
+| `STORE_STATE` | Não | `PI` | UF (2 letras) assumida quando o endereço não traz UF. |
+| `STORE_PHONE` | Não | vazio | Telefone da revenda em texto livre (ex.: `(86) 3222-0000`), mostrado quando o CPF já está em outro cadastro e, com o Chatwoot desligado ou fora do ar, quando o cliente pede atendente. Sem ela, a mensagem diz só "fale direto com a revenda". |
 
 ## E-mail — Resend (standby)
 
@@ -133,7 +228,7 @@ app (que usa só a `DATABASE_URL`); existem para conveniência de dev e têm def
 Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violados:
 
 - `BETTER_AUTH_SECRET` preenchida com < 32 chars → erro.
-- `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
+- `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `WHATSAPP_API_URL` / `LLM_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
 - **Em produção**, `CORS_ORIGIN` ausente → erro (`CORS_ORIGIN é obrigatório em produção`).
 - **Em produção**, `CORS_ORIGIN` contendo `*` → erro (`CORS_ORIGIN não pode conter "*"`).
 
@@ -147,7 +242,8 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 - [ ] `TRUSTED_PROXY` conforme a topologia (IP/CIDR do proxy/LB; contagem de hops não é aceita)
 - [ ] `DATABASE_URL` do banco gerenciado
 - [ ] `REDIS_PASSWORD` definido e `REDIS_TLS=true` (se gerenciado)
-- [ ] `REVGAS_API_URL` e `REVGAS_API_KEY` via secrets (nunca no repo nem no front)
+- [ ] `REVGAS_API_KEY` (e `REVGAS_ESTABLISHMENT_ID`) via secrets (nunca no repo nem no front)
+- [ ] `WHATSAPP_MODE=live` com token permanente, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` via secrets
 - [ ] `DOC_TOKEN` definido (ou doc desativada)
 - [ ] `PRESSURE_MAX_*` calibrados ao limite de memória do container
 
