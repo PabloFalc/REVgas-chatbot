@@ -1,0 +1,316 @@
+import { describe, expect, it } from 'vitest';
+import { ANSWER_MAX_LENGTH, BROAD_ANSWER_MAX_LENGTH, checkAnswer } from './answer-checks';
+import type { AnswerSource } from './contracts/knowledge.types';
+
+const T1: AnswerSource = {
+  ref: 'T1',
+  title: 'Bairros atendidos',
+  content: 'Entregamos no Jóquei e no Fátima em até 40 minutos.',
+};
+
+const T2: AnswerSource = {
+  ref: 'T2',
+  title: 'Troca do registro',
+  content: 'A troca do registro é agendada em até 30 dias.',
+};
+
+function check(answer: string, sources = ['T1'], sent = [T1, T2]) {
+  return checkAnswer({ answer, sources }, sent);
+}
+
+describe('checkAnswer', () => {
+  it('resposta fiel passa e devolve o texto sem espaços nas pontas', () => {
+    const result = check('  Entregamos no Jóquei e no Fátima.  ');
+    expect(result).toEqual({ ok: true, text: 'Entregamos no Jóquei e no Fátima.', used: [T1] });
+  });
+
+  it('devolve as fontes citadas na ordem citada e sem repetição', () => {
+    const result = check('Entregamos no Jóquei.', ['T2', 'T1', 'T2']);
+    expect(result).toMatchObject({ ok: true, used: [T2, T1] });
+  });
+
+  it('sem sources → no_sources', () => {
+    expect(check('Entregamos no Jóquei.', [])).toEqual({ ok: false, reason: 'no_sources' });
+  });
+
+  it("source 'T9' não enviado → unknown_source", () => {
+    expect(check('Entregamos no Jóquei.', ['T1', 'T9'])).toEqual({
+      ok: false,
+      reason: 'unknown_source',
+    });
+  });
+
+  it.each(['Custa R$ 120', 'sai por 120 reais', 'são 50 centavos a mais'])('%s → money', answer => {
+    expect(check(answer)).toEqual({ ok: false, reason: 'money' });
+  });
+
+  it.each(['10% de desconto', 'dez por cento', 'cinco porcento'])('%s → percent', answer => {
+    expect(check(answer)).toEqual({ ok: false, reason: 'percent' });
+  });
+
+  it("'Custa um real' → money", () => {
+    expect(check('Custa um real')).toEqual({ ok: false, reason: 'money' });
+  });
+
+  it.each([
+    'A entrega é grátis.',
+    'Temos desconto no Jóquei.',
+    'A entrega é gratuita.',
+    'Fazemos promoção no Fátima.',
+    'O preço é bom.',
+    'Entregamos barato.',
+    'Não é caro.',
+    'Cobramos a entrega.',
+    'O valor aparece no resumo.',
+    'Tem taxa de entrega.',
+  ])('%s sem a palavra no trecho → price_claim', answer => {
+    expect(check(answer)).toEqual({ ok: false, reason: 'price_claim' });
+  });
+
+  it('palavra de preço presente no trecho citado → ok', () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Taxa de entrega',
+      content: 'Quando houver taxa de entrega, ela aparece no resumo.',
+    };
+    expect(check('A taxa de entrega aparece no resumo do pedido.', ['T3'], [T3])).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('palavra de preço só em trecho não citado → price_claim', () => {
+    const T3: AnswerSource = { ref: 'T3', title: 'Taxa', content: 'Pode haver taxa.' };
+    expect(check('Tem taxa de entrega.', ['T1'], [T1, T3])).toEqual({
+      ok: false,
+      reason: 'price_claim',
+    });
+  });
+
+  it('palavras parecidas que não são de preço passam', () => {
+    expect(check('Entregamos no Jóquei com cuidado e carinho.')).toMatchObject({ ok: true });
+  });
+
+  it("'aos sábados' sem sábado no trecho → number_not_in_sources", () => {
+    expect(check('Entregamos no Jóquei aos sábados.')).toEqual({
+      ok: false,
+      reason: 'number_not_in_sources',
+    });
+  });
+
+  it("'aos domingos' com 'domingos' no trecho → ok", () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Dias de entrega',
+      content: 'Também entregamos aos domingos.',
+    };
+    expect(check('Entregamos aos domingos.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    'Entregamos na terça.',
+    'A segunda entrega sai depois.',
+    'Leva meio dia.',
+    'O primeiro pedido.',
+    'Zero problema.',
+    'Quinhentos metros.',
+  ])('%s sem a palavra no trecho → number_not_in_sources', answer => {
+    expect(check(answer)).toEqual({ ok: false, reason: 'number_not_in_sources' });
+  });
+
+  it('bairro fora do trecho citado → name_not_in_sources', () => {
+    expect(check('Entregamos no Satélite.')).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it('bairros que estão no trecho → ok', () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Bairros atendidos',
+      content: 'Entregamos no Centro, Jóquei e Mocambinho.',
+    };
+    expect(check('Entregamos no Jóquei e no Mocambinho.', ['T3'], [T3])).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('nome só em trecho não citado → name_not_in_sources', () => {
+    const T3: AnswerSource = { ref: 'T3', title: 'Bairros', content: 'Também no Mocambinho.' };
+    expect(check('Entregamos no Mocambinho.', ['T1'], [T1, T3])).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it.each([
+    'Sim, entregamos.',
+    'Entregamos no Jóquei. Também no Fátima.',
+    'Entregamos no Jóquei! Também no Fátima.',
+    'Entregamos no Jóquei? Também no Fátima.',
+    'Atenção: Também no Fátima.',
+    'Entregamos no Jóquei.\nTambém no Fátima.',
+  ])('palavra no começo da frase não é checada: %j', answer => {
+    expect(check(answer)).toMatchObject({ ok: true });
+  });
+
+  it('nome depois de vírgula é checado', () => {
+    expect(check('Sim, Satélite também.')).toEqual({ ok: false, reason: 'name_not_in_sources' });
+  });
+
+  it('nome é comparado como palavra inteira', () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Bairros',
+      content: 'Entregamos no Centrolândia.',
+    };
+    expect(check('Entregamos no Centro.', ['T3'], [T3])).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it("'Fale pelo WhatsApp.' com WhatsApp no trecho → ok", () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Como pedir',
+      content: 'Basta conversar com a gente pelo WhatsApp.',
+    };
+    expect(check('Fale pelo WhatsApp.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it('siglas curtas e códigos como P13 não são nomes', () => {
+    const T3: AnswerSource = { ref: 'T3', title: 'Botijão P13', content: 'É o mais vendido.' };
+    expect(check('O P13 é o mais vendido, ok.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it('price_claim vem antes de name_not_in_sources, que vem antes de number_not_in_sources', () => {
+    expect(check('A entrega é grátis no Satélite.')).toEqual({ ok: false, reason: 'price_claim' });
+    expect(check('Entregamos no Satélite em 30 minutos.')).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it.each([['t1'], ['T1.'], [' t1, '], ['T1:'], ['[T1]'], ['(T1)'], ['[t1].']])(
+    'id %s é aceito como T1',
+    ref => {
+      expect(check('Entregamos no Jóquei.', [ref])).toMatchObject({ ok: true, used: [T1] });
+    },
+  );
+
+  it("'em até 40 minutos' → ok", () => {
+    expect(check('Entregamos em até 40 minutos.')).toMatchObject({ ok: true });
+  });
+
+  it("'em até 30 minutos' → number_not_in_sources", () => {
+    expect(check('Entregamos em até 30 minutos.')).toEqual({
+      ok: false,
+      reason: 'number_not_in_sources',
+    });
+  });
+
+  it("'às 8h' sem 8 nos trechos → number_not_in_sources", () => {
+    expect(check('Começamos às 8h.')).toEqual({ ok: false, reason: 'number_not_in_sources' });
+  });
+
+  it("'08' casa com 8 do trecho", () => {
+    const T3: AnswerSource = { ref: 'T3', title: 'Rotas', content: 'Saem 8 caminhões por dia.' };
+    expect(check('Saem 08 caminhões por dia.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it('número do título do trecho citado é aceito', () => {
+    const T3: AnswerSource = { ref: 'T3', title: 'Botijão P13', content: 'É o mais vendido.' };
+    expect(check('O P13 é o mais vendido.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it('\'em duas horas\' sem "duas"/"2" nos trechos → number_not_in_sources', () => {
+    expect(check('Entregamos em duas horas.')).toEqual({
+      ok: false,
+      reason: 'number_not_in_sources',
+    });
+  });
+
+  it('\'em duas horas\' com "duas" no trecho → ok', () => {
+    const T3: AnswerSource = {
+      ref: 'T3',
+      title: 'Prazo',
+      content: 'A entrega leva até duas horas.',
+    };
+    expect(check('Entregamos em até duas horas.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it("'três' com acento casa com 'tres' do trecho", () => {
+    const T3: AnswerSource = { ref: 'T3', title: 'Rotas', content: 'Temos tres rotas.' };
+    expect(check('Temos três rotas.', ['T3'], [T3])).toMatchObject({ ok: true });
+  });
+
+  it("'um' e 'uma' não contam como número", () => {
+    expect(check('Entregamos em uma rota só, um caminhão.')).toMatchObject({ ok: true });
+  });
+
+  it('número só em trecho não citado → number_not_in_sources', () => {
+    expect(check('A troca é agendada em até 30 dias.', ['T1'])).toEqual({
+      ok: false,
+      reason: 'number_not_in_sources',
+    });
+  });
+
+  it("'   ' → empty", () => {
+    expect(check('   ')).toEqual({ ok: false, reason: 'empty' });
+  });
+
+  it('601 caracteres → too_long', () => {
+    expect(ANSWER_MAX_LENGTH).toBe(600);
+    expect(check('a'.repeat(601))).toEqual({ ok: false, reason: 'too_long' });
+    expect(check('a'.repeat(600))).toMatchObject({ ok: true });
+  });
+
+  it('pedido de lista ou resumo aceita até 1200 caracteres', () => {
+    expect(BROAD_ANSWER_MAX_LENGTH).toBe(1200);
+    const sent = [T1, T2];
+    const long = 'a'.repeat(1200);
+    expect(
+      checkAnswer({ answer: long, sources: ['T1'] }, sent, BROAD_ANSWER_MAX_LENGTH),
+    ).toMatchObject({ ok: true });
+    expect(
+      checkAnswer({ answer: `${long}a`, sources: ['T1'] }, sent, BROAD_ANSWER_MAX_LENGTH),
+    ).toEqual({ ok: false, reason: 'too_long' });
+  });
+
+  it('lista com itens dos trechos passa', () => {
+    expect(check('Bairros atendidos:\n- Jóquei\n- Fátima')).toMatchObject({ ok: true });
+  });
+
+  it('palavra maiúscula depois de "- " continua checada como nome', () => {
+    expect(check('Resumo:\n- Normalmente entregamos no Jóquei.')).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it('nome depois de "- " que não está no trecho continua barrado', () => {
+    expect(check('Bairros:\n- Jóquei\n- Esplanada')).toEqual({
+      ok: false,
+      reason: 'name_not_in_sources',
+    });
+  });
+
+  it('numeração de passo a passo não conta como número', () => {
+    expect(
+      check('1. Entregamos no Jóquei.\n2. Entregamos no Fátima.\n3. Em até 40 minutos.'),
+    ).toMatchObject({ ok: true });
+  });
+
+  it('número dentro do passo continua checado', () => {
+    expect(check('1. Entregamos em até 50 minutos.')).toEqual({
+      ok: false,
+      reason: 'number_not_in_sources',
+    });
+  });
+
+  it('vazio vem antes de no_sources e too_long antes de money', () => {
+    expect(check('  ', [])).toEqual({ ok: false, reason: 'empty' });
+    expect(check(`R$ ${'a'.repeat(600)}`)).toEqual({ ok: false, reason: 'too_long' });
+  });
+});

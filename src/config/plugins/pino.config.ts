@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { Logger, LoggerModule, PinoLogger } from 'nestjs-pino';
+import { Logger, LoggerModule, type Params, PinoLogger } from 'nestjs-pino';
 import { type LoggerOptions, stdSerializers } from 'pino';
-import pinoPretty from 'pino-pretty';
 import { env } from 'src/config/env';
 import type { AppSetup } from '../setup';
+import { createLogStream } from './log-stream';
 
 const isDev = env.NODE_ENV === 'development';
 const isProd = env.NODE_ENV === 'production';
@@ -38,27 +38,15 @@ const REDACT_PATHS = isProd ? [...SECRET_REDACT_PATHS, ...PII_REDACT_PATHS] : SE
 
 const SILENCED_ROUTES = new Set(['/health']);
 
-const DEV_COLORS = 'message:white,trace:gray,debug:blue,info:green,warn:yellow,error:red,fatal:red';
+const SECRET_QUERY_PARAMS = /([?&]hub\.verify_token=)[^&]*/g;
+
+export function redactUrl(url = ''): string {
+  return url.replace(SECRET_QUERY_PARAMS, '$1[REDACTED]');
+}
 
 export const pino: AppSetup = app => {
   app.useLogger(app.get(Logger));
 };
-
-function createDevStream() {
-  return pinoPretty({
-    colorize: true,
-    translateTime: 'HH:MM:ss',
-    customColors: DEV_COLORS,
-    ignore: 'pid,hostname,req,res,responseTime,context',
-    messageFormat: (log, messageKey, _levelLabel, { colors }) => {
-      const record = log as Record<string, unknown>;
-      const raw = record[messageKey];
-      const msg = raw == null ? '' : String(raw);
-      const context = typeof record.context === 'string' ? record.context : undefined;
-      return context ? `${colors.cyan(`[${context}]`)} ${msg}` : msg;
-    },
-  });
-}
 
 const baseOptions: LoggerOptions = {
   level,
@@ -71,7 +59,7 @@ const baseOptions: LoggerOptions = {
   redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
   serializers: {
     err: stdSerializers.err,
-    req: (req: PinoRequest) => ({ id: req.id, method: req.method, url: req.url }),
+    req: (req: PinoRequest) => ({ id: req.id, method: req.method, url: redactUrl(req.url) }),
     res: (res: ServerResponse) => ({ statusCode: res.statusCode }),
   },
 };
@@ -88,22 +76,23 @@ const httpOptions = {
   },
   customSuccessMessage: (req: IncomingMessage, res: ServerResponse, responseTime: number) => {
     const pinoReq = req as PinoRequest;
-    return `(${pinoReq.id}) ${pinoReq.method} ${pinoReq.url} ${res.statusCode} ${Math.round(responseTime)}ms`;
+    return `(${pinoReq.id}) ${pinoReq.method} ${redactUrl(pinoReq.url)} ${res.statusCode} ${Math.round(responseTime)}ms`;
   },
   customErrorMessage: (req: IncomingMessage, res: ServerResponse, err: Error) => {
     const pinoReq = req as PinoRequest;
-    return `(${pinoReq.id}) ${pinoReq.method} ${pinoReq.url} ${res.statusCode} - ${err?.message ?? 'error'}`;
+    return `(${pinoReq.id}) ${pinoReq.method} ${redactUrl(pinoReq.url)} ${res.statusCode} - ${err?.message ?? 'error'}`;
   },
 };
 
-export const configPino = LoggerModule.forRoot({
-  pinoHttp: isDev ? [httpOptions, createDevStream()] : httpOptions,
-});
+function pinoHttpParams(): Params['pinoHttp'] {
+  const stream = createLogStream({ pretty: isDev, file: env.LOG_FILE });
+  return stream ? [httpOptions, stream] : httpOptions;
+}
+
+export const configPino = LoggerModule.forRoot({ pinoHttp: pinoHttpParams() });
 
 export function createLogger(context: string): PinoLogger {
-  const logger = new PinoLogger({
-    pinoHttp: isDev ? [httpOptions, createDevStream()] : httpOptions,
-  });
+  const logger = new PinoLogger({ pinoHttp: pinoHttpParams() });
   logger.setContext(context);
   return logger;
 }

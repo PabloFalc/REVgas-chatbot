@@ -1,0 +1,482 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LlmRateLimitedError, LlmUnavailableError } from '../../core/erros/llm/llm.errors';
+import { FakeEmbeddingClient } from '../../integrations/llm/fake-embedding.client';
+import { FakeLlmClient } from '../../integrations/llm/fake-llm.client';
+import { AnswerGateway } from './answer.gateway';
+import type { Candidate } from './contracts/knowledge.types';
+import { EmbeddingGateway } from './embedding.gateway';
+import { CANDIDATES_PER_LIST } from './fuse';
+import type { KnowledgeConfig } from './knowledge.config';
+import type { CandidateQuery, KnowledgeRepository } from './knowledge.repository';
+import { BROAD_TOP_K, FULL_BASE_CHUNKS, KnowledgeService } from './knowledge.service';
+
+const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+
+vi.mock('../../config/plugins/pino.config', () => ({
+  createLogger: () => logger,
+}));
+
+const CONFIG: KnowledgeConfig = {
+  dir: 'docs/knowledge',
+  topK: 3,
+  minSimilarity: 0.7,
+  minSimilarityWithText: 0.6,
+};
+
+const BAIRROS: Candidate = {
+  id: 'c1',
+  source: 'entrega.md',
+  title: 'Bairros atendidos',
+  content: 'Entregamos no Jóquei e no Fátima em até 40 minutos.',
+  similarity: 0.85,
+};
+
+const REGISTRO: Candidate = {
+  id: 'c2',
+  source: 'servicos.md',
+  title: 'Troca do registro',
+  content: 'A troca do registro é agendada.',
+  similarity: 0.75,
+};
+
+class FakeRepository {
+  queries: CandidateQuery[] = [];
+  byVector: Candidate[] = [BAIRROS, REGISTRO];
+  byText: Candidate[] = [];
+  error?: Error;
+  titles: string[] = [];
+  titleModels: string[] = [];
+  all: Candidate[] = [BAIRROS, REGISTRO];
+  listed: { model: string; limit: number }[] = [];
+
+  async listChunks(model: string, limit: number) {
+    this.listed.push({ model, limit });
+    if (this.error) throw this.error;
+    return this.all.slice(0, limit);
+  }
+
+  async listTitles(model: string) {
+    this.titleModels.push(model);
+    if (this.error) throw this.error;
+    return this.titles;
+  }
+
+  async findCandidates(query: CandidateQuery) {
+    this.queries.push(query);
+    if (this.error) throw this.error;
+    return { byVector: this.byVector, byText: this.byText };
+  }
+}
+
+const QUESTION = 'vocês entregam no Jóquei?';
+
+describe('KnowledgeService', () => {
+  let repo: FakeRepository;
+  let embeddings: FakeEmbeddingClient;
+  let llm: FakeLlmClient;
+  let service: KnowledgeService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo = new FakeRepository();
+    embeddings = new FakeEmbeddingClient();
+    llm = new FakeLlmClient();
+    service = new KnowledgeService(
+      repo as unknown as KnowledgeRepository,
+      new EmbeddingGateway(embeddings),
+      new AnswerGateway(llm),
+      CONFIG,
+    );
+  });
+
+  function warnCalls() {
+    return logger.warn.mock.calls.map(([obj]) => obj as Record<string, unknown>);
+  }
+
+  function allLogs() {
+    return JSON.stringify([logger.info.mock.calls, logger.warn.mock.calls]);
+  }
+
+  describe('answerQuestion', () => {
+    it('nada acima do corte → unknown no_match e a IA não é chamada', async () => {
+      repo.byVector = [{ ...BAIRROS, similarity: 0.5 }];
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'no_match',
+      });
+      expect(llm.calls).toEqual([]);
+      expect(warnCalls()).toContainEqual({ component: 'knowledge', reason: 'no_match', chunks: 0 });
+    });
+
+    it("índice vazio para o modelo → unknown no_match com log warn reason 'index_empty'", async () => {
+      repo.byVector = [];
+      repo.byText = [];
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'no_match',
+      });
+      expect(llm.calls).toEqual([]);
+      expect(warnCalls()).toEqual([{ component: 'knowledge', reason: 'index_empty', chunks: 0 }]);
+    });
+
+    it("embedding falha → unknown unavailable, IA não chamada, log warn reason 'unavailable'", async () => {
+      embeddings.queueError(new LlmUnavailableError('timeout'));
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'unavailable',
+      });
+      expect(llm.calls).toEqual([]);
+      expect(repo.queries).toEqual([]);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        {
+          component: 'knowledge',
+          reason: 'unavailable',
+          chunks: 0,
+          errorName: 'LlmUnavailableError',
+        },
+        'Dúvida sem resposta',
+      );
+    });
+
+    it('repositório lança → unknown unavailable', async () => {
+      repo.error = new Error(`Failed query: params ${QUESTION}`);
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'unavailable',
+      });
+      expect(llm.calls).toEqual([]);
+      expect(allLogs()).not.toContain('Jóquei');
+      expect(warnCalls()).toEqual([
+        { component: 'knowledge', reason: 'unavailable', chunks: 0, errorName: 'Error' },
+      ]);
+    });
+
+    it('IA devolve answer null → not_in_sources', async () => {
+      llm.queueObject({ answer: null, sources: [] });
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'not_in_sources',
+      });
+      expect(warnCalls()).toContainEqual({
+        component: 'knowledge',
+        reason: 'not_in_sources',
+        chunks: 2,
+      });
+    });
+
+    it('IA falha (LlmRateLimitedError) → unavailable', async () => {
+      llm.queueError(new LlmRateLimitedError('limite'));
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'unavailable',
+      });
+      expect(warnCalls()).toEqual([
+        {
+          component: 'knowledge',
+          reason: 'unavailable',
+          chunks: 2,
+          errorName: 'LlmRateLimitedError',
+        },
+      ]);
+    });
+
+    it('erro inesperado da IA não escapa → unavailable', async () => {
+      llm.respondWith(() => {
+        throw new Error('boom');
+      });
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'unavailable',
+      });
+      expect(warnCalls()).toEqual([
+        { component: 'knowledge', reason: 'unavailable', chunks: 2, errorName: 'Error' },
+      ]);
+    });
+
+    it('fontes com o mesmo título aparecem uma vez em sources', async () => {
+      repo.byVector = [BAIRROS, { ...BAIRROS, id: 'c3', content: 'Também no Centro.' }];
+      llm.queueObject({ answer: 'Entregamos no Jóquei e no Centro.', sources: ['T1', 'T2'] });
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'answered',
+        text: 'Entregamos no Jóquei e no Centro.',
+        sources: ['Bairros atendidos'],
+      });
+    });
+
+    it("resposta com R$ → rejected e log warn com rejection 'money'", async () => {
+      llm.queueObject({ answer: 'A entrega custa R$ 5 no Jóquei.', sources: ['T1'] });
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'rejected',
+      });
+      expect(warnCalls()).toContainEqual({
+        component: 'knowledge',
+        reason: 'rejected',
+        rejection: 'money',
+        chunks: 2,
+      });
+      expect(allLogs()).not.toContain(QUESTION);
+      expect(allLogs()).not.toContain('custa');
+    });
+
+    it('resposta boa → answered com o texto e os títulos citados', async () => {
+      llm.queueObject({
+        answer: ' Sim, entregamos no Jóquei em até 40 minutos. ',
+        sources: ['T1'],
+      });
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'answered',
+        text: 'Sim, entregamos no Jóquei em até 40 minutos.',
+        sources: ['Bairros atendidos'],
+      });
+      expect(logger.info).toHaveBeenCalledWith(
+        { component: 'knowledge', chunks: 2, sources: ['Bairros atendidos'] },
+        'Dúvida respondida',
+      );
+      expect(allLogs()).not.toContain(QUESTION);
+      expect(allLogs()).not.toContain('40 minutos');
+    });
+
+    it('manda os trechos como T1…Tn na ordem do ranking', async () => {
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion(QUESTION);
+      const system = llm.calls[0].messages[0].content;
+      expect(system.indexOf('<trecho id="T1" titulo="Bairros atendidos">')).toBeGreaterThan(-1);
+      expect(system.indexOf('<trecho id="T2" titulo="Troca do registro">')).toBeGreaterThan(
+        system.indexOf('<trecho id="T1"'),
+      );
+      expect(llm.calls[0].messages[1]).toEqual({ role: 'user', content: QUESTION });
+    });
+
+    it('CPF da pergunta não vai ao embedding nem ao prompt', async () => {
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion('meu cpf 123.456.789-09, vocês entregam no Jóquei?');
+      expect(embeddings.calls).toHaveLength(1);
+      expect(llm.calls).toHaveLength(1);
+      expect(JSON.stringify(embeddings.calls)).not.toContain('123');
+      expect(JSON.stringify(llm.calls)).not.toContain('123');
+      expect(JSON.stringify(repo.queries.map(q => q.question))).not.toContain('123');
+    });
+
+    it.each([
+      '123 456 789 09',
+      '123.456.789/09',
+      'cpf 123.456.789',
+      '1234567890',
+      '123456789012',
+      '(86) 99999-1234',
+      '86 99999 1234',
+      '3222-1234',
+    ])('CPF ou telefone %s não vai ao embedding nem ao prompt', async digits => {
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion(`meu número ${digits}, vocês entregam no Jóquei?`);
+      expect(embeddings.calls).toHaveLength(1);
+      expect(llm.calls).toHaveLength(1);
+      const sent = JSON.stringify([embeddings.calls, llm.calls[0].messages[1]]);
+      expect(sent).not.toMatch(/\d{3}/);
+      expect(sent).toContain('Jóquei');
+    });
+
+    it.each(['meu cpf termina em 0909', 'cpf: 123'])(
+      'pedaço de CPF em %j não vai ao embedding nem ao prompt',
+      async mention => {
+        llm.queueObject({ answer: null, sources: [] });
+        await service.answerQuestion(`${mention}, vocês entregam no Jóquei?`);
+        expect(embeddings.calls[0].input[0]).not.toMatch(/\d/);
+        expect(llm.calls[0].messages[1].content).not.toMatch(/\d/);
+        expect(JSON.stringify(repo.queries.map(q => q.question))).not.toMatch(/\d/);
+        expect(embeddings.calls[0].input[0]).toContain('Jóquei');
+      },
+    );
+
+    it.each([
+      ['vazia', ''],
+      ['só espaços', '   '],
+      ["só '?'", '?'],
+      ['só CPF', '123.456.789-09'],
+    ])('pergunta %s → no_match sem nenhuma chamada', async (_label, question) => {
+      await expect(service.answerQuestion(question)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'no_match',
+      });
+      expect(embeddings.calls).toEqual([]);
+      expect(repo.queries).toEqual([]);
+      expect(llm.calls).toEqual([]);
+    });
+
+    it('pergunta maior que 500 caracteres é cortada antes do embedding', async () => {
+      llm.queueObject({ answer: null, sources: [] });
+      const long = 'entregam '.repeat(100);
+      await service.answerQuestion(long);
+      expect(embeddings.calls[0].input).toEqual([long.trim().slice(0, 500)]);
+      expect(llm.calls[0].messages[1].content).toHaveLength(500);
+    });
+  });
+
+  describe('search', () => {
+    it("embeda com operation 'kb-search' e devolve os trechos fundidos", async () => {
+      const outcome = await service.search(QUESTION);
+      expect(embeddings.calls).toEqual([{ operation: 'kb-search', input: [QUESTION] }]);
+      expect(outcome).toMatchObject({ status: 'ok' });
+      if (outcome.status !== 'ok') throw new Error('esperava ok');
+      expect(outcome.chunks.map(chunk => chunk.title)).toEqual([
+        'Bairros atendidos',
+        'Troca do registro',
+      ]);
+    });
+
+    it('manda o vetor, a pergunta higienizada e o modelo do embedding ao repositório', async () => {
+      await service.search(QUESTION);
+      expect(repo.queries).toEqual([
+        {
+          embedding: embeddings.vectorFor(QUESTION),
+          question: QUESTION,
+          model: 'fake',
+          limit: CANDIDATES_PER_LIST,
+        },
+      ]);
+    });
+
+    it('search manda a pergunta sem CPF ao repositório com limit CANDIDATES_PER_LIST', async () => {
+      await service.search('meu cpf 123.456.789-09, oi, bom dia');
+      expect(repo.queries).toHaveLength(1);
+      expect(repo.queries[0]).toMatchObject({
+        question: 'meu cpf , oi, bom dia',
+        limit: CANDIDATES_PER_LIST,
+      });
+    });
+
+    it("índice vazio → lista vazia com log warn reason 'index_empty'", async () => {
+      repo.byVector = [];
+      await expect(service.search(QUESTION)).resolves.toEqual({ status: 'ok', chunks: [] });
+      expect(warnCalls()).toEqual([{ component: 'knowledge', reason: 'index_empty' }]);
+    });
+
+    it('falha do repositório → unavailable', async () => {
+      repo.error = new Error('db fora');
+      await expect(service.search(QUESTION)).resolves.toEqual({ status: 'unavailable' });
+      expect(warnCalls()).toEqual([
+        { component: 'knowledge', reason: 'unavailable', errorName: 'Error' },
+      ]);
+    });
+
+    it('falha do embedding → unavailable', async () => {
+      embeddings.queueError(new LlmUnavailableError('timeout'));
+      await expect(service.search(QUESTION)).resolves.toEqual({ status: 'unavailable' });
+    });
+
+    it('limpa CPF e pergunta sem termo vira lista vazia sem chamadas', async () => {
+      await expect(service.search('123.456.789-09 ?')).resolves.toEqual({
+        status: 'ok',
+        chunks: [],
+      });
+      expect(embeddings.calls).toEqual([]);
+      expect(repo.queries).toEqual([]);
+    });
+
+    it('limpa CPF antes de embedar', async () => {
+      await service.search('cpf 123.456.789-09 entregam no Jóquei');
+      expect(JSON.stringify(embeddings.calls)).not.toContain('123');
+      expect(JSON.stringify(repo.queries.map(q => q.question))).not.toContain('123');
+    });
+  });
+  describe('pedido amplo (lista, resumo, comparação)', () => {
+    const BROAD = 'me resume tudo sobre entrega';
+
+    function manyChunks(count: number): Candidate[] {
+      return Array.from({ length: count }, (_, index) => ({
+        ...BAIRROS,
+        id: `m${index}`,
+        title: `Seção ${index + 1}`,
+      }));
+    }
+
+    it('base pequena vai inteira, na ordem da base, sem busca', async () => {
+      repo.all = [REGISTRO, BAIRROS];
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion(BROAD);
+      expect(repo.listed).toEqual([{ model: embeddings.model, limit: FULL_BASE_CHUNKS + 1 }]);
+      expect(repo.queries).toEqual([]);
+      expect(embeddings.calls).toEqual([]);
+      const system = llm.calls[0].messages[0].content;
+      expect(system).toContain('<trecho id="T1" titulo="Troca do registro">');
+      expect(system).toContain('<trecho id="T2" titulo="Bairros atendidos">');
+      expect(system).toContain('Siga o formato que o cliente pedir');
+    });
+
+    it('base grande usa a busca com mais trechos', async () => {
+      repo.all = manyChunks(FULL_BASE_CHUNKS + 1);
+      repo.byVector = manyChunks(BROAD_TOP_K + 2).map(chunk => ({ ...chunk, similarity: 0.9 }));
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion(BROAD);
+      expect(repo.queries).toHaveLength(1);
+      const system = llm.calls[0].messages[0].content;
+      expect(system.match(/<trecho /g)).toHaveLength(BROAD_TOP_K);
+    });
+
+    it('resposta de até 1200 caracteres citando vários trechos passa', async () => {
+      const answer = `Entregamos no Jóquei e no Fátima. ${'a'.repeat(900)}`;
+      llm.queueObject({ answer, sources: ['T1', 'T2'] });
+      await expect(service.answerQuestion(BROAD)).resolves.toEqual({
+        kind: 'answered',
+        text: answer,
+        sources: ['Bairros atendidos', 'Troca do registro'],
+      });
+      expect(logger.info).toHaveBeenCalledWith(
+        {
+          component: 'knowledge',
+          chunks: 2,
+          sources: ['Bairros atendidos', 'Troca do registro'],
+          style: 'broad',
+        },
+        'Dúvida respondida',
+      );
+    });
+
+    it('pergunta direta continua com o limite de 600', async () => {
+      llm.queueObject({ answer: `Entregamos no Jóquei. ${'a'.repeat(700)}`, sources: ['T1'] });
+      await expect(service.answerQuestion(QUESTION)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'rejected',
+      });
+      expect(repo.listed).toEqual([]);
+    });
+
+    it('base vazia → no_match com index_empty', async () => {
+      repo.all = [];
+      await expect(service.answerQuestion(BROAD)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'no_match',
+      });
+      expect(llm.calls).toEqual([]);
+      expect(warnCalls()).toEqual([{ component: 'knowledge', reason: 'index_empty', chunks: 0 }]);
+    });
+
+    it('banco fora do ar → unavailable', async () => {
+      repo.error = new Error('down');
+      await expect(service.answerQuestion(BROAD)).resolves.toEqual({
+        kind: 'unknown',
+        reason: 'unavailable',
+      });
+    });
+  });
+
+  describe('topics', () => {
+    it('devolve os títulos das seções do modelo atual, sem "(parte N)" e sem repetir', async () => {
+      repo.titles = ['Bairros atendidos', 'Vale-gás', 'Vale-gás (parte 2)', 'Troco'];
+      await expect(service.topics()).resolves.toEqual(['Bairros atendidos', 'Vale-gás', 'Troco']);
+      expect(repo.titleModels).toEqual([embeddings.model]);
+      expect(llm.calls).toEqual([]);
+      expect(embeddings.calls).toEqual([]);
+    });
+
+    it('banco fora do ar → lista vazia e log warn', async () => {
+      repo.error = new Error('down');
+      await expect(service.topics()).resolves.toEqual([]);
+      expect(warnCalls()).toEqual([
+        { component: 'knowledge', reason: 'unavailable', errorName: 'Error' },
+      ]);
+    });
+  });
+});

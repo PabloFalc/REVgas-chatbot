@@ -8,6 +8,20 @@
       "when": 1792442901768,
       "tag": "0000_melodic_preak",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794256292374,
+      "tag": "0001_enable_pgvector",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794256301334,
+      "tag": "0002_tired_oracle",
+      "breakpoints": true
     }
   ]
 }
