@@ -73,6 +73,7 @@ describe('status do pedido', () => {
     ['NEW_STATUS', 'em andamento'],
     ['constructor', 'em andamento'],
     ['WARNING', 'com pendência, um atendente vai verificar'],
+    ['WARN', 'com pendência, um atendente vai verificar'],
   ])('traduz %s', async (status, label) => {
     const tools = createFakeTools({
       latestOrderStatus: async () => ({
@@ -85,10 +86,40 @@ describe('status do pedido', () => {
     const result = await runFlow(null, input('status do pedido'), tools);
     expect(bodies(result)).toContain(`Pedido nº 8: ${label}`);
     expect(bodies(result)).toContain('José');
-    expect(bodies(result)).toContain('2026-10-21 10:00:00');
-    expect(bodies(result).includes('handoff:request')).toBe(status === 'WARNING');
+    expect(bodies(result)).toContain('21/10 às 10:00');
+    expect(bodies(result).includes('handoff:request')).toBe(
+      status === 'WARNING' || status === 'WARN',
+    );
     expect(tools.calls.some(call => call.name === 'requestHandoff')).toBe(false);
   });
+
+  it.each([
+    ['2026-10-21 10:00:00', '21/10 às 10:00'],
+    ['2026-10-21T10:00:00', '21/10 às 10:00'],
+    ['2026-10-21T13:00:00Z', '21/10 às 10:00'],
+    ['2026-10-21T10:00:00-03:00', '21/10 às 10:00'],
+    ['2026-10-21T01:00:00+02:00', '20/10 às 20:00'],
+  ])('formata entrega %s no fuso de São Paulo', async (deliveredAt, formatted) => {
+    const tools = createFakeTools({
+      latestOrderStatus: async () => ({ saleId: 8, status: 'CONFIRM', deliveredAt }),
+    });
+    const result = await runFlow(null, input('status do pedido'), tools);
+    expect(bodies(result)).toContain(`Entrega registrada em: ${formatted}.`);
+    expect(bodies(result)).not.toContain(deliveredAt);
+  });
+
+  it.each(['inválida', '2026-13-40T25:70:00', '', null, undefined])(
+    'omite data de entrega inválida ou ausente: %s',
+    async deliveredAt => {
+      const tools = createFakeTools({
+        latestOrderStatus: async () => ({ saleId: 8, status: 'CONFIRM', deliveredAt }),
+      });
+      const result = await runFlow(null, input('status do pedido'), tools);
+      expect(bodies(result)).toContain('Pedido nº 8: confirmado');
+      expect(bodies(result)).not.toContain('Entrega registrada');
+      expect(bodies(result)).not.toContain('Invalid Date');
+    },
+  );
 
   it('preserva o pedido e repete a pergunta', async () => {
     const tools = createFakeTools({

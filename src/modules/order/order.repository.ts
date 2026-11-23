@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { RevgasValidationError } from 'src/core/erros/revgas/revgas.errors';
 import { REVGAS_CLIENT, type RevgasClient } from 'src/integrations/revgas/revgas.client';
 import { PAGE_SIZE } from 'src/integrations/revgas/shared/pagination';
+import { parseBrasiliaTimestamp } from 'src/utils/parse-brasilia-timestamp';
 import { type OrderStatus, type SaleOrder, SaleRejectedError } from './contracts/order.types';
 
 const CHANNEL = 'WHATSAPP';
@@ -13,15 +14,6 @@ const SAO_PAULO_DATE = new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 });
-
-const WITH_OFFSET = /(Z|[+-]\d{2}(:?\d{2})?)$/i;
-const DATE_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
-
-const saleTimestamp = (date: string | null | undefined): number => {
-  if (!date || !DATE_TIME.test(date)) return Number.NaN;
-  const iso = date.replace(' ', 'T');
-  return Date.parse(WITH_OFFSET.test(iso) ? iso : `${iso}-03:00`);
-};
 
 @Injectable()
 export class OrderRepository {
@@ -69,7 +61,7 @@ export class OrderRepository {
     });
     const sale = result.data
       .filter(sale => {
-        const created = saleTimestamp(sale.created_at ?? sale.date);
+        const created = parseBrasiliaTimestamp(sale.created_at ?? sale.date);
         return (
           sale.customer_id === customerId &&
           sale.channel === CHANNEL &&
@@ -79,7 +71,9 @@ export class OrderRepository {
         );
       })
       .sort(
-        (a, b) => saleTimestamp(b.created_at ?? b.date) - saleTimestamp(a.created_at ?? a.date),
+        (a, b) =>
+          parseBrasiliaTimestamp(b.created_at ?? b.date) -
+          parseBrasiliaTimestamp(a.created_at ?? a.date),
       )[0];
     return sale
       ? {
@@ -110,7 +104,7 @@ export class OrderRepository {
           item => item.product_id === order.productId && item.quantity === order.quantity,
         );
         if (!sameItem) return false;
-        const created = saleTimestamp(sale.created_at ?? sale.date);
+        const created = parseBrasiliaTimestamp(sale.created_at ?? sale.date);
         return !Number.isNaN(created) && created >= threshold;
       });
       if (match) return match.id;

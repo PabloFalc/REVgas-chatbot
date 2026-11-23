@@ -1,6 +1,8 @@
 import type { Address } from 'src/modules/address/contracts/address.types';
 import type { BasePrice, Product } from 'src/modules/catalog/contracts/catalog.types';
+import type { OrderStatus } from 'src/modules/order/contracts/order.types';
 import { formatMoney } from 'src/utils/money';
+import { parseBrasiliaTimestamp } from 'src/utils/parse-brasilia-timestamp';
 import type { Opening, ServiceWindow } from 'src/utils/service-hours';
 import { MAX_QUANTITY, type OrderState, type RepeatOffer } from './flow.types';
 
@@ -84,7 +86,42 @@ function priceLine({ product, minPrice, varies }: BasePrice): string {
   return `- ${product.name}: ${varies ? `a partir de ${price}` : price}`;
 }
 
+const ORDER_STATUS_LABELS = new Map([
+  ['OPEN', 'recebido'],
+  ['ACTIVE', 'em andamento'],
+  ['CONFIRM', 'confirmado'],
+  ['CHECK', 'em conferência'],
+  ['WARNING', 'com pendência, um atendente vai verificar'],
+]);
+
+const DELIVERY_DATE = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  day: '2-digit',
+  month: '2-digit',
+});
+const DELIVERY_TIME = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function orderStatus(sale: OrderStatus): string {
+  const label = ORDER_STATUS_LABELS.get(sale.status) ?? 'em andamento';
+  const lines = [`Pedido nº ${sale.saleId}: ${label}.`];
+  if (sale.delivererName) lines.push(`Entregador: ${sale.delivererName}.`);
+  const delivered = parseBrasiliaTimestamp(sale.deliveredAt);
+  if (!Number.isNaN(delivered)) {
+    lines.push(
+      `Entrega registrada em: ${DELIVERY_DATE.format(delivered)} às ${DELIVERY_TIME.format(delivered)}.`,
+    );
+  }
+  return lines.join('\n');
+}
+
 export const msg = {
+  orderStatus,
+  noOrderForPhone: 'Não encontrei pedido para este número.',
+  noRecentOrderForPhone: 'Não encontrei pedido recente para este número.',
   welcomeNew:
     'Olá! Ainda não te conhecemos. Para fazer seu pedido, preciso de alguns dados.\nQual é o seu nome completo?',
   welcomeBack: (name: string) => `Olá, ${name}! Vamos fazer seu pedido.`,
