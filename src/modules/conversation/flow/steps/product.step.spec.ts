@@ -29,7 +29,7 @@ const products = [
 
 const base: OrderState = {
   step: 'chooseProduct',
-  customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: 5 },
+  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: 5 },
   address,
 };
 

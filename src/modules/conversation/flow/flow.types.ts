@@ -67,7 +67,13 @@ export interface RepeatOffer {
 
 export interface OrderState {
   step: Step;
-  customer: { id?: number; name?: string; cpf?: string; tagId?: number | null };
+  customer: {
+    id?: number;
+    name?: string;
+    cpf?: string;
+    cpfPrefix?: string;
+    tagId?: number | null;
+  };
   addresses?: Address[];
   boughtProductIds?: number[];
   lastOrder?: LastOrder;

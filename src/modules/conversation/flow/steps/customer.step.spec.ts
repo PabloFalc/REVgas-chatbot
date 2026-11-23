@@ -52,7 +52,7 @@ describe('start', () => {
     const result = await start(say('oi'), tools);
     expect(result.state).toEqual({
       step: 'askCpfPrefix',
-      customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+      customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
     });
     expect(result.replies).toEqual([text(msg.askCpfPrefix)]);
     expect(JSON.stringify(result.replies)).not.toContain('Maria');
@@ -67,7 +67,7 @@ describe('start', () => {
     expect(result.state?.customer).toEqual({
       id: 1,
       name: 'Maria da Silva',
-      cpf: '12345678909',
+      cpfPrefix: '123',
       tagId: null,
     });
     expect(result.state?.addresses).toHaveLength(2);
@@ -301,7 +301,7 @@ describe('askCpf', () => {
 describe('askCpfPrefix', () => {
   const state = {
     step: 'askCpfPrefix' as const,
-    customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+    customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   };
 
   it('acerto marca verificado, dá as boas-vindas e segue o fluxo', async () => {
@@ -374,8 +374,8 @@ describe('askCpfPrefix', () => {
 
   it.each([
     { id: 1, name: 'Maria da Silva', tagId: null },
-    { name: 'Maria da Silva', cpf: '12345678909', tagId: null },
-  ])('estado sem id ou CPF encerra com o contato da revenda', async customer => {
+    { name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+  ])('estado sem id ou prefixo do CPF encerra com o contato da revenda', async customer => {
     const tools = createFakeTools();
     const result = await handlers.askCpfPrefix?.({ ...state, customer }, say('123'), tools);
     expect(result).toEqual({
@@ -488,7 +488,7 @@ describe('produto oferecido na primeira mensagem', () => {
     const spy = vi.spyOn(tools, 'listProducts');
     const state = {
       step: 'askCpfPrefix' as const,
-      customer: { id: 7, name: 'Joana Lima', cpf: '12345678909', tagId: 3 },
+      customer: { id: 7, name: 'Joana Lima', cpfPrefix: '123', tagId: 3 },
       product: p13,
       quantity: 2,
     };

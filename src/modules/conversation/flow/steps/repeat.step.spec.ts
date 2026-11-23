@@ -20,7 +20,7 @@ const lastOrder: LastOrder = { productId: 1, quantity: 1, paymentType: 'PIX', ad
 
 const base: OrderState = {
   step: 'askCpfPrefix',
-  customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   addresses: [address],
   lastOrder,
 };

@@ -85,7 +85,7 @@ describe('handoffSummary', () => {
   it('askCpfPrefix não revela nome nem CPF', () => {
     const current: OrderState = {
       step: 'askCpfPrefix',
-      customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909' },
+      customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123' },
     };
     const summary = handoffSummary(current);
     expect(summary).toEqual({
@@ -99,7 +99,7 @@ describe('handoffSummary', () => {
   it('resumo completo traz produto, quantidade, endereço, pagamento e total', () => {
     const current: OrderState = {
       step: 'summary',
-      customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909' },
+      customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123' },
       product: { id: 1, name: 'Botijão P13' },
       quantity: 2,
       address: {
