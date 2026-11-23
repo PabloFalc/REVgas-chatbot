@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { RevgasValidationError } from 'src/core/erros/revgas/revgas.errors';
 import { REVGAS_CLIENT, type RevgasClient } from 'src/integrations/revgas/revgas.client';
+import { PAGE_SIZE } from 'src/integrations/revgas/shared/pagination';
 import { type SaleOrder, SaleRejectedError } from './contracts/order.types';
 
 const CHANNEL = 'WHATSAPP';
+const MAX_RECENT_SALE_PAGES = 5;
 const TOLERANCE_MS = 60_000;
 const SAO_PAULO_DATE = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Sao_Paulo',
@@ -57,21 +59,32 @@ export class OrderRepository {
   }
 
   async findRecentSale(order: SaleOrder, since: Date): Promise<number | null> {
-    const page = await this.revgas.sales.list({
-      customer_id: order.customerId,
-      channel: CHANNEL,
-      from: SAO_PAULO_DATE.format(since),
-    });
     const threshold = since.getTime() - TOLERANCE_MS;
-    const match = page.data.find(sale => {
-      if (sale.total == null || Math.abs(sale.total - order.total) >= 0.005) return false;
-      const sameItem = (sale.products ?? []).some(
-        item => item.product_id === order.productId && item.quantity === order.quantity,
-      );
-      if (!sameItem) return false;
-      const created = saleTimestamp(sale.created_at ?? sale.date);
-      return Number.isNaN(created) || created >= threshold;
-    });
-    return match?.id ?? null;
+    const from = SAO_PAULO_DATE.format(since);
+    const to = SAO_PAULO_DATE.format(new Date());
+    for (let page = 1; page <= MAX_RECENT_SALE_PAGES; page++) {
+      const result = await this.revgas.sales.list({
+        customer_id: order.customerId,
+        channel: CHANNEL,
+        from,
+        to,
+        page,
+        page_size: PAGE_SIZE,
+      });
+      const match = result.data.find(sale => {
+        if (sale.total == null || Math.abs(sale.total - order.total) >= 0.005) return false;
+        const sameItem = (sale.products ?? []).some(
+          item => item.product_id === order.productId && item.quantity === order.quantity,
+        );
+        if (!sameItem) return false;
+        const created = saleTimestamp(sale.created_at ?? sale.date);
+        return !Number.isNaN(created) && created >= threshold;
+      });
+      if (match) return match.id;
+      const { has_next, total_count } = result.pagination;
+      const hasNext = has_next ?? page * PAGE_SIZE < total_count;
+      if (!hasNext || result.data.length === 0) break;
+    }
+    return null;
   }
 }

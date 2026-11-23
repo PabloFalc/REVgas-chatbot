@@ -1,7 +1,7 @@
 import { RevgasUnavailableError, RevgasValidationError } from 'src/core/erros/revgas/revgas.errors';
 import type { RevgasClient } from 'src/integrations/revgas/revgas.client';
 import type { RevgasSale } from 'src/integrations/revgas/sales/sales.schemas';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type SaleOrder, SaleRejectedError } from './contracts/order.types';
 import { OrderRepository } from './order.repository';
 
@@ -36,7 +36,12 @@ const build = (sales: RevgasSale[] = []) => {
   const create = vi.fn(async () => ({ id: 99 }) as RevgasSale);
   const list = vi.fn(async () => ({
     data: sales,
-    pagination: { page: 1, count: sales.length, total_count: sales.length, has_next: false },
+    pagination: {
+      page: 1,
+      count: sales.length,
+      total_count: sales.length,
+      has_next: false as boolean | undefined,
+    },
   }));
   const client = { sales: { create, list } } as unknown as RevgasClient;
   return { repository: new OrderRepository(client), create, list };
@@ -89,13 +94,20 @@ describe('OrderRepository', () => {
   describe('findRecentSale', () => {
     const since = new Date('2026-10-21T15:00:00.000Z');
 
+    afterEach(() => vi.useRealTimers());
+
     it('lists by customer, channel and the Sao Paulo date of since', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-23T01:30:00.000Z'));
       const { repository, list } = build();
       await repository.findRecentSale(order, new Date('2026-10-22T01:30:00.000Z'));
       expect(list).toHaveBeenCalledWith({
         customer_id: 7,
         channel: 'WHATSAPP',
         from: '2026-10-21',
+        to: '2026-10-22',
+        page: 1,
+        page_size: 100,
       });
     });
 
@@ -117,11 +129,11 @@ describe('OrderRepository', () => {
       expect(await repository.findRecentSale(order, since)).toBeNull();
     });
 
-    it('compares only the total when date is missing or invalid', async () => {
+    it('ignores sales whose date is missing or invalid', async () => {
       const { repository } = build([sale(6, 200, null), sale(7, 200, 'lixo')]);
-      expect(await repository.findRecentSale(order, since)).toBe(6);
+      expect(await repository.findRecentSale(order, since)).toBeNull();
       const other = build([sale(7, 200, 'lixo')]);
-      expect(await other.repository.findRecentSale(order, since)).toBe(7);
+      expect(await other.repository.findRecentSale(order, since)).toBeNull();
     });
 
     it('reads a zoneless datetime as Sao Paulo time', async () => {
@@ -134,9 +146,9 @@ describe('OrderRepository', () => {
       expect(await repository.findRecentSale(order, since)).toBeNull();
     });
 
-    it('compares only the total for a date-only value', async () => {
+    it('ignores a date-only value', async () => {
       const { repository } = build([sale(9, 200, '2026-10-21')]);
-      expect(await repository.findRecentSale(order, since)).toBe(9);
+      expect(await repository.findRecentSale(order, since)).toBeNull();
     });
 
     it('still honors an ISO datetime with an explicit offset', async () => {
@@ -165,14 +177,14 @@ describe('OrderRepository', () => {
       expect(await repository.findRecentSale(order, since)).toBeNull();
     });
 
-    it('matches same total, product and quantity when the date is missing', async () => {
+    it('ignores matching total, product and quantity when the date is missing', async () => {
       const { repository } = build([
         sale(14, 200, undefined, [
           { product_id: 9, quantity: 1 },
           { product_id: 3, quantity: 2 },
         ]),
       ]);
-      expect(await repository.findRecentSale(order, since)).toBe(14);
+      expect(await repository.findRecentSale(order, since)).toBeNull();
     });
 
     it('uses created_at over date when both are present', async () => {
@@ -191,6 +203,41 @@ describe('OrderRepository', () => {
       expect(await repository.findRecentSale(order, since)).toBe(22);
       const old = build([sale(23, 200, '2026-10-20T10:00:00-03:00')]);
       expect(await old.repository.findRecentSale(order, since)).toBeNull();
+    });
+
+    it('encontra uma venda na segunda página sem has_next', async () => {
+      const { repository, list } = build();
+      list
+        .mockResolvedValueOnce({
+          data: [sale(1, 150, '2026-10-21T15:01:00Z')],
+          pagination: { page: 1, count: 100, total_count: 101, has_next: undefined },
+        })
+        .mockResolvedValueOnce({
+          data: [sale(2, 200, '2026-10-21T15:01:00Z')],
+          pagination: { page: 2, count: 1, total_count: 101, has_next: false },
+        });
+      expect(await repository.findRecentSale(order, since)).toBe(2);
+      expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({ page: 2, page_size: 100 }));
+    });
+
+    it('limita a busca a cinco páginas', async () => {
+      const { repository, list } = build();
+      list.mockResolvedValue({
+        data: [sale(1, 150, '2026-10-21T15:01:00Z')],
+        pagination: { page: 1, count: 100, total_count: 1000, has_next: true },
+      });
+      expect(await repository.findRecentSale(order, since)).toBeNull();
+      expect(list).toHaveBeenCalledTimes(5);
+    });
+
+    it('para em página vazia mesmo com has_next', async () => {
+      const { repository, list } = build();
+      list.mockResolvedValue({
+        data: [],
+        pagination: { page: 1, count: 0, total_count: 1000, has_next: true },
+      });
+      expect(await repository.findRecentSale(order, since)).toBeNull();
+      expect(list).toHaveBeenCalledTimes(1);
     });
 
     it('returns null when nothing matches', async () => {
