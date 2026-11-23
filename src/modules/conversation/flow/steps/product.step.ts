@@ -1,4 +1,9 @@
-import type { PriceCustomer, Product } from 'src/modules/catalog/contracts/catalog.types';
+import type {
+  BasePrice,
+  PriceCustomer,
+  Product,
+} from 'src/modules/catalog/contracts/catalog.types';
+import { formatMoney } from 'src/utils/money';
 import { normalizeText } from 'src/utils/text';
 import type { AskFn, FlowTools, HandleFn, OrderState, Step, StepResult } from '../flow.types';
 import { freeText, freeTextOr } from '../free-text';
@@ -28,13 +33,25 @@ async function loadOptions(state: OrderState, tools: FlowTools): Promise<Product
   return ordered(products, state.boughtProductIds);
 }
 
-function showProducts(
+async function showProducts(
   state: OrderState,
   step: Step,
   products: Product[],
   withSearch: boolean,
-): StepResult {
-  const rows = products.map(product => ({ id: `product:${product.id}`, title: product.name }));
+  tools: FlowTools,
+): Promise<StepResult> {
+  const prices: BasePrice[] = await tools.basePrices().catch(() => []);
+  const priceByProduct = new Map(prices.map(price => [price.product.id, price]));
+  const rows = products.map(product => {
+    const price = priceByProduct.get(product.id);
+    return {
+      id: `product:${product.id}`,
+      title: product.name,
+      description: price
+        ? `${price.varies ? 'a partir de ' : ''}${formatMoney(price.minPrice)}`
+        : null,
+    };
+  });
   const shown =
     withSearch && rows.length > LIST_LIMIT
       ? [...rows.slice(0, LIST_PRODUCT_LIMIT), { id: 'product:search', title: msg.searchByName }]
@@ -48,7 +65,13 @@ function showProducts(
 const chooseProduct: AskFn = async (state, tools) => {
   const products = ordered(await tools.listProducts(priceCustomer(state)), state.boughtProductIds);
   if (products.length === 0) return { state, replies: [text(msg.unavailable)] };
-  return showProducts({ ...state, productOptions: products }, 'chooseProduct', products, true);
+  return showProducts(
+    { ...state, productOptions: products },
+    'chooseProduct',
+    products,
+    true,
+    tools,
+  );
 };
 
 const searchProduct: AskFn = async state => ({
@@ -90,7 +113,7 @@ const handleSearchProduct: HandleFn = async (state, input, tools) => {
   if (found.length === 0) {
     return { state: { ...next, step: 'searchProduct' }, replies: [text(msg.productNotFound)] };
   }
-  return showProducts(next, 'searchProduct', found, false);
+  return showProducts(next, 'searchProduct', found, false, tools);
 };
 
 const pickProduct: AskFn = async state => {
