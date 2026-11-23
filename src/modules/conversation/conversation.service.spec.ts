@@ -5,10 +5,11 @@ import { textWebhook, webhookPayload } from 'src/integrations/whatsapp/testing/w
 import { parseWebhook } from 'src/integrations/whatsapp/webhook/webhook.parser';
 import type { HandoffService } from 'src/modules/handoff/handoff.service';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ConversationRepository } from './conversation.repository';
+import type { ConversationRepository, LockOutcome } from './conversation.repository';
 import { ConversationService } from './conversation.service';
 import { runFlow } from './flow/flow';
 import { CPF_STEPS, type OrderState, ToolError } from './flow/flow.types';
+import { msg } from './flow/messages';
 import { text } from './flow/replies';
 import { createFakeTools } from './flow/testing/fake-tools';
 import type { FlowToolsService } from './flow-tools';
@@ -39,7 +40,12 @@ function setup(whatsapp = new FakeWhatsappClient()) {
     clearOrder: vi.fn(async () => undefined),
     scheduleReminder: vi.fn(async () => undefined),
     cancelReminder: vi.fn(async () => undefined),
-    withPhoneLock: vi.fn(async (_phone: string, work: () => Promise<unknown>) => work()),
+    withPhoneLock: vi.fn(
+      async (_phone: string, work: () => Promise<unknown>): Promise<LockOutcome<unknown>> => ({
+        ran: true,
+        value: await work(),
+      }),
+    ),
   };
   const flowTools = { forPhone: vi.fn(() => createFakeTools()) };
   const handoff = {
@@ -128,6 +134,23 @@ describe('ConversationService.handle', () => {
       step: 'askName',
       customer: {},
     });
+  });
+
+  it('lock ocupado não roda o fluxo e pede para reenviar a mensagem', async () => {
+    const { service, repository, whatsapp, logger, handoff } = setup();
+    repository.withPhoneLock.mockResolvedValueOnce({ ran: false });
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.BUSY')));
+
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(handoff.routeFor).not.toHaveBeenCalled();
+    expect(repository.saveOrder).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.busy);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'wamid.BUSY', from: '*******1234' }),
+      'Lock do telefone não liberou a tempo; mensagem não processada',
+    );
   });
 
   it('erro inesperado do fluxo é logado sem responder e sem texto do cliente', async () => {

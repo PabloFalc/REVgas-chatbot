@@ -15,7 +15,9 @@ import { WINDOW_CLOSED_CODE } from './desk-events.service';
 import { detectEmergency } from './flow/emergency';
 import { runFlow } from './flow/flow';
 import { CPF_STEPS, type OrderState, type StepResult, type ToolError } from './flow/flow.types';
+import { msg } from './flow/messages';
 import { REMINDER_AFTER_MS } from './flow/reminder';
+import { text } from './flow/replies';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
 import { replyText } from './reply-text';
@@ -99,7 +101,7 @@ export class ConversationService {
     }
 
     const incoming = toIncoming(event);
-    await this.conversations.withPhoneLock(event.from, async () => {
+    const outcome = await this.conversations.withPhoneLock(event.from, async () => {
       const inbound = toDeskInbound(incoming.content);
       if ((await this.handoff.routeFor(event.from)) === 'agent') {
         await this.forward(event.from, inbound, log);
@@ -112,6 +114,10 @@ export class ConversationService {
       await this.sendAll(event.from, replies, log);
       await this.mirror(incoming, inbound, replies, before, result, log);
     });
+    if (!outcome.ran) {
+      this.logger.warn(log, 'Lock do telefone não liberou a tempo; mensagem não processada');
+      await this.sendAll(event.from, [text(msg.busy)], log);
+    }
   }
 
   private async forward(phone: string, inbound: DeskInbound, log: object): Promise<void> {

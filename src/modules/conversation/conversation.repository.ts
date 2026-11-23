@@ -27,6 +27,8 @@ const LOCK_TTL_SECONDS = 120;
 const LOCK_RETRY_MS = 250;
 const LOCK_MAX_WAIT_MS = 120_000;
 
+export type LockOutcome<T> = { ran: true; value: T } | { ran: false };
+
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 @Injectable()
@@ -160,10 +162,7 @@ export class ConversationRepository {
     return this.cache.scheduleClaim({ set: REMINDER_SET, member: phone, at });
   }
 
-  async tryPhoneLock<T>(
-    phone: string,
-    work: () => Promise<T>,
-  ): Promise<{ ran: true; value: T } | { ran: false }> {
+  async tryPhoneLock<T>(phone: string, work: () => Promise<T>): Promise<LockOutcome<T>> {
     const token = randomUUID();
     const acquired = await this.cache.setIfAbsent({
       prefix: LOCK_PREFIX,
@@ -179,35 +178,11 @@ export class ConversationRepository {
     }
   }
 
-  async withPhoneLock<T>(phone: string, work: () => Promise<T>): Promise<T> {
-    const token = randomUUID();
-    const acquired = await this.acquireLock(phone, token);
-    try {
-      return await work();
-    } finally {
-      if (acquired) {
-        await this.cache.deleteIfEquals({ prefix: LOCK_PREFIX, key: phone, value: token });
-      }
-    }
-  }
-
-  private async acquireLock(phone: string, token: string): Promise<boolean> {
+  async withPhoneLock<T>(phone: string, work: () => Promise<T>): Promise<LockOutcome<T>> {
     const deadline = Date.now() + LOCK_MAX_WAIT_MS;
     while (true) {
-      const acquired = await this.cache.setIfAbsent({
-        prefix: LOCK_PREFIX,
-        key: phone,
-        value: token,
-        ttl: LOCK_TTL_SECONDS,
-      });
-      if (acquired) return true;
-      if (Date.now() >= deadline) {
-        this.logger.warn(
-          { component: 'conversation', from: maskPhone(phone) },
-          'Lock do telefone não liberou a tempo; seguindo sem ele',
-        );
-        return false;
-      }
+      const outcome = await this.tryPhoneLock(phone, work);
+      if (outcome.ran || Date.now() >= deadline) return outcome;
       await sleep(LOCK_RETRY_MS);
     }
   }

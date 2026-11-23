@@ -49,7 +49,7 @@ export class DeskEventsService {
       return;
     }
     if (event.kind === 'conversationResolved') {
-      await this.conversations.withPhoneLock(phone, () =>
+      await this.underLock(phone, event.kind, () =>
         this.handoff.endFromDesk(phone, event.conversationId),
       );
       return;
@@ -57,7 +57,20 @@ export class DeskEventsService {
     if (!(await this.handoff.claimDeskMessage(event.messageId))) {
       return;
     }
-    await this.conversations.withPhoneLock(phone, () => this.relayAgentMessage(phone, event));
+    await this.underLock(phone, event.kind, () => this.relayAgentMessage(phone, event));
+  }
+
+  private async underLock(
+    phone: string,
+    kind: DeskEvent['kind'],
+    work: () => Promise<void>,
+  ): Promise<void> {
+    const outcome = await this.conversations.withPhoneLock(phone, work);
+    if (outcome.ran) return;
+    this.logger.warn(
+      { component: 'desk-events', kind, phone: maskPhone(phone) },
+      'Lock do telefone não liberou a tempo; evento não processado',
+    );
   }
 
   private async relayAgentMessage(phone: string, event: AgentMessage): Promise<void> {

@@ -207,4 +207,5 @@ export const msg = {
   reminder: 'Ainda está aí? Seu pedido fica guardado por mais 5 minutos.',
   addressLabel,
   addressFull,
+  busy: 'Ainda estou cuidando da sua mensagem anterior. Manda essa de novo em instantes.',
 };
