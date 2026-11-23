@@ -378,6 +378,32 @@ describe('ConversationService venda criada', () => {
     expect(logger.error).toHaveBeenCalled();
   });
 
+  it('venda criada é confirmada ao cliente mesmo se cancelar o lembrete falhar', async () => {
+    const { service, repository, whatsapp, logger, handoff } = setup();
+    repository.cancelReminder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    runFlowMock.mockResolvedValueOnce(saleResult);
+
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.V5')));
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain('Pedido nº 55 confirmado');
+    expect(handoff.recordTurn).toHaveBeenCalledWith(expect.objectContaining({ saleId: 55 }));
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'wamid.V5', from: '*******1234' }),
+      'Falha ao gravar o pedido depois do fluxo',
+    );
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('5586999991234');
+  });
+
+  it('falha ao gravar o pedido não impede a resposta do turno', async () => {
+    const { service, repository, whatsapp } = setup();
+    repository.saveOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.V6')));
+
+    expect(whatsapp.sent).toHaveLength(1);
+  });
+
   it('não loga telefone cru nem venda quando não há saleId', async () => {
     const { service, logger } = setup();
     runFlowMock.mockResolvedValueOnce(saleResult);

@@ -212,16 +212,13 @@ export class ConversationService {
       );
     }
 
-    if (result.state === null) {
-      await this.conversations.clearOrder(phone);
-      await this.conversations.cancelReminder(phone);
-    } else {
-      const now = new Date();
-      await this.conversations.saveOrder(phone, {
-        ...result.state,
-        lastInboundAt: now.toISOString(),
-      });
-      await this.conversations.scheduleReminder(phone, new Date(now.getTime() + REMINDER_AFTER_MS));
+    try {
+      await this.persist(phone, result.state);
+    } catch (error) {
+      this.logger.error(
+        { ...log, error: errorInfo(error) },
+        'Falha ao gravar o pedido depois do fluxo',
+      );
     }
 
     this.logger.info(
@@ -235,6 +232,17 @@ export class ConversationService {
       'Fluxo de pedido avançou',
     );
     return { replies: result.replies, before, result };
+  }
+
+  private async persist(phone: string, state: OrderState | null): Promise<void> {
+    if (state === null) {
+      await this.conversations.clearOrder(phone);
+      await this.conversations.cancelReminder(phone);
+      return;
+    }
+    const now = new Date();
+    await this.conversations.saveOrder(phone, { ...state, lastInboundAt: now.toISOString() });
+    await this.conversations.scheduleReminder(phone, new Date(now.getTime() + REMINDER_AFTER_MS));
   }
 
   private async onStatus(event: StatusEvent): Promise<void> {
