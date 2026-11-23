@@ -8,6 +8,7 @@ import {
   HANDOFF_CHOICE,
   handoff,
   ORDER_START_CHOICE,
+  offer,
   requestReasonFor,
 } from './handoff';
 import { textOf } from './input';
@@ -30,7 +31,7 @@ export async function globalCommand(
 ): Promise<StepResult | null> {
   if (input.content.type === 'unsupported') {
     if (!state) return start(input, tools);
-    return repeatQuestion(state, tools, textReply(msg.textOnly));
+    return repeatQuestion(state, tools, offer(msg.textOnly));
   }
 
   const raw = textOf(input);

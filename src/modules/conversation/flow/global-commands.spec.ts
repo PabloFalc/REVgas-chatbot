@@ -146,7 +146,7 @@ describe('globalCommand', () => {
       { phone: FAKE_PHONE, content: { type: 'unsupported' } },
       createFakeTools(),
     );
-    expect(result).toEqual({ state, replies: [text(msg.textOnly), question] });
+    expect(result).toEqual({ state, replies: [offer(msg.textOnly), question] });
   });
 
   it('áudio sem pedido em andamento começa pela saudação', async () => {
