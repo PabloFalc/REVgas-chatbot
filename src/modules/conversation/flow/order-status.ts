@@ -42,7 +42,7 @@ export async function answerOrderStatus(
     : buttons(msg.noRecentOrderForPhone, [orderStartButton()]);
   if (state) {
     const answered = await repeatQuestion(state, tools, reply);
-    return { ...answered, state };
+    return answered;
   }
   return { state: null, replies: [reply] };
 }
@@ -53,7 +53,7 @@ export async function orderStatus(state: OrderState | null, tools: FlowTools): P
     const reply = buttons(msg.noOrderForPhone, [orderStartButton()]);
     if (!state) return { state, replies: [reply] };
     const answered = await repeatQuestion(state, tools, reply);
-    return { ...answered, state };
+    return answered;
   }
   if (!customer.cpf || (await tools.isBlocked(tools.phone))) {
     return { state, replies: [text(msg.identityContactStore(tools.storePhone))] };

@@ -121,6 +121,38 @@ describe('status do pedido', () => {
     },
   );
 
+  it.each([true, false])(
+    'aceita o produto novo da lista repetida com cliente encontrado: %s',
+    async knownCustomer => {
+      const originalProducts = [{ id: 1, name: 'Botijão P13' }];
+      const newProducts = [{ id: 4, name: 'Botijão P20' }];
+      const listProducts = vi
+        .fn()
+        .mockResolvedValueOnce(originalProducts)
+        .mockResolvedValue(newProducts);
+      const tools = createFakeTools({ listProducts });
+      const original = await runFlow(
+        { step: 'chooseProduct', customer: { id: 1 } },
+        { phone: FAKE_PHONE, content: { type: 'choice', id: 'product:99' } },
+        tools,
+      );
+      expect(original.state?.productOptions).toEqual(originalProducts);
+      if (!knownCustomer) tools.findCustomer = async () => null;
+
+      const repeated = await runFlow(original.state, input('status do pedido'), tools);
+      expect(repeated.state?.productOptions).toEqual(newProducts);
+      expect(bodies(repeated)).toContain('product:4');
+
+      const selected = await runFlow(
+        repeated.state,
+        { phone: FAKE_PHONE, content: { type: 'choice', id: 'product:4' } },
+        tools,
+      );
+      expect(selected.state?.product).toEqual(newProducts[0]);
+      expect(selected.state?.step).toBe('askNewAddress');
+    },
+  );
+
   it('preserva o pedido e repete a pergunta', async () => {
     const tools = createFakeTools({
       latestOrderStatus: async () => ({ saleId: 8, status: 'OPEN' }),
