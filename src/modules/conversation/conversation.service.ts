@@ -45,17 +45,9 @@ function toDeskInbound(content: IncomingContent): DeskInbound {
 
 const DIGITS_ONLY = /^\d[\d\s.-]*$/;
 
-function inCpfStep(state: OrderState | null): boolean {
-  return state !== null && CPF_STEPS.includes(state.step);
-}
-
-function isSensitiveTurn(
-  inbound: DeskInbound,
-  before: OrderState | null,
-  result: StepResult,
-): boolean {
-  if (inCpfStep(before) || inCpfStep(result.state)) return true;
-  return before === null && inbound.type === 'text' && DIGITS_ONLY.test(inbound.text.trim());
+function isSensitiveTurn(inbound: DeskInbound, before: OrderState | null): boolean {
+  if (before !== null) return CPF_STEPS.includes(before.step);
+  return inbound.type === 'text' && DIGITS_ONLY.test(inbound.text.trim());
 }
 
 function errorInfo(error: unknown) {
@@ -166,7 +158,7 @@ export class ConversationService {
         phone: incoming.from,
         name: incoming.name,
         inbound,
-        sensitive: isSensitiveTurn(inbound, before, result),
+        sensitive: isSensitiveTurn(inbound, before),
         botMessages: replies.map(replyText),
         newCycle: before === null,
         ended: result.state === null,

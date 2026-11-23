@@ -576,17 +576,21 @@ describe('ConversationService atendente', () => {
     expect(handoff.recordTurn).toHaveBeenCalledWith(expect.objectContaining({ sensitive: true }));
   });
 
-  it('estado expirado que volta para askCpfPrefix marca o turno como sensível', async () => {
-    const { service, handoff } = setup();
+  it('nome digitado em askName é espelhado normalmente', async () => {
+    const { service, repository, handoff } = setup();
+    repository.loadOrder.mockResolvedValueOnce({ step: 'askName', customer: {} });
     runFlowMock.mockResolvedValueOnce({
-      state: { step: 'askCpfPrefix', customer: { id: 1 } },
-      replies: [text('Informe os 3 primeiros dígitos do CPF')],
+      state: { step: 'askCpf', customer: { name: 'Joana Lima' } },
+      replies: [text('Qual o seu CPF?')],
     });
 
-    await service.handle(parseWebhook(textWebhook('oi', 'wamid.CPF2')));
+    await service.handle(parseWebhook(textWebhook('Joana Lima', 'wamid.NAME')));
 
     expect(handoff.recordTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ sensitive: true, newCycle: true }),
+      expect.objectContaining({
+        inbound: { type: 'text', text: 'Joana Lima' },
+        sensitive: false,
+      }),
     );
   });
 
