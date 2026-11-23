@@ -20,6 +20,7 @@ import {
 import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
+import { answerOrderStatus } from '../order-status';
 import { text } from '../replies';
 import { offerOrNext } from './repeat.step';
 
@@ -179,6 +180,9 @@ const handleAskCpfPrefix: HandleFn = async (state, input, tools) => {
   }
   if (digits === cpfPrefix) {
     await tools.markVerified(input.phone, id);
+    if (state.pendingOrderStatus) {
+      return answerOrderStatus(state, id, tools);
+    }
     return welcomeKnown(state, tools);
   }
   const attempts = await tools.registerCpfMismatch(input.phone);

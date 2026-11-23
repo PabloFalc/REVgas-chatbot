@@ -27,7 +27,7 @@ import type {
   ServiceHoursInfo,
 } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
-import type { SaleOrder } from 'src/modules/order/contracts/order.types';
+import type { OrderStatus, SaleOrder } from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
 export const MAX_CPF_ATTEMPTS = 3;
@@ -67,6 +67,7 @@ export interface RepeatOffer {
 
 export interface OrderState {
   step: Step;
+  pendingOrderStatus?: { resumeStep: Step | null; customer: OrderState['customer'] };
   customer: {
     id?: number;
     name?: string;
@@ -142,6 +143,7 @@ export interface FlowTools {
     paymentType: string,
     quantity: number,
   ): Promise<Quote | null>;
+  latestOrderStatus(customerId: number, now: Date): Promise<OrderStatus | null>;
   createSale(order: SaleOrder): Promise<number>;
   findRecentSale(order: SaleOrder, since: Date): Promise<number | null>;
   checkpoint(state: OrderState): Promise<void>;

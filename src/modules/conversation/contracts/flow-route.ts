@@ -12,6 +12,7 @@ export const FLOW_ROUTES = [
   'off_topic',
   'offense',
   'order',
+  'order_status',
   'not_understood',
 ] as const;
 

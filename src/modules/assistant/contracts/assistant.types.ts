@@ -12,7 +12,15 @@ export type InterpretationTopic =
   | 'delivery_fee';
 
 export interface Interpretation {
-  intent: 'order' | 'question' | 'price' | 'handoff' | 'off_topic' | 'offense' | 'other';
+  intent:
+    | 'order_status'
+    | 'order'
+    | 'question'
+    | 'price'
+    | 'handoff'
+    | 'off_topic'
+    | 'offense'
+    | 'other';
   topic?: InterpretationTopic;
   unknownProduct?: string;
   products?: string[];

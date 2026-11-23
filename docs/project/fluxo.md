@@ -54,7 +54,7 @@ O estado do pedido (`OrderState.step`) vive no Redis por 15 min. Os valores de `
 | `creatingSale` | Cria a venda (único POST, sem retry automático) | — |
 | `saleFailed` | Falha ao criar: avisa e oferece "Tentar de novo" | Botão (`retry:sale`) |
 
-Ao concluir, o estado é apagado e o bot envia o número da venda. Status, entregador e tempo estimado não são enviados (F05, pendente; a API não tem tempo estimado).
+Ao concluir, o estado é apagado e o bot envia o número da venda. O status pode ser consultado depois (F05); a API não tem tempo estimado.
 
 ### Cadastro de cliente novo
 
@@ -137,6 +137,16 @@ pode ter mudado de dono.
 - **Texto livre:** blocos soltos de 3 dígitos são removidos antes de o texto ir à IA, para o CPF nunca chegar ao prompt. Se não sobra texto, repete a pergunta.
 - **Cliente novo:** quem acabou de se cadastrar (digitou o CPF inteiro) já fica verificado por 15 dias; o próximo pedido não pede os 3 dígitos.
 
+## Status do pedido
+
+F05 é uma consulta só leitura. Frases como "cadê meu gás", "status do pedido" e "já saiu pra entrega?" acionam o fluxo sem IA; o texto livre também aceita a intenção `order_status`. "Quero um gás" segue como compra nova.
+
+O telefone precisa identificar um cliente com CPF e verificação válida por 15 dias. Sem verificação, o bot pede os 3 primeiros dígitos e consulta logo após o acerto. Telefone desconhecido recebe texto fixo e o botão "Fazer pedido", sem consultar vendas.
+
+A consulta lê até 10 vendas WhatsApp dos últimos 7 dias e mostra a não cancelada mais recente: número, status, entregador e data de entrega quando disponíveis. `OPEN` significa recebido, `ACTIVE` em andamento, `CONFIRM` confirmado, `CHECK` em conferência e `WARNING` com pendência, oferecendo atendente. Status desconhecido fica como em andamento. Não há tempo estimado. Sem venda recente, oferece "Fazer pedido"; falha da RevGás usa a mensagem de indisponibilidade.
+
+O pedido em andamento é preservado. Após responder, o bot repete a pergunta da etapa; se precisou verificar o CPF, retoma essa mesma etapa.
+
 ## Repetir último pedido
 
 Depois de verificado (`welcomeKnown`), se o cliente ainda não informou nada do pedido, o bot
@@ -198,7 +208,7 @@ Código em `flow/free-text.ts` e `flow/intent.ts`; o serviço de IA fica em `src
 
 O que a IA devolve e como vira pedido:
 
-- Saída validada com Zod: `intent`, `topic`, `unknownProduct`, `products`, `quantity`, `payment`, `address`, `newAddress` e `confidence`. As intenções são `order`, `question`, `price`, `handoff`, `off_topic`, `offense` e `other`. `topic` vem em `question` (`hours`, `payments`, `invite`, `capabilities` ou `general`) e em `price` (`delivery_fee`, para taxa de entrega e frete); fora dessas combinações é descartado. `unknownProduct` é o item pedido que não está no catálogo.
+- Saída validada com Zod: `intent`, `topic`, `unknownProduct`, `products`, `quantity`, `payment`, `address`, `newAddress` e `confidence`. As intenções são `order_status`, `order`, `question`, `price`, `handoff`, `off_topic`, `offense` e `other`. `topic` vem em `question` (`hours`, `payments`, `invite`, `capabilities` ou `general`) e em `price` (`delivery_fee`, para taxa de entrega e frete); fora dessas combinações é descartado. `unknownProduct` é o item pedido que não está no catálogo.
 - Frase negada não pede nada: o prompt manda classificar "não quero tirar minhas dúvidas" ou "não preciso de atendente" como `other`.
 - **Só `order` altera o pedido.** As outras intenções são respondidas pelo roteamento abaixo e o estado não muda ("quanto tá o P13?" não põe o P13 no pedido).
 - Confiança abaixo de 0,6 ou falha da IA (`null`) → "Não entendi." e repete a pergunta. O estado não muda.
@@ -264,5 +274,5 @@ cliente fica conhecido, o produto guardado é conferido de novo com a lista dele
 
 - O diagrama não mostra o atalho "repetir último pedido" nem a saída da verificação (telefone da revenda); eles só aparecem no texto.
 - "Corrigir" abre `chooseCorrection` (produto, endereço ou pagamento); só o campo escolhido é limpo e `nextStep` retoma dali.
-- O passo 8 envia só o número da venda. A API não tem tempo estimado nem webhook de status comercial; status e entregador (`deliverer_name`, `delivered_at`) dá para ler consultando a venda, mas essa consulta (F05) não foi implementada.
+- O passo 8 envia só o número da venda. A API não tem tempo estimado nem webhook de status comercial; status e entregador (`deliverer_name`, `delivered_at`) dá para ler consultando a venda, pela consulta de status (F05).
 - O preço vem dos acordos da RevGás e pode depender da forma de pagamento. Se depender, o passo 4 mostra no máximo um preço de referência e o total definitivo só sai no passo 6, depois do pagamento.

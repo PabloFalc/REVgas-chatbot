@@ -14,7 +14,7 @@
 | F02 | Identificação e cadastro automático | Reconhece o cliente pelo telefone; cadastra se for novo | RF02, RF03 |
 | F03 | Pedido em texto livre | "manda 2 botijão, pago no pix" → IA extrai tudo e o bot só pergunta o que faltou. **Entregue** (2026-10-22), junto com o fallback de intenção | RF04–RF06 |
 | F04 | Repetir último pedido | Cliente conhecido recebe botão com último pedido e endereço; fecha em 2 toques (pula para o resumo, ou para a pergunta de troco se o pagamento for dinheiro). **Entregue** (2026-10-23) | RF02, RF07 |
-| F05 | Status do pedido | Hoje o cliente recebe só o nº da venda. Consulta "meu gás chegou?" com status e entregador, lidos da venda (a API não tem tempo estimado). **Pendente**; viável, porque a chave somente leitura já lê `/sales` | RF09 |
+| F05 | Status do pedido | Entregue (2026-11-23), versão só leitura. Consulta a venda recente pelo telefone após verificar o CPF; informa número, status, entregador e data de entrega quando disponíveis, sem tempo estimado | RF09 |
 | F06 | Dúvidas com IA sobre a base | Dúvidas fora do menu (entrega, troca de botijão, segurança) respondidas só com trechos da base da revenda; horário, pagamento e preço vêm do código. Sem resposta, oferece o atendente. **Entregue** (2026-11-10) | RF10 |
 | F07 | Handoff para atendente | Transfere a conversa para a fila do Chatwoot com resumo; o bot segue atendendo até o atendente falar. **Entregue** (2026-11-09) | RF11 |
 | F13 | RAG sobre a base | Busca híbrida (vetor + texto, fusão RRF) no Postgres com pgvector, corte de relevância e checagens de saída. **Entregue** (2026-11-10) | RF10 |
@@ -23,12 +23,12 @@
 > implementados; F04 e F05 estavam pendentes. F06, F07, F08, F09, F10, F11, F12, F13 e a RN13
 > (salvar venda e conversas no Postgres) viraram melhorias futuras. Depois disso, F04, F12 e F14
 > foram entregues em 2026-10-23 (decisão abaixo), F07 em 2026-11-09 e F06 e F13 em 2026-11-10; F05
-> continua pendente.
+> foi entregue em 2026-11-23 na versão só leitura, sem tempo estimado.
 > Ver [requisitos.md](requisitos.md#decisões-2026-10-22).
 
 > **Decisão de escopo (2026-10-23):** F04 (repetir último pedido), F12 (lembrete de pedido parado
 > aos 10 minutos) e F14 (verificação de identidade pelos 3 primeiros dígitos do CPF) foram
-> entregues e saem das melhorias futuras. Só F05 continua pendente no MVP. Ver
+> entregues e saem das melhorias futuras. F05 foi entregue em 2026-11-23, concluindo o MVP. Ver
 > [requisitos.md](requisitos.md#decisões-2026-10-23).
 
 > **Entregue (2026-11-09):** F07 — handoff para atendente via Chatwoot. Pedido de atendente ou

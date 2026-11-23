@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { RevgasValidationError } from 'src/core/erros/revgas/revgas.errors';
 import { REVGAS_CLIENT, type RevgasClient } from 'src/integrations/revgas/revgas.client';
 import { PAGE_SIZE } from 'src/integrations/revgas/shared/pagination';
-import { type SaleOrder, SaleRejectedError } from './contracts/order.types';
+import { type OrderStatus, type SaleOrder, SaleRejectedError } from './contracts/order.types';
 
 const CHANNEL = 'WHATSAPP';
 const MAX_RECENT_SALE_PAGES = 5;
@@ -56,6 +56,39 @@ export class OrderRepository {
       if (error instanceof RevgasValidationError) throw new SaleRejectedError(error.message);
       throw error;
     }
+  }
+
+  async latestOrderStatus(customerId: number, now: Date): Promise<OrderStatus | null> {
+    const since = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
+    const result = await this.revgas.sales.list({
+      customer_id: customerId,
+      channel: CHANNEL,
+      from: SAO_PAULO_DATE.format(since),
+      to: SAO_PAULO_DATE.format(now),
+      page_size: 10,
+    });
+    const sale = result.data
+      .filter(sale => {
+        const created = saleTimestamp(sale.created_at ?? sale.date);
+        return (
+          sale.customer_id === customerId &&
+          sale.channel === CHANNEL &&
+          sale.status !== 'CANCEL' &&
+          created >= since.getTime() &&
+          created <= now.getTime()
+        );
+      })
+      .sort(
+        (a, b) => saleTimestamp(b.created_at ?? b.date) - saleTimestamp(a.created_at ?? a.date),
+      )[0];
+    return sale
+      ? {
+          saleId: sale.id,
+          status: sale.status,
+          delivererName: sale.deliverer_name,
+          deliveredAt: sale.delivered_at,
+        }
+      : null;
   }
 
   async findRecentSale(order: SaleOrder, since: Date): Promise<number | null> {

@@ -4,17 +4,21 @@ import type Redis from 'ioredis';
 import { REDIS } from 'src/infra/cache/redis.client';
 import { FakeLlmClient } from 'src/integrations/llm/fake-llm.client';
 import { LLM_CLIENT } from 'src/integrations/llm/llm.client';
+import type { FakeRevgasClient } from 'src/integrations/revgas/fake-revgas.client';
+import { REVGAS_CLIENT } from 'src/integrations/revgas/revgas.client';
 import type { FakeWhatsappClient } from 'src/integrations/whatsapp/fake-whatsapp.client';
 import { textWebhook } from 'src/integrations/whatsapp/testing/webhook.testing';
 import { signPayload } from 'src/integrations/whatsapp/webhook/signature';
 import { WHATSAPP_CLIENT } from 'src/integrations/whatsapp/whatsapp.client';
 import {
+  CPF_ATTEMPTS_PREFIX,
   INBOUND_PREFIX,
   LOCK_PREFIX,
   MISUNDERSTOOD_PREFIX,
   OFFENSE_PREFIX,
   ORDER_PREFIX,
   REMINDER_SET,
+  VERIFIED_PREFIX,
 } from 'src/modules/conversation/conversation.repository';
 import { msg } from 'src/modules/conversation/flow/messages';
 import supertest from 'supertest';
@@ -31,6 +35,7 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
   let redis: Redis;
   const ids: string[] = [];
   const phones: string[] = [];
+  const verifiedKeys: string[] = [];
 
   const newPhone = () => {
     const phone = `55869${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
@@ -90,6 +95,7 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
 
   afterAll(async () => {
     llm.clear();
+    if (verifiedKeys.length > 0) await redis.del(...verifiedKeys);
     if (ids.length > 0) {
       await redis.del(...ids.map(id => `${INBOUND_PREFIX}:${id}`));
     }
@@ -100,6 +106,7 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
           `${LOCK_PREFIX}:${phone}`,
           `${MISUNDERSTOOD_PREFIX}:${phone}`,
           `${OFFENSE_PREFIX}:${phone}`,
+          `${CPF_ATTEMPTS_PREFIX}:${phone}`,
         ]),
       );
       await redis.zrem(REMINDER_SET, ...phones);
@@ -177,5 +184,36 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
     expect(bodyOf(whatsapp.sent[0])).toContain(msg.orderStart);
     await expect(redis.get(`${ORDER_PREFIX}:${phone}`)).resolves.toBeNull();
     await expect(redis.zscore(REMINDER_SET, phone)).resolves.toBeNull();
+  });
+  it('consulta venda simulada só depois de verificar o CPF', async () => {
+    const phone = newPhone();
+    const revgas = app.get<FakeRevgasClient>(REVGAS_CLIENT);
+    const customer = await revgas.customers.create({
+      name: 'Cliente Status',
+      cpf: '12345678909',
+      phones: [phone],
+    });
+    verifiedKeys.push(`${VERIFIED_PREFIX}:${phone}:${customer.id}`);
+    const sale = await revgas.sales.create({
+      customer_id: customer.id,
+      channel: 'WHATSAPP',
+      location: 'Rua Teste',
+      number: '10',
+      neighborhood: 'Centro',
+      city: 'Teresina',
+      state_federation: 'PI',
+      products: [{ product_id: 1, quantity: 1, value: 100 }],
+      payments: [{ payment_type: 'PIX', value: 100 }],
+    });
+    await send('cadê meu gás', phone);
+    await vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1));
+    expect(bodyOf(whatsapp.sent[0])).toContain(msg.askCpfPrefix);
+    expect(bodyOf(whatsapp.sent[0])).not.toContain(`Pedido nº ${sale.id}`);
+    whatsapp.clear();
+    await send('123', phone);
+    await vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1));
+    expect(bodyOf(whatsapp.sent[0])).toContain(`Pedido nº ${sale.id}: recebido`);
+    await expect(redis.get(`${ORDER_PREFIX}:${phone}`)).resolves.toBeNull();
+    expect(llm.calls).toHaveLength(0);
   });
 });

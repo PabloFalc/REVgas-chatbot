@@ -16,7 +16,7 @@
 | RF06 | Coletar forma de pagamento (e troco) | Pix, cartão ou dinheiro; troco maior que o total | Slide do chatbot |
 | RF07 | Mostrar resumo com total e pedir confirmação final | Total calculado no backend com preços da API; confirmação por botão | Boa prática + guardrails |
 | RF08 | Criar a venda no ERP RevGás via API | Uma confirmação = uma venda; ID da venda retornado e enviado ao cliente (não é salvo no Postgres, ver RN13) | Foco do grupo |
-| RF09 | Informar status (entregador a caminho, tempo estimado) | **Parcial.** Hoje o cliente recebe só o nº da venda. Status e entregador seriam lidos da venda (F05, pendente); a API não tem tempo estimado | Mockup do WhatsApp |
+| RF09 | Consultar status do pedido | Entregue (F05), versão só leitura: número, status, entregador e data de entrega quando disponíveis, após identificação pelo telefone e verificação de CPF válida por 15 dias. Sem tempo estimado | Mockup do WhatsApp |
 | RF10 | Responder dúvidas fora do menu com IA sobre a base da revenda | **Entregue** (decisão de 2026-11-10, F06 e F13). Resposta só com trechos da base; horário, pagamento e preço vêm do código; sem resposta, oferece o atendente e volta ao pedido | Tabela de técnicas |
 | RF11 | Transferir para atendente humano com resumo | **De volta ao escopo** (decisão de 2026-11-09, F07). Pedido de atendente ou falha da venda → fila no Chatwoot com nota de resumo; o atendente responde pelo mesmo WhatsApp. Sem o Chatwoot configurado: telefone da revenda | Human Handoff |
 
@@ -107,6 +107,8 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 - **Lembrete de pedido parado (F12).** Após **10 min** sem mensagem do cliente, uma vez por período parado, o bot repete a pergunta da etapa avisando que o pedido fica guardado. Não renova o TTL de 15 min do pedido e não é enviado durante a criação da venda.
 
 ## Decisões (2026-11-23)
+
+- Status do pedido (F05/RF09) entregue na versão só leitura, sem tempo estimado. Consulta a venda WhatsApp não cancelada mais recente dos últimos 7 dias, após verificar a identidade, e preserva o pedido em andamento.
 
 - **Quantidade de 1 a 10, limitada ao estoque.** A checagem fica em `nextStep` e vale para todos os caminhos (botão, texto, IA, repetir pedido). Acima de 10, o bot oferece o atendente. (RF04, RN05)
 - **Troco precisa ser maior que o total.** Troco igual ao total não faz sentido; o código já exigia valor acima. (RF06, RN09)

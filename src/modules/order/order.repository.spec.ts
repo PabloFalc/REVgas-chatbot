@@ -91,6 +91,58 @@ describe('OrderRepository', () => {
     });
   });
 
+  describe('latestOrderStatus', () => {
+    const now = new Date('2026-10-21T15:00:00Z');
+    const recent = (id: number, overrides: Partial<RevgasSale> = {}): RevgasSale => ({
+      id,
+      status: 'OPEN',
+      customer_id: 7,
+      channel: 'WHATSAPP',
+      created_at: '2026-10-21T12:00:00-03:00',
+      ...overrides,
+    });
+
+    it('consulta janela recente e retorna só a venda válida mais recente', async () => {
+      const { repository, list } = build([
+        recent(1, { created_at: '2026-10-20T12:00:00-03:00' }),
+        recent(2, { status: 'CANCEL' }),
+        recent(3, { channel: 'DISK' }),
+        recent(4, { customer_id: 9 }),
+        recent(5, { created_at: '2026-10-01T12:00:00-03:00' }),
+        recent(6, { created_at: '2026-10-22T12:00:00-03:00' }),
+        recent(7, { deliverer_name: 'José', delivered_at: '2026-10-21T15:00:00Z' }),
+      ]);
+      await expect(repository.latestOrderStatus(7, now)).resolves.toEqual({
+        saleId: 7,
+        status: 'OPEN',
+        delivererName: 'José',
+        deliveredAt: '2026-10-21T15:00:00Z',
+      });
+      expect(list).toHaveBeenCalledWith({
+        customer_id: 7,
+        channel: 'WHATSAPP',
+        from: '2026-10-14',
+        to: '2026-10-21',
+        page_size: 10,
+      });
+    });
+
+    it('sem venda recente retorna null', async () => {
+      await expect(
+        build([recent(1, { status: 'CANCEL' })]).repository.latestOrderStatus(7, now),
+      ).resolves.toBeNull();
+    });
+
+    it('propaga falha da RevGás sem repetir a chamada', async () => {
+      const { repository, list } = build();
+      list.mockRejectedValue(new RevgasUnavailableError('down', 503));
+      await expect(repository.latestOrderStatus(7, now)).rejects.toBeInstanceOf(
+        RevgasUnavailableError,
+      );
+      expect(list).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('findRecentSale', () => {
     const since = new Date('2026-10-21T15:00:00.000Z');
 

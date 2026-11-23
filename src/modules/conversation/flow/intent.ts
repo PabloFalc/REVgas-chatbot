@@ -8,6 +8,7 @@ import type { FlowRoute } from '../contracts/flow-route';
 import type { FlowTools, OrderState, StepResult } from './flow.types';
 import { handoffButton, offer, orderStartButton } from './handoff';
 import { msg } from './messages';
+import { orderStatus } from './order-status';
 import { repeatQuestion } from './repeat-question';
 import { BUTTONS_BODY_LIMIT, buttons, text } from './replies';
 
@@ -102,6 +103,7 @@ export function intentRoute(result: Interpretation): FlowRoute {
     case 'off_topic':
     case 'offense':
     case 'order':
+    case 'order_status':
       return result.intent;
     default:
       return 'not_understood';
@@ -160,6 +162,7 @@ export async function routeIntent(
   raw: string,
   tools: FlowTools,
 ): Promise<StepResult | null> {
+  if (result.intent === 'order_status') return orderStatus(state, tools);
   const answer = await answerFor(state, result, raw, tools);
   if (!answer) return null;
   if (state) {

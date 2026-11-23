@@ -73,6 +73,7 @@ export class FlowToolsService {
       listPaymentOptions: () => this.catalog.listPaymentOptions(),
       quote: (customer, productId, paymentType, quantity) =>
         this.catalog.quote(customer, productId, paymentType, quantity),
+      latestOrderStatus: (customerId, now) => this.orders.latestOrderStatus(customerId, now),
       createSale: order => this.orders.createSale(order),
       findRecentSale: (order, since) => this.orders.findRecentSale(order, since),
       checkpoint: save,
