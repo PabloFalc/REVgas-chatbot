@@ -259,6 +259,10 @@ export class HandoffService {
     return this.repo.claimDeskMessage(messageId);
   }
 
+  releaseDeskMessage(messageId: number): Promise<void> {
+    return this.repo.releaseDeskMessage(messageId);
+  }
+
   private async activeState(phone: string): Promise<HandoffState | null> {
     const state = await this.repo.getState(phone);
     if (!state) return null;

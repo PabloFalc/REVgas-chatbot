@@ -57,20 +57,24 @@ export class DeskEventsService {
     if (!(await this.handoff.claimDeskMessage(event.messageId))) {
       return;
     }
-    await this.underLock(phone, event.kind, () => this.relayAgentMessage(phone, event));
+    const ran = await this.underLock(phone, event.kind, () => this.relayAgentMessage(phone, event));
+    if (!ran) {
+      await this.handoff.releaseDeskMessage(event.messageId);
+    }
   }
 
   private async underLock(
     phone: string,
     kind: DeskEvent['kind'],
     work: () => Promise<void>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const outcome = await this.conversations.withPhoneLock(phone, work);
-    if (outcome.ran) return;
+    if (outcome.ran) return true;
     this.logger.warn(
       { component: 'desk-events', kind, phone: maskPhone(phone) },
       'Lock do telefone não liberou a tempo; evento não processado',
     );
+    return false;
   }
 
   private async relayAgentMessage(phone: string, event: AgentMessage): Promise<void> {

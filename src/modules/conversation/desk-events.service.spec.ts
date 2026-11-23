@@ -46,6 +46,9 @@ function setup(whatsapp = new FakeWhatsappClient()) {
       claimed.add(id);
       return true;
     }),
+    releaseDeskMessage: vi.fn(async (id: number) => {
+      claimed.delete(id);
+    }),
     markAgentMessage: vi.fn(async () => ({ becameActive: true })),
     endFromDesk: vi.fn(async () => undefined),
     noteWindowClosed: vi.fn(async () => undefined),
@@ -168,5 +171,24 @@ describe('DeskEventsService.handle', () => {
       { component: 'desk-events', kind: 'agentMessage', phone: '*******1234' },
       'Lock do telefone não liberou a tempo; evento não processado',
     );
+  });
+
+  it('lock ocupado libera a mensagem para a reentrega ser repassada', async () => {
+    const { service, conversations, handoff, whatsapp } = setup();
+    conversations.withPhoneLock.mockResolvedValueOnce({ ran: false });
+
+    await service.handle([agentEvent()]);
+    await service.handle([agentEvent()]);
+
+    expect(handoff.releaseDeskMessage).toHaveBeenCalledWith(100);
+    expect(whatsapp.sent).toHaveLength(1);
+  });
+
+  it('mensagem repassada não é liberada', async () => {
+    const { service, handoff } = setup();
+
+    await service.handle([agentEvent()]);
+
+    expect(handoff.releaseDeskMessage).not.toHaveBeenCalled();
   });
 });
