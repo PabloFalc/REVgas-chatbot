@@ -47,7 +47,7 @@ psql "$DATABASE_URL" -v pass='senha-local-de-consulta' -f docker/metabase/metric
 
 A imagem OSS fica fixa em `metabase/metabase:v0.65.3.7`, a versão estável mais recente da série principal publicada até 09/11/2026. O [Docker Hub](https://hub.docker.com/r/metabase/metabase/tags?name=v0.65.3.7) informa publicação em 09/11/2026 às 21:26 UTC; `v0.65.4` foi publicada em 10/11. O perfil mantém o banco de configuração separado e desliga telemetria anônima. A interface só escuta em `127.0.0.1:3001`.
 
-O usuário `metrics_reader` tem CONNECT, USAGE no schema e SELECT apenas em `bot_events`, limite de três conexões e timeout de 10 segundos. Não use a credencial administrativa do bot no Metabase. Permissões públicas herdadas do PostgreSQL também devem ser consideradas ao instalar em outro ambiente.
+O usuário `metrics_reader` tem CONNECT, USAGE no schema e SELECT apenas em `bot_events`, limite de dez conexões e timeout de 10 segundos. Não use a credencial administrativa do bot no Metabase. Permissões públicas herdadas do PostgreSQL também devem ser consideradas ao instalar em outro ambiente.
 
 ## Cards SQL
 
