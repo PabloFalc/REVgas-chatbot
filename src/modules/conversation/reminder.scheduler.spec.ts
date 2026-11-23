@@ -1,6 +1,7 @@
 import type { PinoLogger } from 'nestjs-pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HandoffService } from '../handoff/handoff.service';
+import type { BotEventsRepository } from '../metrics/bot-events.repository';
 import type { ConversationRepository } from './conversation.repository';
 import type { OrderState } from './flow/flow.types';
 import { createFakeTools, FAKE_NOW } from './flow/testing/fake-tools';
@@ -34,6 +35,7 @@ function setup(phones = [PHONE]) {
   const messaging = { send: vi.fn(async (_to: string, _reply: unknown) => undefined) };
   const flowTools = { forPhone: vi.fn(() => createFakeTools()) };
   const handoff = { mirrorOutgoing: vi.fn(async () => undefined) };
+  const events = { record: vi.fn() };
   const logger = {
     setContext: vi.fn(),
     debug: vi.fn(),
@@ -47,8 +49,9 @@ function setup(phones = [PHONE]) {
     flowTools as unknown as FlowToolsService,
     handoff as unknown as HandoffService,
     logger as unknown as PinoLogger,
+    events as unknown as BotEventsRepository,
   );
-  return { scheduler, repository, messaging, flowTools, handoff, logger };
+  return { events, scheduler, repository, messaging, flowTools, handoff, logger };
 }
 
 afterEach(() => {
@@ -85,6 +88,7 @@ describe('ReminderScheduler.tick', () => {
     expect(forPhone).toBe(PHONE);
     await save({ step: 'choosePayment', customer: {} });
     expect(repository.saveOrderKeepingTtl).toHaveBeenLastCalledWith(PHONE, {
+      cycleId: expect.any(String),
       step: 'choosePayment',
       customer: {},
     });
@@ -214,5 +218,18 @@ describe('ReminderScheduler intervalo', () => {
     expect(vi.getTimerCount()).toBe(0);
     expect(repository.dueReminders).not.toHaveBeenCalled();
     scheduler.onModuleDestroy();
+  });
+});
+
+it('registra lembrete com o ciclo salvo sem renovar o TTL', async () => {
+  const { scheduler, events, repository } = setup();
+  await scheduler.tick();
+  expect(events.record).toHaveBeenCalledWith({
+    name: 'reminder_sent',
+    cycleId: expect.any(String),
+    step: 'choosePayment',
+  });
+  expect(repository.saveOrderKeepingTtl.mock.calls[0][1]).toMatchObject({
+    cycleId: events.record.mock.calls[0][0].cycleId,
   });
 });
