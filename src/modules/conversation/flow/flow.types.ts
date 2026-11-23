@@ -27,10 +27,11 @@ import type {
   ServiceHoursInfo,
 } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
-import type { SaleOrder } from 'src/modules/order/contracts/order.types';
+import type { OrderStatus, SaleOrder } from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
 export const MAX_CPF_ATTEMPTS = 3;
+export const MAX_QUANTITY = 10;
 
 export type Step =
   | 'askName'
@@ -66,7 +67,14 @@ export interface RepeatOffer {
 
 export interface OrderState {
   step: Step;
-  customer: { id?: number; name?: string; cpf?: string; tagId?: number | null };
+  pendingOrderStatus?: { resumeStep: Step | null; customer: OrderState['customer'] };
+  customer: {
+    id?: number;
+    name?: string;
+    cpf?: string;
+    cpfPrefix?: string;
+    tagId?: number | null;
+  };
   addresses?: Address[];
   boughtProductIds?: number[];
   lastOrder?: LastOrder;
@@ -135,6 +143,7 @@ export interface FlowTools {
     paymentType: string,
     quantity: number,
   ): Promise<Quote | null>;
+  latestOrderStatus(customerId: number, now: Date): Promise<OrderStatus | null>;
   createSale(order: SaleOrder): Promise<number>;
   findRecentSale(order: SaleOrder, since: Date): Promise<number | null>;
   checkpoint(state: OrderState): Promise<void>;

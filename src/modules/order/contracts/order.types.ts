@@ -18,3 +18,10 @@ export class SaleRejectedError extends Error {
     this.name = new.target.name;
   }
 }
+
+export interface OrderStatus {
+  saleId: number;
+  status: string;
+  delivererName?: string | null;
+  deliveredAt?: string | null;
+}

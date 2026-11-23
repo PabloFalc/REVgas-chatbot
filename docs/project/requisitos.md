@@ -11,12 +11,12 @@
 | RF01 | Receber pedidos pelo WhatsApp | Webhook recebe e responde mensagens (Cloud API oficial da Meta) | Slide "Como funciona?" |
 | RF02 | Identificar o cliente pelo telefone e recuperar cadastro | Telefone normalizado (só dígitos, DDI 55) consultado na API RevGás | Slide do chatbot |
 | RF03 | Cadastrar cliente novo | Coleta nome, CPF (obrigatório) e endereço; cadastra via API. Cliente já cadastrado sem CPF recebe o telefone da revenda e a conversa termina (o bot não grava CPF em cadastro existente) | Inferido de RF02 |
-| RF04 | Coletar e confirmar produto e quantidade | Produto ativo e com estoque; quantidade inteira entre 1 e o limite | Slide do chatbot |
+| RF04 | Coletar e confirmar produto e quantidade | Produto ativo e com estoque; quantidade inteira de 1 a 10, limitada ao estoque; acima de 10 oferece o atendente | Slide do chatbot |
 | RF05 | Confirmar endereço salvo ou permitir alterar | Botões "Sim" / "Alterar endereço" | Mockup do WhatsApp |
-| RF06 | Coletar forma de pagamento (e troco) | Pix, cartão ou dinheiro; troco ≥ total | Slide do chatbot |
+| RF06 | Coletar forma de pagamento (e troco) | Pix, cartão ou dinheiro; troco maior que o total | Slide do chatbot |
 | RF07 | Mostrar resumo com total e pedir confirmação final | Total calculado no backend com preços da API; confirmação por botão | Boa prática + guardrails |
-| RF08 | Criar a venda no ERP RevGás via API | Uma confirmação = uma venda; ID da venda retornado e salvo | Foco do grupo |
-| RF09 | Informar status (entregador a caminho, tempo estimado) | Cliente recebe nº da venda e previsão | Mockup do WhatsApp |
+| RF08 | Criar a venda no ERP RevGás via API | Uma confirmação = uma venda; ID da venda retornado e enviado ao cliente (não é salvo no Postgres, ver RN13) | Foco do grupo |
+| RF09 | Consultar status do pedido | Entregue (F05), versão só leitura: número, status, entregador e data de entrega quando disponíveis, após identificação pelo telefone e verificação de CPF válida por 15 dias. Sem tempo estimado | Mockup do WhatsApp |
 | RF10 | Responder dúvidas fora do menu com IA sobre a base da revenda | **Entregue** (decisão de 2026-11-10, F06 e F13). Resposta só com trechos da base; horário, pagamento e preço vêm do código; sem resposta, oferece o atendente e volta ao pedido | Tabela de técnicas |
 | RF11 | Transferir para atendente humano com resumo | **De volta ao escopo** (decisão de 2026-11-09, F07). Pedido de atendente ou falha da venda → fila no Chatwoot com nota de resumo; o atendente responde pelo mesmo WhatsApp. Sem o Chatwoot configurado: telefone da revenda | Human Handoff |
 
@@ -27,7 +27,7 @@
 | RNF01 | Desempenho / UX | Pedido fechado em poucas mensagens; meta de 20 min do pedido à entrega |
 | RNF02 | Segurança | API Key da RevGás só no servidor (variável de ambiente), nunca no prompt nem no cliente |
 | RNF03 | Privacidade (LGPD) | CPF, telefone e endereço mascarados em logs; nunca expor dados de outro cliente |
-| RNF04 | Confiabilidade | Idempotência: uma confirmação gera **uma** venda, mesmo com mensagem repetida |
+| RNF04 | Confiabilidade | Idempotência local: uma confirmação gera **uma** venda, mesmo com mensagem repetida. Mecanismo: dedup pelo id da mensagem, trava por telefone no Redis, checkpoint `creatingSale` no estado e `findRecentSale` antes de repetir ou cancelar (a API RevGás não tem mecanismo de idempotência documentado) |
 | RNF05 | Observabilidade | Log de cada chamada à API RevGás |
 | RNF06 | Resiliência | O fluxo nunca depende da IA: se ela falhar ou demorar, volta para os botões |
 | RNF07 | Resiliência | Retry só em leituras (GET) com 5xx/timeout. Criar venda nunca é reenviada sozinha: falha → o bot avisa e oferece "Tentar de novo" |
@@ -41,17 +41,17 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 
 | ID | Etapa | Regra | Se falhar |
 | --- | --- | --- | --- |
-| RN01 | Entrada | Telefone normalizado (só dígitos, DDI 55) | Pedir confirmação do número |
+| RN01 | Entrada | Telefone normalizado (só dígitos, DDI 55) | Pedir confirmação do número não está implementado; só há a normalização |
 | RN02 | Cliente | Encontrado na API ou cadastrado com nome, CPF e endereço | Coletar o que falta |
 | RN03 | Cliente | CPF obrigatório, com dígito verificador válido | Pedir de novo, sem repetir o CPF na tela |
 | RN04 | Produto | Produto existe, está ativo e tem estoque | Oferecer os outros produtos |
-| RN05 | Produto | Quantidade inteira ≥ 1 (sem limite máximo por enquanto) | Pedir de novo |
+| RN05 | Produto | Quantidade inteira de 1 a 10 e no máximo o estoque (decisão de 2026-11-23) | Abaixo de 1 ou não numérica: pedir de novo. Acima do estoque: informar o limite. Acima de 10: oferecer o atendente |
 | RN06 | Preço | Valor vem da API, nunca do texto do cliente ou do LLM | Recalcular no backend |
 | RN07 | Desconto | O bot nunca oferece promoção nem desconto; vale só o preço dos acordos | Resposta fixa ("o preço é o da tabela") e volta ao pedido |
 | RN08 | Endereço | Rua, número e bairro preenchidos | Pedir o que faltou |
-| RN09 | Pagamento | Forma aceita pela revenda; troco ≥ total quando dinheiro | Pedir de novo |
+| RN09 | Pagamento | Forma aceita pela revenda; troco maior que o total quando dinheiro | Pedir de novo |
 | RN10 | Confirmação | Resumo enviado e cliente respondeu "confirmo" (botão) | Não envia a venda |
-| RN11 | Envio | Chave de idempotência por conversa; sem venda igual nos últimos minutos | Não duplica; mostra a venda existente |
+| RN11 | Envio | Sem chave de idempotência (a API não documenta uma). Deduplicação local: mensagem por id, trava por telefone, checkpoint `creatingSale` e `findRecentSale` antes de repetir ou cancelar | Não duplica; usa a venda existente |
 | RN12 | Resposta da API | Status 2xx e ID da venda retornado | Avisa o cliente e oferece "Tentar de novo"; sem retry automático |
 | RN13 | Pós-venda | **Melhoria futura** (decisão de 2026-10-22): ID salvo no Postgres. Hoje o ID da venda só é enviado ao cliente | Alerta no log |
 
@@ -73,7 +73,7 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
   - API falha ao criar a venda → avisa e oferece "Tentar de novo" (nunca reenvia sozinho).
   - Cliente pede atendente → mensagem fixa com o telefone da revenda (hoje só com `CHATWOOT_MODE=off` ou Chatwoot fora do ar).
 - **CPF obrigatório.** Cadastro novo exige CPF válido; cliente já cadastrado sem CPF recebe o telefone da revenda (decisão de 2026-10-23: o bot não grava CPF em cadastro existente). O CPF nunca vai para o prompt da IA. (RF03, RN03)
-- **Sem limite de quantidade** por enquanto. (RN05)
+- **Sem limite de quantidade** por enquanto. (RN05) *Superado em 2026-11-23: limite de 10 e estoque.*
 - **Sem promoção.** O bot não oferece desconto; pedido de desconto recebe resposta fixa. (RN07)
 - **Endereços do cliente** = endereço do cadastro + endereços das vendas anteriores na RevGás, sem repetir. Cliente cadastrado escolhe um deles ou informa outro (CEP ou texto livre, sempre confirmado). A RevGás guarda um só endereço por cliente; não criamos tabela própria.
 
@@ -106,11 +106,22 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 - **Repetir último pedido (F04).** A oferta sai da venda não cancelada mais recente, se tiver 1 produto, 1 pagamento e endereço completo, e só se produto, pagamento e preço ainda forem válidos. Aceitar vai ao resumo (ou à pergunta de troco, se dinheiro); nunca cria a venda.
 - **Lembrete de pedido parado (F12).** Após **10 min** sem mensagem do cliente, uma vez por período parado, o bot repete a pergunta da etapa avisando que o pedido fica guardado. Não renova o TTL de 15 min do pedido e não é enviado durante a criação da venda.
 
+## Decisões (2026-11-23)
+
+- Status do pedido (F05/RF09) entregue na versão só leitura, sem tempo estimado. Consulta a venda WhatsApp não cancelada mais recente dos últimos 7 dias, após verificar a identidade, e preserva o pedido em andamento.
+
+- **Quantidade de 1 a 10, limitada ao estoque.** A checagem fica em `nextStep` e vale para todos os caminhos (botão, texto, IA, repetir pedido). Acima de 10, o bot oferece o atendente. (RF04, RN05)
+- **Troco precisa ser maior que o total.** Troco igual ao total não faz sentido; o código já exigia valor acima. (RF06, RN09)
+- **Idempotência é local.** RN11 e RNF04 descrevem o mecanismo real (dedup por id, trava por telefone, `creatingSale`, `findRecentSale`); não há chave de idempotência. Se a trava não é obtida em 120 s, o bot pede que o cliente reenvie a mensagem em vez de processar sem ela.
+- **Erro do Redis não é engolido.** Falha ao ler ou gravar o estado do pedido, o bloqueio de CPF ou o estado do handoff faz o bot responder "instabilidade". Exceção: se a venda já foi criada, a confirmação é enviada mesmo que o registro posterior falhe. O Redis usa `noeviction` e é a dependência crítica do `/health` (503).
+- **CPF mínimo no estado.** Cliente conhecido guarda só o prefixo de 3 dígitos; cliente novo tem o CPF apagado do estado logo depois do cadastro. Logs de erro do Redis levam só nome e mensagem, sem os argumentos do comando (telefone e CPF).
+- **RN01:** a confirmação do número não existe no código; a regra descreve só a normalização.
+
 ## Pendências que afetam os requisitos
 
 Dependem das respostas da Flow/RevGás:
 
-- Preço: todo acordo é ligado a uma forma de pagamento (confirmado em 2026-10-19). Falta a prioridade entre acordos sobrepostos; suposta: cliente > categoria > base. (RF07, RN06)
-- "Tempo estimado": a API não tem esse dado nem webhook de status; só a consulta da venda (status e entregador). (RF09)
-- Idempotência: a API **não** aceita chave de idempotência; a deduplicação é local. (RN11)
+- Preço: todo acordo é ligado a uma forma de pagamento (confirmado em 2026-10-19). A prioridade entre acordos sobrepostos **não está documentada** na spec pública (que marca os acordos por cliente como descontinuados em favor dos de categoria); a ordem usada, cliente > categoria > base, é suposição. (RF07, RN06)
+- "Tempo estimado": a API não tem esse dado nem webhook de status comercial; só a consulta da venda (status, entregador, data de entrega). A chave somente leitura consegue ler `/sales`, então F05 é viável. (RF09)
+- Idempotência: a spec pública não documenta mecanismo de idempotência; a deduplicação é local. Vale perguntar à RevGás se existe. (RN11)
 - Conteúdo real da base da revenda: a base atual é fictícia (Revenda Chama Azul) e os cortes de relevância ainda não foram calibrados. (RF10)

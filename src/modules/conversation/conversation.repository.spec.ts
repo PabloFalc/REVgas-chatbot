@@ -135,23 +135,37 @@ describe('ConversationRepository (pedido em andamento)', () => {
     expect(store.has(`${LOCK_PREFIX}:55`)).toBe(false);
   });
 
-  it('quem desistiu de esperar segue sem apagar o lock do outro dono', async () => {
+  it('quem desiste de esperar não roda o trabalho nem apaga o lock do outro dono', async () => {
     vi.useFakeTimers();
     try {
-      const { repository, cache, logger, store } = setupStore();
+      const { repository, cache, store } = setupStore();
+      await cache.setIfAbsent({ prefix: LOCK_PREFIX, key: '5586999991234', value: 'dono' });
+      const work = vi.fn(async () => 'ok');
+
+      const pending = repository.withPhoneLock('5586999991234', work);
+      await vi.advanceTimersByTimeAsync(121_000);
+
+      await expect(pending).resolves.toEqual({ ran: false });
+      expect(work).not.toHaveBeenCalled();
+      expect(store.get(`${LOCK_PREFIX}:5586999991234`)).toBe('dono');
+      expect(cache.deleteIfEquals).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('withPhoneLock roda quando o dono libera o lock durante a espera', async () => {
+    vi.useFakeTimers();
+    try {
+      const { repository, cache, store } = setupStore();
       await cache.setIfAbsent({ prefix: LOCK_PREFIX, key: '5586999991234', value: 'dono' });
 
       const pending = repository.withPhoneLock('5586999991234', async () => 'ok');
-      await vi.advanceTimersByTimeAsync(121_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      store.delete(`${LOCK_PREFIX}:5586999991234`);
+      await vi.advanceTimersByTimeAsync(250);
 
-      await expect(pending).resolves.toBe('ok');
-      expect(store.get(`${LOCK_PREFIX}:5586999991234`)).toBe('dono');
-      expect(cache.deleteIfEquals).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledOnce();
-      expect(logger.warn.mock.calls[0][0]).toEqual({
-        component: 'conversation',
-        from: '*******1234',
-      });
+      await expect(pending).resolves.toEqual({ ran: true, value: 'ok' });
     } finally {
       vi.useRealTimers();
     }

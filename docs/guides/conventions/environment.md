@@ -8,6 +8,8 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 > **Onde fica o quê.** O `.env` é **local e ignorado pelo git** (nunca o commite). O
 > [`.env.example`](../../../.env.example) é o template versionado, só com **placeholders** — copie-o
 > para `.env` e preencha. Em produção, use **secrets** do servidor/CI, nunca um arquivo no repo.
+>
+> **`pnpm test` não precisa de `.env`:** `vitest.config.ts` define as variáveis do ambiente unitário e aponta `DOTENV_CONFIG_PATH` para `/dev/null`. O `pnpm test:e2e` lê o `.env` e exige `BETTER_AUTH_SECRET` preenchida (o CI define uma; veja [testing.md](./testing.md#testes-e2e)).
 
 ## Convenções de tipo
 

@@ -13,6 +13,7 @@ import {
 import { textOf } from './input';
 import { routeIntent } from './intent';
 import { msg } from './messages';
+import { isOrderStatusQuestion, orderStatus } from './order-status';
 import { repeatQuestion } from './repeat-question';
 import { text as textReply } from './replies';
 import { asks, start } from './steps';
@@ -63,6 +64,8 @@ export async function globalCommand(
   if (asksForAgent(raw)) {
     return handoff(state, input.phone, requestReasonFor(state), tools);
   }
+
+  if (isOrderStatusQuestion(raw)) return orderStatus(state, tools);
 
   if (DISCOUNT.some(word => text.includes(word))) {
     if (!state) return { state, replies: [textReply(msg.noDiscount)] };

@@ -1,5 +1,7 @@
 # Fluxo de pedido pelo WhatsApp — Plano de implementação
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Trocar a resposta de teste do bot pelo pedido completo: do "oi" até a venda criada na RevGás (F01 + F02).

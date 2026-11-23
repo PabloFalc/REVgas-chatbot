@@ -405,6 +405,15 @@ describe('HandoffService', () => {
   });
 
   describe('markAgentMessage e routeFor', () => {
+    it('routeFor propaga a falha ao ler o estado em vez de devolver o cliente ao bot', async () => {
+      const { service, repo } = setup();
+      repo.getState = async () => {
+        throw new Error('ECONNREFUSED');
+      };
+
+      await expect(service.routeFor(PHONE)).rejects.toThrow('ECONNREFUSED');
+    });
+
     it('de queued vira active uma vez e passa a rotear para o atendente', async () => {
       const { service, states } = setup();
       await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });

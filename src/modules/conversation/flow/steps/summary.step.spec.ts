@@ -1,5 +1,6 @@
 import { SaleRejectedError } from 'src/modules/order/contracts/order.types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { runFlow } from '../flow';
 import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { text } from '../replies';
@@ -25,7 +26,7 @@ const money = { type: 'MONEY', label: 'Dinheiro' };
 
 const base: OrderState = {
   step: 'summary',
-  customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   addresses: [address],
   address,
   product: { id: 1, name: 'Botijão P13' },
@@ -263,6 +264,21 @@ describe('saleFailed', () => {
     const result = await handlers.saleFailed?.(state, pick('retry:sale'), tools);
     expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(777))], saleId: 777 });
     expect(tools.calls.map(c => c.name)).not.toContain('createSale');
+  });
+
+  it('erro ao consultar venda recente mantém saleFailed e não cria venda', async () => {
+    const findRecentSale = vi.fn(async () => {
+      throw new Error('fora');
+    });
+    const createSale = vi.fn(async () => 4521);
+    const tools = createFakeTools({
+      findRecentSale,
+      createSale,
+    });
+    const result = await runFlow(state, pick('retry:sale'), tools);
+    expect(result?.state).toEqual(state);
+    expect(findRecentSale).toHaveBeenCalledOnce();
+    expect(createSale).not.toHaveBeenCalled();
   });
 
   it('consulta a venda desde o momento da tentativa', async () => {

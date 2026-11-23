@@ -624,7 +624,7 @@ describe('texto livre no meio do pedido', () => {
   const credit = { type: 'CARTAO_DE_CREDITO', label: 'Cartão de crédito' };
   const paying: OrderState = {
     step: 'choosePayment',
-    customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+    customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
     address: {
       street: 'Rua das Flores',
       number: '120',

@@ -119,8 +119,8 @@ describe('CatalogRepository', () => {
       });
 
       expect(await repository.listProducts({})).toEqual([
-        { id: 2, name: 'Água' },
-        { id: 1, name: 'P13' },
+        { id: 2, name: 'Água', stock: 10 },
+        { id: 1, name: 'P13', stock: 10 },
       ]);
     });
 
@@ -142,6 +142,24 @@ describe('CatalogRepository', () => {
       });
 
       expect(await repository.listProducts({})).toEqual([{ id: 1, name: 'P13' }]);
+    });
+
+    it('exposes the stock and leaves it undefined when the establishment ignores the check', async () => {
+      const { repository } = build({
+        products: [product(1, 'P13', { stock_quantity: 4 })],
+        deals: [deal(1, 1, 'PIX', 100)],
+      });
+
+      expect(await repository.listProducts({})).toEqual([{ id: 1, name: 'P13', stock: 4 }]);
+
+      const ignored = build({
+        products: [product(1, 'P13', { stock_quantity: 4 })],
+        deals: [deal(1, 1, 'PIX', 100)],
+        establishments: [{ id: 1, ignore_stock_check: true }],
+      });
+      const [ignoredProduct] = await ignored.repository.listProducts({});
+
+      expect(ignoredProduct?.stock).toBeUndefined();
     });
 
     it('uses the establishment from the env when defined', async () => {
@@ -228,8 +246,8 @@ describe('CatalogRepository', () => {
       });
 
       expect(await repository.basePrices()).toEqual([
-        { product: { id: 2, name: 'Água' }, minPrice: 8, varies: false },
-        { product: { id: 1, name: 'P13' }, minPrice: 105, varies: true },
+        { product: { id: 2, name: 'Água', stock: 10 }, minPrice: 8, varies: false },
+        { product: { id: 1, name: 'P13', stock: 10 }, minPrice: 105, varies: true },
       ]);
     });
 
@@ -246,7 +264,7 @@ describe('CatalogRepository', () => {
       });
 
       expect(await repository.basePrices()).toEqual([
-        { product: { id: 1, name: 'P13' }, minPrice: 110, varies: false },
+        { product: { id: 1, name: 'P13', stock: 10 }, minPrice: 110, varies: false },
       ]);
     });
   });
@@ -281,6 +299,18 @@ describe('CatalogRepository', () => {
         'catalog:products',
       ]);
       expect(vi.mocked(cache.set).mock.calls.every(([params]) => params.ttl === 600)).toBe(true);
+    });
+
+    it('falls back to RevGás when the cache fails', async () => {
+      const { repository, productsList, cache } = build({
+        products: [product(1, 'P13')],
+        deals: [deal(1, 1, 'PIX', 100)],
+      });
+      vi.mocked(cache.get).mockRejectedValue(new Error('ECONNREFUSED'));
+      vi.mocked(cache.set).mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(repository.listProducts({})).resolves.toHaveLength(1);
+      expect(productsList).toHaveBeenCalledOnce();
     });
   });
 });

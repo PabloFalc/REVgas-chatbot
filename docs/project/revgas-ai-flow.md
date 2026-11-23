@@ -1,5 +1,7 @@
 # RevGás AI Flow — Requisitos, fluxo e endpoints
 
+> **Histórico.** Documento de 15/10/2026, mantido como registro. A fonte atual é [requisitos.md](requisitos.md) e [funcionalidades.md](funcionalidades.md); em caso de conflito, vale o que está lá.
+
 Atualizado em 15/10/2026 · Pablo Falcão
 
 ## Contexto

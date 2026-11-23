@@ -1,5 +1,7 @@
 # Design — Integração com a LLM (`src/integrations/llm`)
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 Data: 2026-10-20 · Status: rascunho para aprovação
 
 ## Intenção

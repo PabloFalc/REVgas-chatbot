@@ -1,8 +1,10 @@
 import type { Address } from 'src/modules/address/contracts/address.types';
 import type { BasePrice, Product } from 'src/modules/catalog/contracts/catalog.types';
+import type { OrderStatus } from 'src/modules/order/contracts/order.types';
 import { formatMoney } from 'src/utils/money';
+import { parseBrasiliaTimestamp } from 'src/utils/parse-brasilia-timestamp';
 import type { Opening, ServiceWindow } from 'src/utils/service-hours';
-import type { OrderState, RepeatOffer } from './flow.types';
+import { MAX_QUANTITY, type OrderState, type RepeatOffer } from './flow.types';
 
 function storeContact(phone?: string): string {
   return phone ? `Fale com a revenda: ${phone}.` : 'Fale direto com a revenda.';
@@ -84,7 +86,42 @@ function priceLine({ product, minPrice, varies }: BasePrice): string {
   return `- ${product.name}: ${varies ? `a partir de ${price}` : price}`;
 }
 
+const ORDER_STATUS_LABELS = new Map([
+  ['OPEN', 'recebido'],
+  ['ACTIVE', 'em andamento'],
+  ['CONFIRM', 'confirmado'],
+  ['CHECK', 'em conferência'],
+  ['WARNING', 'com pendência, um atendente vai verificar'],
+]);
+
+const DELIVERY_DATE = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  day: '2-digit',
+  month: '2-digit',
+});
+const DELIVERY_TIME = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function orderStatus(sale: OrderStatus): string {
+  const label = ORDER_STATUS_LABELS.get(sale.status) ?? 'em andamento';
+  const lines = [`Pedido nº ${sale.saleId}: ${label}.`];
+  if (sale.delivererName) lines.push(`Entregador: ${sale.delivererName}.`);
+  const delivered = parseBrasiliaTimestamp(sale.deliveredAt);
+  if (!Number.isNaN(delivered)) {
+    lines.push(
+      `Entrega registrada em: ${DELIVERY_DATE.format(delivered)} às ${DELIVERY_TIME.format(delivered)}.`,
+    );
+  }
+  return lines.join('\n');
+}
+
 export const msg = {
+  orderStatus,
+  noOrderForPhone: 'Não encontrei pedido para este número.',
+  noRecentOrderForPhone: 'Não encontrei pedido recente para este número.',
   welcomeNew:
     'Olá! Ainda não te conhecemos. Para fazer seu pedido, preciso de alguns dados.\nQual é o seu nome completo?',
   welcomeBack: (name: string) => `Olá, ${name}! Vamos fazer seu pedido.`,
@@ -126,6 +163,9 @@ export const msg = {
   otherQuantity: 'Outra',
   askQuantity: 'Mande a quantidade (um número inteiro, 1 ou mais).',
   invalidQuantity: 'Não entendi a quantidade. Mande um número inteiro, 1 ou mais.',
+  stockLimit: (stock: number, product: string) =>
+    `Temos só ${stock} ${stock === 1 ? 'unidade' : 'unidades'} de ${product} agora.`,
+  quantityAboveMax: `Pedidos acima de ${MAX_QUANTITY} unidades são atendidos por um atendente.`,
   choosePayment: 'Como você vai pagar?',
   viewPayments: 'Ver formas',
   noPriceForPayment: 'Não temos preço para essa forma de pagamento. Escolha outra.',
@@ -204,4 +244,5 @@ export const msg = {
   reminder: 'Ainda está aí? Seu pedido fica guardado por mais 5 minutos.',
   addressLabel,
   addressFull,
+  busy: 'Ainda estou cuidando da sua mensagem anterior. Manda essa de novo em instantes.',
 };

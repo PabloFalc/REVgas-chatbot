@@ -16,10 +16,13 @@ export const RevgasSaleProductSchema = z.looseObject({
 });
 export type RevgasSaleProduct = z.infer<typeof RevgasSaleProductSchema>;
 
-export const RevgasSalePaymentSchema = z.looseObject({
-  payment_type: openEnum(PAYMENT_TYPES),
-  value: z.number(),
-});
+export const RevgasSalePaymentSchema = z.union([
+  z.looseObject({ payment_type: openEnum(PAYMENT_TYPES), value: z.number() }),
+  z.looseObject({ type: openEnum(PAYMENT_TYPES), value: z.number() }).transform(payment => ({
+    ...payment,
+    payment_type: payment.type,
+  })),
+]);
 export type RevgasSalePayment = z.infer<typeof RevgasSalePaymentSchema>;
 
 export const RevgasSaleSchema = z.looseObject({
@@ -44,6 +47,8 @@ export const RevgasSaleSchema = z.looseObject({
   observation: z.string().nullish(),
   products: z.array(RevgasSaleProductSchema).optional(),
   payments: z.array(RevgasSalePaymentSchema).optional(),
+  lat: z.union([z.string(), z.number()]).nullish(),
+  lon: z.union([z.string(), z.number()]).nullish(),
   establishment_id: z.number().nullish(),
 });
 export type RevgasSale = z.infer<typeof RevgasSaleSchema>;
@@ -56,8 +61,8 @@ export const RevgasSaleInputSchema = z.object({
   state_federation: z.string().min(1),
   complement: z.string().optional(),
   landmark: z.string().optional(),
-  lat: z.number().optional(),
-  lon: z.number().optional(),
+  lat: z.union([z.string(), z.number()]).optional(),
+  lon: z.union([z.string(), z.number()]).optional(),
   customer_id: z.number().optional(),
   observation: z.string().optional(),
   channel: z.string().default('WHATSAPP'),

@@ -81,6 +81,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
       const quantity = args[3] as number;
       return { unitPrice: 110, total: 110 * quantity };
     },
+    latestOrderStatus: record('latestOrderStatus', null),
     createSale: record('createSale', 4521),
     findRecentSale: record('findRecentSale', null as number | null),
     checkpoint: record('checkpoint', undefined),

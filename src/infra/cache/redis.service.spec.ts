@@ -17,21 +17,10 @@ describe('RedisService.delete', () => {
     expect(del).toHaveBeenCalledWith('p:k');
   });
 
-  it('loga o erro do Redis e não propaga', async () => {
+  it('propaga o erro do Redis', async () => {
     const del = vi.fn().mockRejectedValue(new Error('boom'));
-    const { service, logger } = build(del);
-    await expect(service.delete({ prefix: 'p', key: 'k' })).resolves.toBeUndefined();
-    expect(logger.error).toHaveBeenCalled();
-  });
-
-  it('não loga a chave no erro, só o prefixo', async () => {
-    const del = vi.fn().mockRejectedValue(new Error('boom'));
-    const { service, logger } = build(del);
-    await service.delete({ prefix: 'p', key: '5586999990000' });
-    const [fields] = logger.error.mock.calls[0];
-    expect(fields).toMatchObject({ component: 'cache', prefix: 'p' });
-    expect(JSON.stringify(fields)).not.toContain('5586999990000');
-    expect(fields).not.toHaveProperty('key');
+    const { service } = build(del);
+    await expect(service.delete({ prefix: 'p', key: 'k' })).rejects.toThrow('boom');
   });
 
   it('withPrefix expõe delete', async () => {
@@ -39,6 +28,27 @@ describe('RedisService.delete', () => {
     const { service } = build(del);
     await service.withPrefix('p').delete({ prefix: 'p', key: 'k' });
     expect(del).toHaveBeenCalledWith('p:k');
+  });
+});
+
+describe('RedisService get, set e exists', () => {
+  function buildFailing() {
+    const boom = vi.fn().mockRejectedValue(new Error('boom'));
+    const logger = { setContext: vi.fn(), error: vi.fn() };
+    const service = new RedisService(
+      { get: boom, set: boom, setex: boom, exists: boom } as unknown as Redis,
+      logger as unknown as PinoLogger,
+    );
+    return { service, logger };
+  }
+
+  it('propagam o erro do Redis em vez de devolver vazio', async () => {
+    const { service, logger } = buildFailing();
+    await expect(service.get({ prefix: 'p', key: 'k' })).rejects.toThrow('boom');
+    await expect(service.set({ prefix: 'p', key: 'k', value: 1 })).rejects.toThrow('boom');
+    await expect(service.set({ prefix: 'p', key: 'k', value: 1, ttl: 60 })).rejects.toThrow('boom');
+    await expect(service.exists({ prefix: 'p', key: 'k' })).rejects.toThrow('boom');
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });
 
@@ -82,6 +92,22 @@ describe('RedisService.deleteIfEquals', () => {
     );
     expect(logger.error).toHaveBeenCalled();
   });
+
+  it('loga só nome e mensagem do erro, sem o comando com a chave e o valor', async () => {
+    const error = Object.assign(new Error('boom'), {
+      command: { name: 'eval', args: ['p:5586999990000', '"12345678909"'] },
+    });
+    const { service, logger } = buildEval(vi.fn().mockRejectedValue(error));
+
+    await service.deleteIfEquals({ prefix: 'p', key: '5586999990000', value: '12345678909' });
+
+    const [fields] = logger.error.mock.calls[0];
+    expect(fields).toEqual({
+      component: 'cache',
+      error: { name: 'Error', message: 'boom' },
+      prefix: 'p',
+    });
+  });
 });
 
 describe('RedisService primitivas novas', () => {
@@ -96,17 +122,27 @@ describe('RedisService primitivas novas', () => {
     expect(set).toHaveBeenCalledWith('p:k', '{"a":1}', 'KEEPTTL', 'XX');
   });
 
-  it('increment define TTL só na primeira vez', async () => {
-    const incr = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(2);
-    const expire = vi.fn().mockResolvedValue(1);
-    const service = buildWith({ incr, expire });
+  it('increment executa incremento e reparo de TTL no mesmo script', async () => {
+    const evalFn = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    const service = buildWith({ eval: evalFn });
 
     await expect(service.increment({ prefix: 'p', key: 'k', ttl: 3600 })).resolves.toBe(1);
-    expect(expire).toHaveBeenCalledWith('p:k', 3600);
-
-    expire.mockClear();
     await expect(service.increment({ prefix: 'p', key: 'k', ttl: 3600 })).resolves.toBe(2);
-    expect(expire).not.toHaveBeenCalled();
+
+    expect(evalFn).toHaveBeenCalledTimes(2);
+    expect(evalFn).toHaveBeenCalledWith(
+      "local count = redis.call('incr', KEYS[1]); if count == 1 or redis.call('ttl', KEYS[1]) == -1 then redis.call('expire', KEYS[1], ARGV[1]) end; return count",
+      1,
+      'p:k',
+      3600,
+    );
+  });
+
+  it('increment propaga falha do script', async () => {
+    const evalFn = vi.fn().mockRejectedValue(new Error('boom'));
+    const service = buildWith({ eval: evalFn });
+
+    await expect(service.increment({ key: 'k', ttl: 3600 })).rejects.toThrow('boom');
   });
 
   it('scheduleAdd chama zadd', async () => {

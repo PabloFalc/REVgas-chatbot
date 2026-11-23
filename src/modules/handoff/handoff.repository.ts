@@ -75,4 +75,8 @@ export class HandoffRepository {
       return true;
     }
   }
+
+  releaseDeskMessage(messageId: number): Promise<void> {
+    return this.cache.delete({ prefix: DESK_EVENT_PREFIX, key: String(messageId) });
+  }
 }

@@ -2,8 +2,9 @@
 
 Chatbot de **WhatsApp** para uma revenda de gás (GLP): atende o cliente, confirma produto,
 quantidade, endereço e forma de pagamento e **cria a venda direto no ERP RevGás** pela API
-pública — sem atendente humano no caminho feliz. Dúvidas fora do menu são respondidas por IA a
-partir de um FAQ curto, e qualquer falha vira handoff para um atendente.
+pública, sem atendente humano no caminho feliz. Dúvidas fora do menu são respondidas por IA com
+base numa base de conhecimento (RAG), e pedido de atendente, emergência de gás ou falha ao criar a
+venda levam a conversa para um atendente no Chatwoot.
 
 Projeto de Extensão 2026.2 (ICEV) para a **Flow**. Escopo, requisitos e fluxo em
 [`docs/project/`](./docs/project/specs.md).
@@ -13,11 +14,66 @@ Projeto de Extensão 2026.2 (ICEV) para a **Flow**. Escopo, requisitos e fluxo e
 **Better Auth** + **Resend** (login do painel por token Bearer — em **standby**), **Pino** (logs),
 **Biome** (lint/format), **Vitest** (unit + e2e).
 
-> **Status:** a base da API (config, segurança, health, infra de Postgres/Redis) está pronta. A
-> auth do painel e o envio de email estão no código, mas em **standby** (desligados — ver
-> [auth.md](./docs/guides/modules/auth.md#status-standby)). Os módulos do chatbot (conversa, cliente, catálogo, pedido, IA, handoff, métricas)
-> e os clientes de RevGás, WhatsApp e LLM ainda serão implementados — ver a
-> [estrutura planejada](./docs/project/specs.md#estrutura-de-pastas).
+> **Status (2026-11-23):** o fluxo de pedido está completo e testado: conversa, cliente,
+> catálogo, pedido, endereço, assistente (IA), handoff e base de conhecimento, mais os clientes de
+> RevGás, WhatsApp, ViaCEP, Chatwoot e LLM. Cada cliente externo tem modo `fake`, então tudo roda
+> sem chaves. A auth do painel e o envio de email estão no código, mas em standby (ver
+> [auth.md](./docs/guides/modules/auth.md#status-standby)). Pendente: F05 (status do pedido),
+> painel da revenda e salvar vendas e conversas no Postgres (melhorias futuras, ver
+> [funcionalidades.md](./docs/project/funcionalidades.md)).
+>
+> Limite conhecido: a chave RevGás disponível é só de leitura, então criar venda e cadastrar
+> cliente só foram exercitados contra o mock (`REVGAS_MODE=fake`).
+
+Verificação atual: 1745 testes unitários (128 arquivos) e 60 e2e (8 arquivos). Teste de carga
+leve: 200 webhooks assinados, 10 concorrentes, p50 7 ms, p95 10 ms, 0 erros.
+
+---
+
+## Demo em 5 minutos
+
+Roda sem nenhuma chave: RevGás, WhatsApp, Chatwoot e IA ficam em modo `fake`. Precisa de Docker
+e Node 24.
+
+```bash
+pnpm install
+cp .env.example .env     # deixe as chaves vazias
+pnpm docker:init         # Postgres + Redis
+pnpm db:migrate
+pnpm chat                # simulador no terminal (faz o build antes)
+```
+
+O `pnpm chat` conversa com o bot sem WhatsApp. Botões e listas aparecem numerados (digite o número
+para escolher). Detalhes e opções em [chat-simulator.md](./docs/guides/conventions/chat-simulator.md).
+
+O que muda com cada configuração:
+
+- **Sem `LLM_API_KEY` (padrão do `.env.example`):** o bot funciona só com botões e palavras-chave. Texto livre
+  ("quero 2 P13 no pix") e dúvidas ficam sem IA.
+- **Com `LLM_API_KEY`:** texto livre, leitura do nome, endereço digitado e respostas de dúvida pela
+  base. Para as dúvidas, rode antes `pnpm kb:ingest` (indexa `knowledge/base/`; a base é fictícia,
+  Revenda Chama Azul).
+- **CEP:** o ViaCEP real é consultado (precisa de internet). Sem internet, digite o endereço
+  completo.
+
+Roteiro de conversa (o cliente começa sem cadastro, porque o RevGás fake inicia vazio):
+
+| # | Você digita | O bot faz |
+| --- | --- | --- |
+| 1 | `oi` | Cumprimenta e pede o nome |
+| 2 | `Maria Souza` | Pede o CPF |
+| 3 | um CPF válido (só números) | Pede o endereço |
+| 4 | um CEP real, ou o endereço completo | Monta o endereço e pede confirmação (botão); ao confirmar, cadastra o cliente |
+| 5 | confirme o endereço, escolha o produto e a quantidade (de 1 a 10, limitada ao estoque) | Lista os produtos e pede a quantidade |
+| 6 | escolha o pagamento; em dinheiro, informe o troco (maior que o total) | Mostra só as formas com preço |
+| 7 | revise o resumo e toque em `Confirmar` | Cria a venda e devolve o número dela |
+
+Depois, em qualquer etapa:
+
+- `quero falar com atendente`: entra na fila do handoff. Sem Chatwoot, responde com o telefone da
+  revenda (`STORE_PHONE`).
+- `tô sentindo cheiro de gás`: texto fixo de segurança (Bombeiros, 193) e fila do atendente, sem IA.
+- `/novo` no simulador apaga o pedido do telefone e recomeça.
 
 ---
 
@@ -56,12 +112,15 @@ pnpm start:dev          # API em http://localhost:3100 — docs em /docs
 | Produção | `pnpm start:prod` |
 | Lint · fix | `pnpm lint` · `pnpm lint:fix` |
 | Format | `pnpm format` |
-| Testes unitários | `pnpm test` |
-| Testes e2e | `pnpm test:e2e` (precisa de Postgres/Redis — `pnpm docker:init`) |
+| Testes unitários | `pnpm test` (não precisa de `.env`) |
+| Testes e2e | `pnpm test:e2e` (precisa de Postgres/Redis e de `BETTER_AUTH_SECRET`; ver [testing.md](./docs/guides/conventions/testing.md)) |
+| Simulador de chat | `pnpm chat` (ver [chat-simulator.md](./docs/guides/conventions/chat-simulator.md)) |
+| Indexar a base de conhecimento | `pnpm kb:ingest` (com `LLM_API_KEY` gera embeddings reais; sem ela usa vetores fake; ver [knowledge.md](./docs/guides/modules/knowledge.md)) |
+| Checagens com serviço real | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` (usam chaves reais; `rag:check` só em dev) |
 | Migrations | `pnpm db:generate` → `pnpm db:migrate` |
 | Drizzle Studio | `pnpm db:studio` |
 | Infra local | `pnpm docker:init` / `pnpm docker:stop` |
-| Chatwoot local (handoff) | `pnpm chatwoot:prepare` · `pnpm chatwoot:up` · `pnpm chatwoot:stop` (ver [chatwoot.md](./docs/guides/integrations/chatwoot.md)) |
+| Chatwoot local (handoff) | `pnpm chatwoot:prepare` (1ª vez) · `pnpm chatwoot:up` · `pnpm chatwoot:stop` (ver [chatwoot.md](./docs/guides/integrations/chatwoot.md)) |
 
 > **Commits:** `git commit` direto, seguindo conventional commits (`feat:`, `fix:`, `chore:`…).
 
@@ -69,21 +128,22 @@ pnpm start:dev          # API em http://localhost:3100 — docs em /docs
 
 ## Estrutura
 
-Hoje:
-
 ```
 src/
-  config/      env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
-  core/        cross-cutting — guards, filters, interceptors, pipes, decorators, errors,
-               services/email (EmailService + Resend, standby)
-  infra/       database (Drizzle + schemas), cache (Redis), health
-  modules/     domínio — auth/ (standby: não montado em routes.module.ts)
-tests/         e2e (Vitest + supertest) e helpers
+  config/         env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
+  core/           cross-cutting: guards, filters, interceptors, pipes, errors, services/email (standby)
+  infra/          database (Drizzle + schemas), cache (Redis), health
+  integrations/   clientes externos, cada um com modo fake: revgas, whatsapp, chatwoot, llm, viacep
+  modules/        domínio: conversation (fluxo e webhooks), customer, catalog, order, address,
+                  assistant (IA), handoff, knowledge (RAG); auth/ em standby
+  cli/            chat (simulador) e kb-ingest
+  utils/          helpers (CPF, dinheiro, palavrões...)
+knowledge/        base de conhecimento (Markdown) e perguntas de avaliação
+scripts/          checagens com serviço real (revgas, llm, rag)
+tests/            e2e (Vitest + supertest) e helpers
 ```
 
-Planejado (ver [specs.md](./docs/project/specs.md#estrutura-de-pastas)): `modules/` ganha
-`conversation`, `customer`, `catalog`, `order`, `assistant`, `handoff` e `metrics`; `integrations/` reúne
-os clientes externos (`revgas`, `whatsapp`, `chatwoot`, `llm`).
+Camadas e regras de dependência: [specs.md](./docs/project/specs.md#estrutura-de-pastas).
 
 ---
 

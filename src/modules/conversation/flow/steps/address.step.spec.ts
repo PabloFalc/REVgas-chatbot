@@ -31,7 +31,7 @@ const a3 = { ...a1, street: 'Rua Nova', number: '5' };
 
 const known: OrderState = {
   step: 'chooseAddress',
-  customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   addresses: [a1, a2],
 };
 
@@ -214,7 +214,7 @@ describe('confirmAddress', () => {
       },
       { name: 'markVerified', args: [FAKE_PHONE, 2] },
     ]);
-    expect(result?.state?.customer).toMatchObject({ id: 2, tagId: null });
+    expect(result?.state?.customer).toEqual({ id: 2, name: 'Joana Lima', tagId: null });
     expect(result?.state?.address).toEqual(a1);
     expect(result?.state?.draftAddress).toBeUndefined();
     expect(result?.state?.step).toBe('chooseProduct');

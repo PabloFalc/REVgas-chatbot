@@ -44,7 +44,11 @@ export class CatalogRepository {
       .filter(product =>
         activeTypes.some(type => pickDeal(deals, product.id, type, customer) !== null),
       )
-      .map(product => ({ id: product.id, name: product.description }))
+      .map(product => ({
+        id: product.id,
+        name: product.description,
+        stock: ignoreStock ? undefined : (product.stock_quantity ?? 0),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 
@@ -130,10 +134,12 @@ export class CatalogRepository {
   }
 
   private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
-    const hit = await this.cache.get<T>({ prefix: CACHE_PREFIX, key });
+    const hit = await this.cache.get<T>({ prefix: CACHE_PREFIX, key }).catch(() => null);
     if (hit !== null) return hit;
     const value = await load();
-    await this.cache.set({ prefix: CACHE_PREFIX, key, value, ttl: CACHE_TTL_SECONDS });
+    await this.cache
+      .set({ prefix: CACHE_PREFIX, key, value, ttl: CACHE_TTL_SECONDS })
+      .catch(() => undefined);
     return value;
   }
 }

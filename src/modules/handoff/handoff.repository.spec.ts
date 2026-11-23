@@ -94,4 +94,10 @@ describe('HandoffRepository', () => {
     });
     await expect(repository.claimDeskMessage(1)).resolves.toBe(true);
   });
+
+  it('releaseDeskMessage apaga a marca da mensagem', async () => {
+    const { repository, cache } = setup();
+    await repository.releaseDeskMessage(42);
+    expect(cache.delete).toHaveBeenCalledWith({ prefix: DESK_EVENT_PREFIX, key: '42' });
+  });
 });

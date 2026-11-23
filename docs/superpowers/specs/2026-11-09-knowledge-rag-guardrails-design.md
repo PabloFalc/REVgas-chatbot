@@ -1,5 +1,7 @@
 # Design — Conhecimento da revenda com RAG (F06/F13) e guard rails da IA
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 Data: 2026-11-09 · Status: rascunho para aprovação
 
 ## Intenção

@@ -16,6 +16,29 @@ const saleInput = {
 };
 
 describe('sales schemas', () => {
+  it.each(['payment_type', 'type'])('normaliza pagamento com %s', field => {
+    const sale = RevgasSaleSchema.parse({
+      id: 1,
+      status: 'OPEN',
+      payments: [{ [field]: 'NOVO_TIPO', value: 100 }],
+    });
+    expect(sale.payments?.[0]?.payment_type).toBe('NOVO_TIPO');
+  });
+
+  it.each([-5.1, '-5.1'])('aceita coordenadas %s', coordinate => {
+    const coordinates = { lat: coordinate, lon: coordinate };
+    expect(RevgasSaleSchema.parse({ id: 1, status: 'OPEN', ...coordinates })).toMatchObject(
+      coordinates,
+    );
+    expect(RevgasSaleInputSchema.parse({ ...saleInput, ...coordinates })).toMatchObject(
+      coordinates,
+    );
+  });
+
+  it('mantém payment_type na criação', () => {
+    expect(RevgasSaleInputSchema.parse(saleInput).payments).toEqual(saleInput.payments);
+  });
+
   it('aceita status de venda desconhecido', () => {
     expect(RevgasSaleSchema.safeParse({ id: 1, status: 'RECEIVED' }).success).toBe(true);
     expect(RevgasSaleSchema.safeParse({ id: 1, status: 'WARNING' }).success).toBe(true);

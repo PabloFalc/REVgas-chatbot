@@ -11,8 +11,8 @@ Comandos:
 
 | Tarefa | Comando |
 | --- | --- |
-| Unit | `pnpm test` |
-| E2e | `pnpm test:e2e` (precisa de infra: `pnpm docker:init`) |
+| Unit | `pnpm test` (não precisa de `.env` nem de infra) |
+| E2e | `pnpm test:e2e` (precisa de infra, `pnpm docker:init`, e de `BETTER_AUTH_SECRET` no `.env`) |
 | Infra local | `pnpm docker:init` / `pnpm docker:stop` |
 
 > **Testar a conversa na mão, sem WhatsApp:** `pnpm chat` sobe o app e abre um chat no terminal,
@@ -60,6 +60,11 @@ describe('HealthService', () => {
 O arquivo fica ao lado da unidade testada (`*.spec.ts` dentro de `src/`).
 
 ## Testes e2e
+
+> **Pré-requisitos do e2e:** `.env` com `BETTER_AUTH_SECRET` preenchida (mín. 32 caracteres; o CI usa
+> um valor fixo de teste em `.github/workflows/tests.yml`) e Postgres e Redis no ar. O e2e usa o
+> banco do `.env` (o de desenvolvimento). O unitário (`pnpm test`) não lê `.env`: o
+> `vitest.config.ts` define o ambiente.
 
 > O Postgres do e2e precisa ter o **pgvector** (imagem `pgvector/pgvector:pg17`, já no
 > `docker-compose.yml`) e as migrations aplicadas (`pnpm db:migrate`). A suíte
