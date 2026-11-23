@@ -251,7 +251,7 @@ describe('CatalogRepository', () => {
       ]);
     });
 
-    it('ignores customer and tag deals', async () => {
+    it('includes deals for the customer and tag', async () => {
       const special = (id: number, value: number, extra: Partial<RevgasDeal>) =>
         ({ ...deal(id, 1, 'PIX', value), ...extra }) as RevgasDeal;
       const { repository } = build({
@@ -263,8 +263,8 @@ describe('CatalogRepository', () => {
         ],
       });
 
-      expect(await repository.basePrices()).toEqual([
-        { product: { id: 1, name: 'P13', stock: 10 }, minPrice: 110, varies: false },
+      expect(await repository.basePrices({ id: 9, tagId: 4 })).toEqual([
+        { product: { id: 1, name: 'P13', stock: 10 }, minPrice: 50, varies: false },
       ]);
     });
   });

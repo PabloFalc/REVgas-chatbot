@@ -126,7 +126,7 @@ export const msg = {
     'Olá! Ainda não te conhecemos. Para fazer seu pedido, preciso de alguns dados.\nQual é o seu nome completo?',
   welcomeBack: (name: string) => `Olá, ${name}! Vamos fazer seu pedido.`,
   offerRepeat: (offer: RepeatOffer) =>
-    `Quer repetir seu último pedido?\n${offer.quantity}× ${offer.product.name} · ${offer.payment.label}\n${addressLabel(offer.address)}`,
+    `Quer repetir seu último pedido?\n${offer.quantity}× ${offer.product.name} · ${offer.payment.label} · Total ${formatMoney(offer.quote.total)}\n${addressLabel(offer.address)}`,
   repeatOrder: 'Repetir',
   newOrder: 'Novo pedido',
   askName: 'Qual é o seu nome completo?',
@@ -174,7 +174,7 @@ export const msg = {
   needsChange: 'Sim',
   askChangeAmount: 'Troco para quanto?',
   invalidChange: (total: number) =>
-    `O valor precisa ser maior que o total de ${formatMoney(total)}. Troco para quanto?`,
+    `Troco para quanto? Manda um valor só, maior que o total de ${formatMoney(total)}.`,
   summary: (state: OrderState) =>
     [
       'Confira seu pedido:',
@@ -189,8 +189,10 @@ export const msg = {
   fixProduct: 'Produto',
   fixAddress: 'Endereço',
   fixPayment: 'Pagamento',
-  saleCreated: (id: number) => `Pedido nº ${id} confirmado! Já estamos separando seu gás.`,
-  saleFailed: 'Não consegui registrar seu pedido agora.',
+  saleCreated: (id: number, total: number) =>
+    `Pedido nº ${id} confirmado! Total: ${formatMoney(total)}. Já estamos separando seu gás.`,
+  saleFailed:
+    'Não consegui registrar seu pedido agora. Nada foi cobrado. Pode tentar de novo ou falar com um atendente.',
   saleRejected: (phone?: string) => `Não foi possível registrar seu pedido. ${storeContact(phone)}`,
   retry: 'Tentar de novo',
   saleInProgress: 'Estou registrando seu pedido, só um instante.',
@@ -239,7 +241,8 @@ export const msg = {
   notUnderstood: 'Não entendi.',
   chooseAmbiguousProduct: 'Qual desses você quer?',
   noted: (parts: string[]) => `Anotado: ${parts.join(', ')}.`,
-  textOnly: 'Por enquanto só entendo texto e os botões.',
+  textOnly:
+    'Por enquanto só entendo texto e os botões. Se preferir, toque no botão para falar com um atendente.',
   unavailable: 'Estou com instabilidade agora, tenta de novo em instantes.',
   reminder: 'Ainda está aí? Seu pedido fica guardado por mais 5 minutos.',
   addressLabel,

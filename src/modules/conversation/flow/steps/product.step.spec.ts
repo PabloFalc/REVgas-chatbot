@@ -40,10 +40,81 @@ function rowIds(result: Awaited<ReturnType<NonNullable<typeof asks.chooseProduct
 }
 
 describe('chooseProduct', () => {
+  it('mostra preço fixo ou a partir de quando há preço base', async () => {
+    const result = await asks.chooseProduct?.(
+      base,
+      createFakeTools({
+        basePrices: async () => [
+          { product: products[0], minPrice: 125, varies: false },
+          { product: products[1], minPrice: 120, varies: true },
+        ],
+      }),
+    );
+    const reply = result?.replies[0];
+    if (reply?.type !== 'list') throw new Error('expected list');
+    expect(reply.sections[0].rows).toEqual([
+      { id: 'product:1', title: 'Botijão P13', description: 'R$ 125,00' },
+      { id: 'product:2', title: 'Botijão P45', description: 'a partir de R$ 120,00' },
+      { id: 'product:3', title: 'Água mineral 20L' },
+    ]);
+  });
+
+  it('mantém a lista sem preços quando a consulta de preço falha', async () => {
+    const result = await asks.chooseProduct?.(
+      base,
+      createFakeTools({
+        basePrices: async () => {
+          throw new Error('preços indisponíveis');
+        },
+      }),
+    );
+    const reply = result?.replies[0];
+    if (reply?.type !== 'list') throw new Error('expected list');
+    expect(reply.sections[0].rows).toEqual(
+      products.map(product => ({ id: `product:${product.id}`, title: product.name })),
+    );
+  });
+
+  it('mostra o nome completo na descrição de produto longo sem preço', async () => {
+    const product = { id: 4, name: 'GLP 13KG com vasilhame para reserva' };
+    const result = await asks.chooseProduct?.(
+      base,
+      createFakeTools({ listProducts: async () => [product] }),
+    );
+    const reply = result?.replies[0];
+    if (reply?.type !== 'list') throw new Error('expected list');
+    expect(reply.sections[0].rows).toEqual([
+      { id: 'product:4', title: `${product.name.slice(0, 23)}…`, description: product.name },
+    ]);
+  });
+
+  it('mostra o nome completo e o preço na descrição de produto longo', async () => {
+    const product = { id: 4, name: 'GLP 13KG com vasilhame para reserva' };
+    const result = await asks.chooseProduct?.(
+      base,
+      createFakeTools({
+        listProducts: async () => [product],
+        basePrices: async () => [{ product, minPrice: 125, varies: false }],
+      }),
+    );
+    const reply = result?.replies[0];
+    if (reply?.type !== 'list') throw new Error('expected list');
+    expect(reply.sections[0].rows).toEqual([
+      {
+        id: 'product:4',
+        title: `${product.name.slice(0, 23)}…`,
+        description: `${product.name} · R$ 125,00`.slice(0, 72),
+      },
+    ]);
+  });
+
   it('lista os produtos com o cliente de preço e guarda as opções', async () => {
     const tools = createFakeTools();
     const result = await asks.chooseProduct?.(base, tools);
-    expect(tools.calls).toEqual([{ name: 'listProducts', args: [{ id: 1, tagId: 5 }] }]);
+    expect(tools.calls).toEqual([
+      { name: 'listProducts', args: [{ id: 1, tagId: 5 }] },
+      { name: 'basePrices', args: [{ id: 1, tagId: 5 }] },
+    ]);
     expect(rowIds(result)).toEqual(['product:1', 'product:2', 'product:3']);
     expect(result?.state?.productOptions).toEqual(products);
   });
@@ -125,7 +196,7 @@ describe('searchProduct', () => {
       say('agua'),
       tools,
     );
-    expect(tools.calls.map(call => call.name)).toEqual(['listProducts']);
+    expect(tools.calls.map(call => call.name)).toEqual(['listProducts', 'basePrices']);
     expect(rowIds(result)).toEqual(['product:3']);
   });
 

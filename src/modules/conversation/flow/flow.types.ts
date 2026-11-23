@@ -135,7 +135,7 @@ export interface FlowTools {
   answerQuestion(text: string): Promise<KnowledgeAnswer>;
   knowledgeTopics(): Promise<string[]>;
   listProducts(customer: PriceCustomer): Promise<Product[]>;
-  basePrices(): Promise<BasePrice[]>;
+  basePrices(customer?: PriceCustomer): Promise<BasePrice[]>;
   listPaymentOptions(): Promise<PaymentOption[]>;
   quote(
     customer: PriceCustomer,
