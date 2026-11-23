@@ -66,7 +66,7 @@ A quantidade vai de 1 a 10 (`MAX_QUANTITY`) e nunca passa do estoque do produto.
 
 ### Mensagens simultâneas e trava por telefone
 
-O `ConversationService` processa uma mensagem por vez por telefone (trava no Redis). Se a trava não é obtida em 120 s, o bot não segue sem ela: pede que o cliente reenvie a mensagem. A mesma mensagem (mesmo id) entregue duas vezes é descartada (dedup por 24 h). Erro do Redis ao ler ou gravar o estado do pedido, o bloqueio de CPF ou o estado do handoff não é engolido: o bot responde "instabilidade" e o estado não muda.
+O `ConversationService` processa uma mensagem por vez por telefone (trava no Redis). Se a trava não é obtida em 120 s, o bot não segue sem ela: pede que o cliente reenvie a mensagem. A mesma mensagem (mesmo id) entregue duas vezes é descartada (dedup por 24 h). Erro do Redis ao ler ou gravar o estado do pedido, o bloqueio de CPF ou o estado do handoff não é engolido: o bot responde "instabilidade" e o estado não muda. Limitação conhecida: a trava expira em 120 s e não é renovada, então um turno mais longo que isso pode se sobrepor ao seguinte; a venda continua protegida pelo checkpoint `creatingSale`, gravado antes do POST, e renovar a trava é a correção se o bot rodar em mais de uma instância.
 
 ### Regra do `nextStep`
 
