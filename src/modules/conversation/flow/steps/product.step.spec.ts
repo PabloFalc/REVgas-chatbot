@@ -88,6 +88,26 @@ describe('chooseProduct', () => {
     ]);
   });
 
+  it('mostra o nome completo e o preço na descrição de produto longo', async () => {
+    const product = { id: 4, name: 'GLP 13KG com vasilhame para reserva' };
+    const result = await asks.chooseProduct?.(
+      base,
+      createFakeTools({
+        listProducts: async () => [product],
+        basePrices: async () => [{ product, minPrice: 125, varies: false }],
+      }),
+    );
+    const reply = result?.replies[0];
+    if (reply?.type !== 'list') throw new Error('expected list');
+    expect(reply.sections[0].rows).toEqual([
+      {
+        id: 'product:4',
+        title: `${product.name.slice(0, 23)}…`,
+        description: `${product.name} · R$ 125,00`.slice(0, 72),
+      },
+    ]);
+  });
+
   it('lista os produtos com o cliente de preço e guarda as opções', async () => {
     const tools = createFakeTools();
     const result = await asks.chooseProduct?.(base, tools);

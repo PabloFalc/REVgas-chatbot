@@ -44,11 +44,16 @@ async function showProducts(
   const priceByProduct = new Map(prices.map(price => [price.product.id, price]));
   const rows = products.map(product => {
     const price = priceByProduct.get(product.id);
+    const priceLabel = price
+      ? `${price.varies ? 'a partir de ' : ''}${formatMoney(price.minPrice)}`
+      : undefined;
     return {
       id: `product:${product.id}`,
       title: product.name,
-      description: price
-        ? `${price.varies ? 'a partir de ' : ''}${formatMoney(price.minPrice)}`
+      description: priceLabel
+        ? product.name.length > 24
+          ? `${product.name} · ${priceLabel}`
+          : priceLabel
         : undefined,
     };
   });
