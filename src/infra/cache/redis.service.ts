@@ -10,6 +10,9 @@ const DELETE_IF_EQUALS =
 const CLAIM_IF_SCORE_EQUALS =
   "if redis.call('zscore', KEYS[1], ARGV[1]) == ARGV[2] then return redis.call('zrem', KEYS[1], ARGV[1]) else return 0 end";
 
+const INCREMENT_WITH_TTL =
+  "local count = redis.call('incr', KEYS[1]); if count == 1 or redis.call('ttl', KEYS[1]) == -1 then redis.call('expire', KEYS[1], ARGV[1]) end; return count";
+
 function errorInfo(error: unknown) {
   if (error instanceof Error) return { name: error.name, message: error.message };
   return { name: typeof error };
@@ -88,12 +91,12 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
 
   async increment(params: CacheGetParams & { ttl: number }): Promise<number> {
     const { key, prefix, ttl } = params;
-    const keyWithPrefix = this._makePrefix(key, prefix);
-    const count = await this.redis.incr(keyWithPrefix);
-    if (count === 1) {
-      await this.redis.expire(keyWithPrefix, ttl);
-    }
-    return count;
+    return (await this.redis.eval(
+      INCREMENT_WITH_TTL,
+      1,
+      this._makePrefix(key, prefix),
+      ttl,
+    )) as number;
   }
 
   async scheduleAdd(params: { set: string; member: string; at: number }): Promise<void> {
