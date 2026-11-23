@@ -31,6 +31,7 @@ import type { SaleOrder } from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
 export const MAX_CPF_ATTEMPTS = 3;
+export const MAX_QUANTITY = 10;
 
 export type Step =
   | 'askName'

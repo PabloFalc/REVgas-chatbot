@@ -44,7 +44,11 @@ export class CatalogRepository {
       .filter(product =>
         activeTypes.some(type => pickDeal(deals, product.id, type, customer) !== null),
       )
-      .map(product => ({ id: product.id, name: product.description }))
+      .map(product => ({
+        id: product.id,
+        name: product.description,
+        stock: ignoreStock ? undefined : (product.stock_quantity ?? 0),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 

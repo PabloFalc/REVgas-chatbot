@@ -2,7 +2,7 @@ import type { Address } from 'src/modules/address/contracts/address.types';
 import type { BasePrice, Product } from 'src/modules/catalog/contracts/catalog.types';
 import { formatMoney } from 'src/utils/money';
 import type { Opening, ServiceWindow } from 'src/utils/service-hours';
-import type { OrderState, RepeatOffer } from './flow.types';
+import { MAX_QUANTITY, type OrderState, type RepeatOffer } from './flow.types';
 
 function storeContact(phone?: string): string {
   return phone ? `Fale com a revenda: ${phone}.` : 'Fale direto com a revenda.';
@@ -126,6 +126,9 @@ export const msg = {
   otherQuantity: 'Outra',
   askQuantity: 'Mande a quantidade (um número inteiro, 1 ou mais).',
   invalidQuantity: 'Não entendi a quantidade. Mande um número inteiro, 1 ou mais.',
+  stockLimit: (stock: number, product: string) =>
+    `Temos só ${stock} ${stock === 1 ? 'unidade' : 'unidades'} de ${product} agora.`,
+  quantityAboveMax: `Pedidos acima de ${MAX_QUANTITY} unidades são atendidos por um atendente.`,
   choosePayment: 'Como você vai pagar?',
   viewPayments: 'Ver formas',
   noPriceForPayment: 'Não temos preço para essa forma de pagamento. Escolha outra.',

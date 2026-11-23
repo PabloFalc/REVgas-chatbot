@@ -1,4 +1,11 @@
-import type { FlowTools, OrderState, Step, StepResult } from './flow.types';
+import {
+  type FlowTools,
+  MAX_QUANTITY,
+  type OrderState,
+  type Step,
+  type StepResult,
+} from './flow.types';
+import { offer } from './handoff';
 import { msg } from './messages';
 import { text } from './replies';
 import { asks } from './steps/registry';
@@ -8,6 +15,29 @@ async function goTo(state: OrderState, step: Step, tools: FlowTools): Promise<St
   const ask = asks[step];
   if (!ask) return { state: next, replies: [] };
   return ask(next, tools);
+}
+
+function withoutQuantity(state: OrderState): OrderState {
+  const { quantity: _quantity, quote: _quote, ...rest } = state;
+  return rest;
+}
+
+async function checkQuantity(state: OrderState, tools: FlowTools): Promise<StepResult | null> {
+  const { product, quantity } = state;
+  if (!product || quantity === undefined) return null;
+  const stock = product.stock;
+  if (stock !== undefined && quantity > stock) {
+    const result = await goTo(withoutQuantity(state), 'chooseQuantity', tools);
+    return {
+      state: result.state,
+      replies: [text(msg.stockLimit(stock, product.name)), ...result.replies],
+    };
+  }
+  if (quantity > MAX_QUANTITY) {
+    const result = await goTo(withoutQuantity(state), 'chooseQuantity', tools);
+    return { state: result.state, replies: [offer(msg.quantityAboveMax), ...result.replies] };
+  }
+  return null;
 }
 
 function needsChange(state: OrderState): boolean {
@@ -26,6 +56,8 @@ export async function nextStep(state: OrderState, tools: FlowTools): Promise<Ste
     return goTo(state, state.productCandidates?.length ? 'pickProduct' : 'chooseProduct', tools);
   }
   if (!state.quantity) return goTo(state, 'chooseQuantity', tools);
+  const quantityResult = await checkQuantity(state, tools);
+  if (quantityResult) return quantityResult;
   if (!state.payment) return goTo(state, 'choosePayment', tools);
 
   let current = state;

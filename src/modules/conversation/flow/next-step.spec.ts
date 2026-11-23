@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { OrderState } from './flow.types';
+import { MAX_QUANTITY, type OrderState } from './flow.types';
+import { HANDOFF_CHOICE, offer } from './handoff';
 import { msg } from './messages';
 import { nextStep } from './next-step';
 import { text } from './replies';
@@ -41,6 +42,44 @@ describe('nextStep', () => {
     expect((await nextStep(stateWith({ address, product, quantity: 2 }), tools)).state?.step).toBe(
       'choosePayment',
     );
+  });
+
+  it('quantidade acima do estoque avisa e volta à quantidade', async () => {
+    const limited = { ...product, stock: 3 };
+    const result = await nextStep(
+      stateWith({
+        address,
+        product: limited,
+        quantity: 5,
+        payment: pix,
+        quote: { unitPrice: 110, total: 550 },
+      }),
+      createFakeTools(),
+    );
+    expect(result.state?.step).toBe('chooseQuantity');
+    expect(result.state?.quantity).toBeUndefined();
+    expect(result.state?.quote).toBeUndefined();
+    expect(result.replies[0]).toEqual(text(msg.stockLimit(3, limited.name)));
+  });
+
+  it('quantidade acima do máximo oferece atendente e volta à quantidade', async () => {
+    const result = await nextStep(
+      stateWith({
+        address,
+        product,
+        quantity: MAX_QUANTITY + 1,
+        payment: pix,
+        quote: { unitPrice: 110, total: 1210 },
+      }),
+      createFakeTools(),
+    );
+    expect(result.state?.step).toBe('chooseQuantity');
+    expect(result.state?.quantity).toBeUndefined();
+    expect(result.state?.quote).toBeUndefined();
+    expect(result.replies[0]).toEqual(offer(msg.quantityAboveMax));
+    const reply = result.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(reply.buttons.map(button => button.id)).toEqual([HANDOFF_CHOICE]);
   });
 
   it('com tudo escolhido calcula o preço e vai ao resumo', async () => {
