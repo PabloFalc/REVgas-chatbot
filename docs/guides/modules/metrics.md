@@ -36,7 +36,7 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 ## Metabase local
 
 1. Aplique a migração com `pnpm db:migrate`.
-2. Copie `docker/metabase.env.example` para `docker/metabase.env`. Defina a mesma senha local forte em `POSTGRES_PASSWORD` e `MB_DB_PASS`. Esse arquivo fica fora do Git.
+2. Copie `docker/metabase.env.example` para `docker/metabase.env`. O exemplo usa o mesmo placeholder em `POSTGRES_PASSWORD` e `MB_DB_PASS`; substitua os dois por senhas locais fortes (podem ser iguais). Esse arquivo fica fora do Git.
 3. Crie a credencial de consulta no Postgres do bot, usando `psql` e uma senha própria. O script deve ser executado uma vez; não é uma migração. Ele usa a variável `DBNAME` no `GRANT CONNECT`, por isso ela é obrigatória:
 
 ```sh
@@ -46,7 +46,7 @@ psql "$DATABASE_URL" -v DBNAME=revgas -v pass='senha-local-de-consulta' -f docke
 Se o host não tem `psql`, rode o mesmo script dentro do container `revgas-pg`. A senha de consulta é nova e deve ser diferente das senhas de `docker/metabase.env`. O script cria o usuário com `CONNECTION LIMIT 10`, o mesmo limite descrito abaixo:
 
 ```sh
-docker exec -i revgas-pg psql -U docker -d revgas -v DBNAME=revgas -v pass="'senha-local-de-consulta'" -f - < docker/metabase/metrics-reader.sql
+docker exec -i revgas-pg psql -U docker -d revgas -v DBNAME=revgas -v pass='senha-local-de-consulta' -f - < docker/metabase/metrics-reader.sql
 ```
 
 4. Rode `pnpm metabase:up` e abra http://localhost:3001. Crie a conta administrativa local. Adicione uma conexão PostgreSQL com host `postgres`, porta `5432`, banco `revgas`, usuário `metrics_reader` e a senha de consulta. Ajuste o nome do banco se seu ambiente usar outro.
