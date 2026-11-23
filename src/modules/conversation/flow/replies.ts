@@ -5,6 +5,7 @@ const BUTTON_TITLE = 20;
 const ROW_TITLE = 24;
 const ROW_DESCRIPTION = 72;
 const LIST_ROWS = 10;
+const TEXT_BODY_LIMIT = 4096;
 export const BUTTONS_BODY_LIMIT = 1024;
 
 interface Option {
@@ -14,13 +15,13 @@ interface Option {
 }
 
 export function text(body: string): Reply {
-  return { type: 'text', text: body };
+  return { type: 'text', text: clip(body, TEXT_BODY_LIMIT) };
 }
 
 export function buttons(body: string, options: Option[]): Reply {
   return {
     type: 'buttons',
-    body,
+    body: clip(body, BUTTONS_BODY_LIMIT),
     buttons: options.map(option => ({ id: option.id, title: clip(option.title, BUTTON_TITLE) })),
   };
 }
@@ -33,7 +34,7 @@ export function list(
 ): Reply {
   return {
     type: 'list',
-    body,
+    body: clip(body, BUTTONS_BODY_LIMIT),
     buttonText,
     sections: [
       {
