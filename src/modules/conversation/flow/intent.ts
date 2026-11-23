@@ -12,6 +12,8 @@ import { orderStatus } from './order-status';
 import { repeatQuestion } from './repeat-question';
 import { BUTTONS_BODY_LIMIT, buttons, text } from './replies';
 
+export const OFFENSE_AFTER = 2;
+
 const ITEM_LIMIT = 30;
 const CODE_TOPICS = ['Horário de atendimento', 'Formas de pagamento', 'Preços dos produtos'];
 
@@ -148,7 +150,9 @@ async function answerFor(
     case 'off_topic':
       return plain(msg.offTopicRefusal);
     case 'offense':
-      return (await tools.registerOffense()) >= 2 ? offering(msg.offense) : plain(msg.offense);
+      return (await tools.registerOffense()) >= OFFENSE_AFTER
+        ? offering(msg.offense)
+        : plain(msg.offense);
     case 'order':
       return notSold(state, result, tools);
     default:

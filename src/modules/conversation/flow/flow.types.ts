@@ -27,6 +27,7 @@ import type {
   ServiceHoursInfo,
 } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
+import type { MetricEvent } from 'src/modules/metrics/contracts/metrics.types';
 import type { OrderStatus, SaleOrder } from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
@@ -118,6 +119,7 @@ export type HandleFn = (
 ) => Promise<StepResult>;
 
 export interface FlowTools {
+  track(event: MetricEvent): void;
   phone: string;
   findCustomer(phone: string): Promise<Customer | null>;
   createCustomer(input: NewCustomer): Promise<Customer>;

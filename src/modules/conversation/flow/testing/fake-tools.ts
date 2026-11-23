@@ -43,6 +43,9 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
 
   const base = {
     phone: FAKE_PHONE,
+    track: (event: import('src/modules/metrics/contracts/metrics.types').MetricEvent) => {
+      calls.push({ name: 'track', args: [event] });
+    },
     findCustomer: async (phone: string) => {
       calls.push({ name: 'findCustomer', args: [phone] });
       return phone === FAKE_PHONE ? customer : null;
