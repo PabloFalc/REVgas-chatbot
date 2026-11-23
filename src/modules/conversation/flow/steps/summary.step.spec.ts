@@ -63,7 +63,14 @@ describe('summary', () => {
   it('confirmar salva o checkpoint antes de criar a venda e encerra', async () => {
     const tools = createFakeTools();
     const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(4521))], saleId: 4521 });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(4521, 110))],
+      saleId: 4521,
+    });
+    expect(msg.saleCreated(4521, 110)).toBe(
+      'Pedido nº 4521 confirmado! Total: R$ 110,00. Já estamos separando seu gás.',
+    );
     expect(tools.calls.map(c => c.name)).toEqual(['checkpoint', 'createSale']);
     expect(tools.calls[0].args[0]).toMatchObject({
       step: 'creatingSale',
@@ -262,7 +269,11 @@ describe('saleFailed', () => {
   it('tentar de novo acha a venda recente e encerra sem criar outra', async () => {
     const tools = createFakeTools({ findRecentSale: async () => 777 });
     const result = await handlers.saleFailed?.(state, pick('retry:sale'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(777))], saleId: 777 });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(777, 110))],
+      saleId: 777,
+    });
     expect(tools.calls.map(c => c.name)).not.toContain('createSale');
   });
 
@@ -297,7 +308,11 @@ describe('saleFailed', () => {
   it('sem venda recente, salva novo checkpoint e cria a venda', async () => {
     const tools = createFakeTools();
     const result = await handlers.saleFailed?.(state, pick('retry:sale'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(4521))], saleId: 4521 });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(4521, 110))],
+      saleId: 4521,
+    });
     expect(tools.calls.map(c => c.name)).toEqual(['findRecentSale', 'checkpoint', 'createSale']);
     expect(tools.calls[1].args[0]).toMatchObject({
       step: 'creatingSale',
@@ -325,7 +340,11 @@ describe('saleFailed', () => {
       },
     });
     const result = await cancelAfterFailedSale(state, tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(888))], saleId: 888 });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(888, 110))],
+      saleId: 888,
+    });
     expect(seen[0]).toEqual(order);
     expect(seen[1]).toEqual(new Date('2026-10-21T15:00:00.000Z'));
   });

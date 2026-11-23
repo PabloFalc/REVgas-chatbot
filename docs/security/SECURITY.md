@@ -223,9 +223,9 @@ Guard rails do fluxo (entregues, etapa B):
   estado do pedido, sem texto do cliente.
 - **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora; interpretar custa 1,
   ler endereço em texto livre custa 1, responder dúvida custa 2), contado no Redis. Acima do limite
-  o bot segue sem IA, com log de aviso e telefone mascarado. Falha do Redis no limitador deixa a
-  chamada passar (aviso no log só com o telefone mascarado e o nome do erro, nunca os argumentos do
-  comando, que levam a chave com o telefone), para não derrubar o atendimento.
+  ou quando o contador falha, a chamada de IA é bloqueada e o bot continua com os botões do fluxo;
+  no endereço, pede o endereço de novo. O log leva só o telefone mascarado e o nome do erro, nunca
+  os argumentos do comando, que incluem a chave com o telefone.
 - **Produto que não vendemos:** o item citado pela IA é limpo (só letras, números, espaço e hífen,
   até 30 caracteres) antes de ir na resposta.
 - Os cortes de relevância da busca ainda não foram calibrados (ver

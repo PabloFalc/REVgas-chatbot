@@ -46,9 +46,9 @@ describe('AiUsageRepository', () => {
     await expect(repository.consume(phone, 2)).resolves.toBe(false);
   });
 
-  it('Redis fora deixa passar e registra aviso sem o telefone', async () => {
+  it('Redis fora bloqueia a chamada de IA e registra aviso sem telefone', async () => {
     const { repository, logger } = setup(new Error('redis down'));
-    await expect(repository.consume(phone, 1)).resolves.toBe(true);
+    await expect(repository.consume(phone, 1)).resolves.toBe(false);
     expect(logger.warn).toHaveBeenCalledOnce();
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(phone);
   });
@@ -58,9 +58,9 @@ describe('AiUsageRepository', () => {
       command: { name: 'incr', args: [`assistant:ai-usage:${phone}`] },
     });
     const { repository, logger } = setup(error);
-    await expect(repository.consume(phone, 1)).resolves.toBe(true);
+    await expect(repository.consume(phone, 1)).resolves.toBe(false);
     const [logged] = logger.warn.mock.calls[0] as unknown as [Record<string, unknown>];
-    expect(logged).toEqual({ component: 'assistant', phone: '*******1234', error: 'Error' });
+    expect(logged).toEqual({ component: 'assistant', error: 'Error' });
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(phone);
   });
 });

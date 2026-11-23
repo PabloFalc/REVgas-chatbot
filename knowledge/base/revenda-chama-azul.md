@@ -4,7 +4,7 @@
 Entregamos nos bairros Centro, Jóquei, Fátima, Ilhotas, São Cristóvão, Dirceu e Mocambinho. Se o seu bairro não está na lista, não conseguimos entregar por enquanto. Informe o endereço completo no pedido para o entregador chegar sem dificuldade.
 
 ## Prazo de entrega
-A entrega leva em até 40 minutos depois que o pedido é confirmado. Em dias de chuva forte ou de muita procura, esse prazo pode ser um pouco maior. Avisamos você pelo WhatsApp quando o entregador estiver a caminho.
+A entrega leva em até 40 minutos depois que o pedido é confirmado. Em dias de chuva forte ou de muita procura, esse prazo pode ser um pouco maior. Para saber se o pedido já saiu, é só perguntar aqui, por exemplo: meu pedido chegou?
 
 ## Entrega em domingos e feriados
 Entregamos também aos domingos e feriados, em esquema de plantão. Nesses dias o atendimento funciona com uma equipe menor, então o prazo de entrega pode passar um pouco dos 40 minutos normais.

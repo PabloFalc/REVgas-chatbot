@@ -73,15 +73,15 @@ export class CatalogRepository {
     return { unitPrice, total: Math.round(unitPrice * quantity * 100) / 100 };
   }
 
-  async basePrices(): Promise<BasePrice[]> {
+  async basePrices(customer: PriceCustomer = {}): Promise<BasePrice[]> {
     const [products, paymentOptions] = await Promise.all([
-      this.listProducts({}),
+      this.listProducts(customer),
       this.listPaymentOptions(),
     ]);
     const result: BasePrice[] = [];
     for (const product of products) {
       const quotes = await Promise.all(
-        paymentOptions.map(option => this.quote({}, product.id, option.type, 1)),
+        paymentOptions.map(option => this.quote(customer, product.id, option.type, 1)),
       );
       const prices = quotes.flatMap(item => (item ? [item.unitPrice] : []));
       if (prices.length === 0) continue;

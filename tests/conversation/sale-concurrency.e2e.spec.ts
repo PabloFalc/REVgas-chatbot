@@ -171,9 +171,13 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
       expect((await revgas.sales.list()).pagination.total_count).toBe(saleCount + 1),
     );
     const sale = (await revgas.sales.list()).data[0];
+    const total = sale.total;
+    if (total === null || total === undefined) throw new Error('Venda sem total');
     await vi.waitFor(() =>
       expect(
-        whatsapp.sent.filter(sent => JSON.stringify(sent.body).includes(msg.saleCreated(sale.id))),
+        whatsapp.sent.filter(sent =>
+          JSON.stringify(sent.body).includes(msg.saleCreated(sale.id, total)),
+        ),
       ).toHaveLength(1),
     );
   });
@@ -187,9 +191,13 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
     );
     const afterSale = (await revgas.sales.list()).pagination.total_count;
     const sale = (await revgas.sales.list()).data[0];
+    const total = sale.total;
+    if (total === null || total === undefined) throw new Error('Venda sem total');
     await vi.waitFor(() =>
       expect(
-        whatsapp.sent.filter(sent => JSON.stringify(sent.body).includes(msg.saleCreated(sale.id))),
+        whatsapp.sent.filter(sent =>
+          JSON.stringify(sent.body).includes(msg.saleCreated(sale.id, total)),
+        ),
       ).toHaveLength(1),
     );
     whatsapp.clear();

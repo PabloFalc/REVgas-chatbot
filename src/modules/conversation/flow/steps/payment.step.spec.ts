@@ -35,6 +35,14 @@ const base: OrderState = {
   quantity: 2,
 };
 
+describe('invalidChange', () => {
+  it('pede o valor do troco antes de explicar o limite', () => {
+    expect(msg.invalidChange(220)).toBe(
+      'Troco para quanto? Manda um valor só, maior que o total de R$ 220,00.',
+    );
+  });
+});
+
 describe('choosePayment', () => {
   it('até 3 formas viram botões pay:<TYPE>', async () => {
     const result = await asks.choosePayment?.(base, createFakeTools());
