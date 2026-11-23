@@ -66,6 +66,7 @@ export interface RepeatOffer {
 }
 
 export interface OrderState {
+  cycleId?: string;
   step: Step;
   pendingOrderStatus?: { resumeStep: Step | null; customer: OrderState['customer'] };
   customer: {

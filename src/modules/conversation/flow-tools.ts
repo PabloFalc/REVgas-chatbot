@@ -35,7 +35,11 @@ export class FlowToolsService {
     this.logger.setContext(FlowToolsService.name);
   }
 
-  forPhone(phone: string, save: (state: OrderState) => Promise<void>): FlowTools {
+  forPhone(
+    phone: string,
+    save: (state: OrderState) => Promise<void>,
+    _cycleId?: string,
+  ): FlowTools {
     return {
       phone,
       findCustomer: phone => this.customers.findByPhone(phone),

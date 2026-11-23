@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { env } from 'src/config/env';
 import { WhatsappError } from 'src/core/erros/whatsapp/whatsapp.errors';
 import { maskPhone } from 'src/utils/mask';
 import { HandoffService } from '../handoff/handoff.service';
+import { BotEventsRepository } from '../metrics/bot-events.repository';
 import { ConversationRepository } from './conversation.repository';
 import { reminderFor } from './flow/reminder';
 import { FlowToolsService } from './flow-tools';
@@ -32,6 +34,7 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly flowTools: FlowToolsService,
     private readonly handoff: HandoffService,
     private readonly logger: PinoLogger,
+    private readonly events: BotEventsRepository,
   ) {
     this.logger.setContext(ReminderScheduler.name);
   }
@@ -83,8 +86,11 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
     if (!state) return this.skipped(phone, 'expired');
     if (state.step === 'creatingSale') return this.skipped(phone, 'creatingSale');
 
-    const tools = this.flowTools.forPhone(phone, next =>
-      this.conversations.saveOrderKeepingTtl(phone, next),
+    state.cycleId ??= randomUUID();
+    const tools = this.flowTools.forPhone(
+      phone,
+      next => this.conversations.saveOrderKeepingTtl(phone, { ...next, cycleId: state.cycleId }),
+      state.cycleId,
     );
     const result = await reminderFor(state, tools);
     if (!result) return this.skipped(phone, 'answered');
@@ -92,7 +98,16 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
     for (const reply of result.replies) {
       await this.messaging.send(phone, reply);
     }
-    if (result.state) await this.conversations.saveOrderKeepingTtl(phone, result.state);
+    try {
+      this.events.record({ name: 'reminder_sent', cycleId: state.cycleId, step: state.step });
+    } catch {
+      this.logger.warn('Falha ao gravar métrica');
+    }
+    if (result.state)
+      await this.conversations.saveOrderKeepingTtl(phone, {
+        ...result.state,
+        cycleId: state.cycleId,
+      });
     await this.handoff.mirrorOutgoing(phone, result.replies.map(replyText));
     this.logger.info(
       { component: 'reminder', from: maskPhone(phone), step: state.step },
