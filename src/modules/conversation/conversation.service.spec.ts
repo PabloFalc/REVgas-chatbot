@@ -576,6 +576,39 @@ describe('ConversationService atendente', () => {
     expect(handoff.recordTurn).toHaveBeenCalledWith(expect.objectContaining({ sensitive: true }));
   });
 
+  it('estado expirado que volta para askCpfPrefix marca o turno como sensível', async () => {
+    const { service, handoff } = setup();
+    runFlowMock.mockResolvedValueOnce({
+      state: { step: 'askCpfPrefix', customer: { id: 1 } },
+      replies: [text('Informe os 3 primeiros dígitos do CPF')],
+    });
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.CPF2')));
+
+    expect(handoff.recordTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sensitive: true, newCycle: true }),
+    );
+  });
+
+  it.each(['123', '123.456.789-09'])(
+    'só dígitos sem pedido em andamento marcam o turno como sensível (%s)',
+    async digits => {
+      const { service, handoff } = setup();
+
+      await service.handle(parseWebhook(textWebhook(digits, `wamid.D${digits}`)));
+
+      expect(handoff.recordTurn).toHaveBeenCalledWith(expect.objectContaining({ sensitive: true }));
+    },
+  );
+
+  it('texto comum sem pedido em andamento não é sensível', async () => {
+    const { service, handoff } = setup();
+
+    await service.handle(parseWebhook(textWebhook('quero 2 botijões', 'wamid.D2')));
+
+    expect(handoff.recordTurn).toHaveBeenCalledWith(expect.objectContaining({ sensitive: false }));
+  });
+
   it('fim do pedido e venda seguem para o espelho', async () => {
     const { service, handoff } = setup();
     runFlowMock.mockResolvedValueOnce({ state: null, replies: [text('ok')], saleId: 9 });

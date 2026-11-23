@@ -43,6 +43,21 @@ function toDeskInbound(content: IncomingContent): DeskInbound {
   return { type: 'unsupported', originalType: content.originalType };
 }
 
+const DIGITS_ONLY = /^\d[\d\s.-]*$/;
+
+function inCpfStep(state: OrderState | null): boolean {
+  return state !== null && CPF_STEPS.includes(state.step);
+}
+
+function isSensitiveTurn(
+  inbound: DeskInbound,
+  before: OrderState | null,
+  result: StepResult,
+): boolean {
+  if (inCpfStep(before) || inCpfStep(result.state)) return true;
+  return before === null && inbound.type === 'text' && DIGITS_ONLY.test(inbound.text.trim());
+}
+
 function errorInfo(error: unknown) {
   if (error instanceof WhatsappError) {
     return { kind: error.kind, status: error.status, code: error.code };
@@ -151,7 +166,7 @@ export class ConversationService {
         phone: incoming.from,
         name: incoming.name,
         inbound,
-        sensitive: before !== null && CPF_STEPS.includes(before.step),
+        sensitive: isSensitiveTurn(inbound, before, result),
         botMessages: replies.map(replyText),
         newCycle: before === null,
         ended: result.state === null,
