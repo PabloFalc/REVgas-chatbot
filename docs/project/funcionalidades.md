@@ -14,7 +14,7 @@
 | F02 | Identificação e cadastro automático | Reconhece o cliente pelo telefone; cadastra se for novo | RF02, RF03 |
 | F03 | Pedido em texto livre | "manda 2 botijão, pago no pix" → IA extrai tudo e o bot só pergunta o que faltou. **Entregue** (2026-10-22), junto com o fallback de intenção | RF04–RF06 |
 | F04 | Repetir último pedido | Cliente conhecido recebe botão com último pedido e endereço; fecha em 2 toques (pula para o resumo, ou para a pergunta de troco se o pagamento for dinheiro). **Entregue** (2026-10-23) | RF02, RF07 |
-| F05 | Status do pedido | Nº da venda, entregador a caminho e tempo estimado; consulta "meu gás chegou?". **Pendente** | RF09 |
+| F05 | Status do pedido | Hoje o cliente recebe só o nº da venda. Consulta "meu gás chegou?" com status e entregador, lidos da venda (a API não tem tempo estimado). **Pendente**; viável, porque a chave somente leitura já lê `/sales` | RF09 |
 | F06 | Dúvidas com IA sobre a base | Dúvidas fora do menu (entrega, troca de botijão, segurança) respondidas só com trechos da base da revenda; horário, pagamento e preço vêm do código. Sem resposta, oferece o atendente. **Entregue** (2026-11-10) | RF10 |
 | F07 | Handoff para atendente | Transfere a conversa para a fila do Chatwoot com resumo; o bot segue atendendo até o atendente falar. **Entregue** (2026-11-09) | RF11 |
 | F13 | RAG sobre a base | Busca híbrida (vetor + texto, fusão RRF) no Postgres com pgvector, corte de relevância e checagens de saída. **Entregue** (2026-11-10) | RF10 |
@@ -39,6 +39,19 @@
 > guard rails: emergência de gás sem IA, recusa de assunto fora do escopo, tratamento de ofensa,
 > preço só pelo código e limite de chamadas de IA por telefone. Ver [fluxo.md](fluxo.md#dúvidas-preço-e-guard-rails),
 > [knowledge.md](../guides/modules/knowledge.md) e [requisitos.md](requisitos.md#decisões-2026-11-10).
+
+## Como o bot ajuda a converter e reter
+
+O objetivo da Flow é vender mais gás com menos esforço de atendimento. Cada função abaixo ataca um ponto em que o pedido costuma se perder:
+
+| Função | Efeito esperado | Onde |
+| --- | --- | --- |
+| F04, repetir pedido | Cliente recorrente fecha em 2 toques, sem redigitar endereço, produto e pagamento | [fluxo.md](fluxo.md#repetir-último-pedido) |
+| F12, lembrete de pedido parado | Quem some no meio do pedido recebe um aviso aos 10 min, com o pedido ainda guardado | [fluxo.md](fluxo.md#lembrete-de-pedido-parado) |
+| F07, handoff com resumo | Pedido de atendente, emergência ou falha da venda chega ao humano com nota de resumo (sem CPF), então o cliente não repete tudo e a venda não se perde | [fluxo.md](fluxo.md#handoff-para-atendente) |
+| RAG (F06/F13) | Dúvida sobre entrega, troca de botijão ou segurança é respondida na hora, sem esperar atendente, e a conversa volta ao pedido | [knowledge.md](../guides/modules/knowledge.md) |
+
+Não há medição de conversão ainda: o painel (F08) depende de salvar vendas e conversas no Postgres, que é melhoria futura. O ganho acima é esperado pelo desenho do fluxo, não medido.
 
 ## Melhorias futuras (fora do escopo atual)
 
@@ -85,8 +98,9 @@ Decisão de 2026-10-22: nada desta seção é usado por enquanto. F12 e F14 fora
 | Guardrails | JSON validado; IA não define preço nem cria venda; emergência de gás sem IA; recusa de fora do assunto; ofensa; limite de chamadas por telefone; checagens de saída da resposta | Entregue |
 | Human Handoff | Pedido do cliente, falha da API, emergência, "não sei" e cliente travado (Chatwoot, F07) | Entregue |
 | Conversation Memory | Máquina de estados no Redis, não o modelo | Sem IA |
-| Tool Calling | Quem chama a API é o backend | Não usar |
+| Tool Calling | O backend chama de forma determinística as funções seguras do ERP (buscar cliente, listar produtos, calcular preço, criar venda), na ordem do fluxo e depois da confirmação do cliente. A IA só devolve JSON validado e nunca decide qual função chamar nem com que valores. Era a meta de segurança do slide: o modelo não tem acesso direto ao ERP | Adotado nesta forma (sem function calling do modelo) |
 | RAG híbrido | Busca por vetor + texto com fusão RRF e corte de relevância (F13) | Entregue |
 | Reranking | Não usado: o corte de relevância e as checagens bastam por enquanto | Fora do escopo |
-| Query Rewriting, Multi-Query, HyDE, HyPE | Ganho pequeno | Fora do escopo |
+| Query Rewriting | Exemplo do slide: "status do pedido", que pede reescrever a pergunta do cliente numa consulta à venda. Hoje a busca da base só higieniza a pergunta e tira palavras vazias no código (`search-query.ts`); a IA não reescreve nada. Faria sentido com F05: o bot reescreveria "meu gás chegou?" em uma leitura de `/sales` (somente leitura, viável com a chave atual) | Pendente, junto com F05 |
+| Multi-Query, HyDE, HyPE | Ganho pequeno para uma base pequena | Fora do escopo |
 | Text-to-SQL, GraphRAG, Agentic RAG | Não servem para criar venda | Fora do escopo |
