@@ -10,7 +10,7 @@ export const BUTTONS_BODY_LIMIT = 1024;
 interface Option {
   id: string;
   title: string;
-  description?: string | null;
+  description?: string;
 }
 
 export function text(body: string): Reply {
@@ -40,12 +40,7 @@ export function list(
         ...(sectionTitle ? { title: sectionTitle } : {}),
         rows: rows.slice(0, LIST_ROWS).map(row => {
           const title = clip(row.title, ROW_TITLE);
-          const description =
-            row.description === undefined
-              ? title !== row.title
-                ? row.title
-                : undefined
-              : row.description;
+          const description = row.description ?? (title !== row.title ? row.title : undefined);
           return {
             id: row.id,
             title,

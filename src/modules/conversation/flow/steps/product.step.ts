@@ -49,7 +49,7 @@ async function showProducts(
       title: product.name,
       description: price
         ? `${price.varies ? 'a partir de ' : ''}${formatMoney(price.minPrice)}`
-        : null,
+        : undefined,
     };
   });
   const shown =
