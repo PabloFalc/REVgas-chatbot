@@ -1,5 +1,7 @@
 # Design — Repetir último pedido (F04), lembrete de pedido parado (F12) e verificação de identidade (F14)
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 Data: 2026-10-23 · Status: rascunho para aprovação
 
 ## Intenção

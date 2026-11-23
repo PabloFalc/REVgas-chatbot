@@ -1,5 +1,7 @@
 # Repetir pedido (F04), lembrete (F12) e verificação de identidade (F14) — Plano de implementação
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cliente cadastrado confirma os 3 primeiros dígitos do CPF, pode repetir o último pedido em

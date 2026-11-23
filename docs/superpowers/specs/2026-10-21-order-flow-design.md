@@ -1,5 +1,7 @@
 # Design — Fluxo de pedido pelo WhatsApp (máquina de estados)
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 Data: 2026-10-21 · Status: rascunho para aprovação
 
 ## Intenção
