@@ -10,7 +10,7 @@ import type { DeskInbound } from 'src/modules/handoff/contracts/handoff.types';
 import { HandoffService } from 'src/modules/handoff/handoff.service';
 import { maskPhone } from 'src/utils/mask';
 import type { IncomingContent, IncomingMessage, Reply } from './contracts/conversation.types';
-import { ConversationRepository } from './conversation.repository';
+import { ConversationRepository, type LockOutcome } from './conversation.repository';
 import { WINDOW_CLOSED_CODE } from './desk-events.service';
 import { detectEmergency } from './flow/emergency';
 import { runFlow } from './flow/flow';
@@ -108,25 +108,35 @@ export class ConversationService {
     }
 
     const incoming = toIncoming(event);
-    const outcome = await this.conversations.withPhoneLock(event.from, async () => {
-      const inbound = toDeskInbound(incoming.content);
-      const context = await this.loadContext(event.from, log);
-      if (context === null) {
-        await this.sendAll(event.from, [text(msg.unavailable)], log);
-        return;
-      }
-      if (context.route === 'agent') {
-        await this.forward(event.from, inbound, log);
-        if (inbound.type === 'text' && detectEmergency(inbound.text)) {
-          await this.flagEmergency(event.from, log);
+    let started = false;
+    let outcome: LockOutcome<void>;
+    try {
+      outcome = await this.conversations.withPhoneLock(event.from, async () => {
+        started = true;
+        const inbound = toDeskInbound(incoming.content);
+        const context = await this.loadContext(event.from, log);
+        if (context === null) {
+          await this.sendAll(event.from, [text(msg.unavailable)], log);
+          return;
         }
-        return;
-      }
-      const { before } = context;
-      const { replies, result } = await this.advance(incoming, before, log);
-      await this.sendAll(event.from, replies, log);
-      await this.mirror(incoming, inbound, replies, before, result, log);
-    });
+        if (context.route === 'agent') {
+          await this.forward(event.from, inbound, log);
+          if (inbound.type === 'text' && detectEmergency(inbound.text)) {
+            await this.flagEmergency(event.from, log);
+          }
+          return;
+        }
+        const { before } = context;
+        const { replies, result } = await this.advance(incoming, before, log);
+        await this.sendAll(event.from, replies, log);
+        await this.mirror(incoming, inbound, replies, before, result, log);
+      });
+    } catch (error) {
+      if (started) throw error;
+      this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao obter o lock do telefone');
+      await this.sendAll(event.from, [text(msg.unavailable)], log);
+      return;
+    }
     if (!outcome.ran) {
       this.logger.warn(log, 'Lock do telefone não liberou a tempo; mensagem não processada');
       await this.sendAll(event.from, [text(msg.busy)], log);

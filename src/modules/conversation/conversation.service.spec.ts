@@ -153,6 +153,23 @@ describe('ConversationService.handle', () => {
     );
   });
 
+  it('falha ao obter o lock não roda o fluxo e avisa a instabilidade', async () => {
+    const { service, repository, whatsapp, logger, handoff } = setup();
+    repository.withPhoneLock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.LK')));
+
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(handoff.routeFor).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.unavailable);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'wamid.LK', from: '*******1234' }),
+      'Falha ao obter o lock do telefone',
+    );
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('5586999991234');
+  });
+
   it('falha ao ler o pedido não trata a mensagem como conversa nova e avisa a instabilidade', async () => {
     const { service, repository, whatsapp, logger, handoff } = setup();
     repository.loadOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
