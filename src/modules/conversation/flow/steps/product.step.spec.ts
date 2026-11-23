@@ -93,7 +93,7 @@ describe('chooseProduct', () => {
     const result = await asks.chooseProduct?.(base, tools);
     expect(tools.calls).toEqual([
       { name: 'listProducts', args: [{ id: 1, tagId: 5 }] },
-      { name: 'basePrices', args: [] },
+      { name: 'basePrices', args: [{ id: 1, tagId: 5 }] },
     ]);
     expect(rowIds(result)).toEqual(['product:1', 'product:2', 'product:3']);
     expect(result?.state?.productOptions).toEqual(products);

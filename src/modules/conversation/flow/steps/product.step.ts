@@ -40,7 +40,7 @@ async function showProducts(
   withSearch: boolean,
   tools: FlowTools,
 ): Promise<StepResult> {
-  const prices: BasePrice[] = await tools.basePrices().catch(() => []);
+  const prices: BasePrice[] = await tools.basePrices(priceCustomer(state)).catch(() => []);
   const priceByProduct = new Map(prices.map(price => [price.product.id, price]));
   const rows = products.map(product => {
     const price = priceByProduct.get(product.id);
