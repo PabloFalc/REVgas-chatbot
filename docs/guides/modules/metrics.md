@@ -37,14 +37,21 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 
 1. Aplique a migração com `pnpm db:migrate`.
 2. Copie `docker/metabase.env.example` para `docker/metabase.env`. Defina a mesma senha local forte em `POSTGRES_PASSWORD` e `MB_DB_PASS`. Esse arquivo fica fora do Git.
-3. Crie a credencial de consulta no Postgres do bot, usando `psql` e uma senha própria. O script deve ser executado uma vez; não é uma migração:
+3. Crie a credencial de consulta no Postgres do bot, usando `psql` e uma senha própria. O script deve ser executado uma vez; não é uma migração. Ele usa a variável `DBNAME` no `GRANT CONNECT`, por isso ela é obrigatória:
 
 ```sh
-psql "$DATABASE_URL" -v pass='senha-local-de-consulta' -f docker/metabase/metrics-reader.sql
+psql "$DATABASE_URL" -v DBNAME=revgas -v pass='senha-local-de-consulta' -f docker/metabase/metrics-reader.sql
+```
+
+Se o host não tem `psql`, rode o mesmo script dentro do container `revgas-pg`. A senha de consulta é nova e deve ser diferente das senhas de `docker/metabase.env`. O script cria o usuário com `CONNECTION LIMIT 10`, o mesmo limite descrito abaixo:
+
+```sh
+docker exec -i revgas-pg psql -U docker -d revgas -v DBNAME=revgas -v pass="'senha-local-de-consulta'" -f - < docker/metabase/metrics-reader.sql
 ```
 
 4. Rode `pnpm metabase:up` e abra http://localhost:3001. Crie a conta administrativa local. Adicione uma conexão PostgreSQL com host `postgres`, porta `5432`, banco `revgas`, usuário `metrics_reader` e a senha de consulta. Ajuste o nome do banco se seu ambiente usar outro.
-5. Rode `pnpm metabase:stop` ao terminar. Os volumes preservam a configuração. Não remova containers ou volumes existentes.
+5. Em Admin > Configurações > Geral, defina o fuso horário dos relatórios como `America/Sao_Paulo`. A conexão com o banco não tem campo de fuso horário, então essa configuração é global do Metabase.
+6. Rode `pnpm metabase:stop` ao terminar. Os volumes preservam a configuração. Não remova containers ou volumes existentes.
 
 A imagem OSS fica fixa em `metabase/metabase:v0.65.3.7`, a versão estável mais recente da série principal publicada até 09/11/2026. O [Docker Hub](https://hub.docker.com/r/metabase/metabase/tags?name=v0.65.3.7) informa publicação em 09/11/2026 às 21:26 UTC; `v0.65.4` foi publicada em 10/11. O perfil mantém o banco de configuração separado e desliga telemetria anônima. A interface só escuta em `127.0.0.1:3001`.
 
@@ -57,8 +64,8 @@ As consultas estão em [`../metrics/sql/`](../metrics/sql/). Cole cada arquivo e
 | Arquivo | Card |
 | --- | --- |
 | `funil.sql` | Ciclos iniciados, resumo, venda e conversão por dia |
-| `abandono.sql` | Último turno com etapa, inativo há mais de 15 minutos, sem venda criada/rejeitada nem handoff; separado por lembrete |
-| `vendas.sql` | Vendas por resultado e razão |
+| `abandono.sql` | Último turno com etapa e fase (cadastro ou pedido), inativo há mais de 15 minutos, sem venda criada/rejeitada, cancelamento nem handoff; com ou sem lembrete |
+| `vendas.sql` | Vendas e cancelamentos por resultado e razão |
 | `handoffs.sql` | Transferências e ofertas |
 | `rag.sql` | Taxa de respostas desconhecidas por dia, total e por razão |
 | `ia.sql` | Uso e bloqueios de IA por hora e finalidade |
@@ -66,6 +73,12 @@ As consultas estão em [`../metrics/sql/`](../metrics/sql/). Cole cada arquivo e
 | `operacao.sql` | Limites de quantidade, status de pedido e CPF |
 
 O funil agrupa pelo dia do primeiro evento do ciclo dentro do intervalo. Os cards consideram apenas eventos no período escolhido; ciclos cortados pela janela podem ficar incompletos. Recuperações de venda contam como eventos `sale created`; o funil deduplica por ciclo. Ofertas de handoff podem se repetir após o limiar.
+
+Cada ciclo começa em uma nova conversa, depois que a anterior terminou. Por isso há mais ciclos do que clientes, incluindo ciclos só com saudação. Leia a conversão como ciclos que chegaram a uma etapa, não como pessoas. Cancelamentos (`order_cancelled`) são um desfecho separado e não entram no abandono.
+
+O card de abandono só mostra ciclos parados há mais de 15 minutos, o mesmo TTL de 900 s do estado do pedido. Logo após um teste, ele fica vazio.
+
+Com poucos dias de dados, use eixo X ordinal nos cards de funil e de latência. Um eixo de tempo espalha poucos pontos e deixa o gráfico quase vazio.
 
 ## Chatwoot Reports
 
