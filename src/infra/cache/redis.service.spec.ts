@@ -92,6 +92,22 @@ describe('RedisService.deleteIfEquals', () => {
     );
     expect(logger.error).toHaveBeenCalled();
   });
+
+  it('loga só nome e mensagem do erro, sem o comando com a chave e o valor', async () => {
+    const error = Object.assign(new Error('boom'), {
+      command: { name: 'eval', args: ['p:5586999990000', '"12345678909"'] },
+    });
+    const { service, logger } = buildEval(vi.fn().mockRejectedValue(error));
+
+    await service.deleteIfEquals({ prefix: 'p', key: '5586999990000', value: '12345678909' });
+
+    const [fields] = logger.error.mock.calls[0];
+    expect(fields).toEqual({
+      component: 'cache',
+      error: { name: 'Error', message: 'boom' },
+      prefix: 'p',
+    });
+  });
 });
 
 describe('RedisService primitivas novas', () => {

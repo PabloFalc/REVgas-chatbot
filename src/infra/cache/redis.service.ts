@@ -10,6 +10,11 @@ const DELETE_IF_EQUALS =
 const CLAIM_IF_SCORE_EQUALS =
   "if redis.call('zscore', KEYS[1], ARGV[1]) == ARGV[2] then return redis.call('zrem', KEYS[1], ARGV[1]) else return 0 end";
 
+function errorInfo(error: unknown) {
+  if (error instanceof Error) return { name: error.name, message: error.message };
+  return { name: typeof error };
+}
+
 @Injectable()
 export class RedisService implements ICacheClient, OnApplicationShutdown {
   constructor(
@@ -68,7 +73,10 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       );
       return result === 1;
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache deleteIfEquals error');
+      this.logger.error(
+        { component: 'cache', error: errorInfo(error), prefix },
+        'Cache deleteIfEquals error',
+      );
       return false;
     }
   }
@@ -141,7 +149,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
         cursor = next;
       } while (cursor !== '0');
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error }, 'Cache clear error');
+      this.logger.error({ component: 'cache', error: errorInfo(error) }, 'Cache clear error');
     }
   }
 
