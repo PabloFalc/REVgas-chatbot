@@ -54,7 +54,9 @@ describe('offerOrNext', () => {
         { id: 'repeat:new', title: 'Novo pedido' },
       ]),
     ]);
-    expect(msg.offerRepeat(offer)).toContain('1× Botijão P13 · Pix');
+    expect(msg.offerRepeat(offer)).toBe(
+      'Quer repetir seu último pedido?\n1× Botijão P13 · Pix · Total R$ 110,00\nRua das Flores, 120 – Centro',
+    );
   });
 
   it('Repetir vai ao resumo com o preço do quote de hoje', async () => {

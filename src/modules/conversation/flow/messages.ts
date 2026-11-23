@@ -126,7 +126,7 @@ export const msg = {
     'Olá! Ainda não te conhecemos. Para fazer seu pedido, preciso de alguns dados.\nQual é o seu nome completo?',
   welcomeBack: (name: string) => `Olá, ${name}! Vamos fazer seu pedido.`,
   offerRepeat: (offer: RepeatOffer) =>
-    `Quer repetir seu último pedido?\n${offer.quantity}× ${offer.product.name} · ${offer.payment.label}\n${addressLabel(offer.address)}`,
+    `Quer repetir seu último pedido?\n${offer.quantity}× ${offer.product.name} · ${offer.payment.label} · Total ${formatMoney(offer.quote.total)}\n${addressLabel(offer.address)}`,
   repeatOrder: 'Repetir',
   newOrder: 'Novo pedido',
   askName: 'Qual é o seu nome completo?',
