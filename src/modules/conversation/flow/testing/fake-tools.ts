@@ -100,6 +100,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
       windows: [],
     } as ServiceHoursInfo),
     storePhone: '86999990000',
+    demo: false,
     now: () => FAKE_NOW,
   } satisfies FlowTools;
 

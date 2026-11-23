@@ -118,8 +118,17 @@ function orderStatus(sale: OrderStatus): string {
   return lines.join('\n');
 }
 
+const DEMO_NOTICE = 'Este é um atendimento de demonstração: os pedidos não são entregues.';
+
+function withDemoNotice(greeting: string): string {
+  const [first, ...rest] = greeting.split('\n');
+  return [first, DEMO_NOTICE, ...rest].join('\n');
+}
+
 export const msg = {
   orderStatus,
+  demoOrderStatus: (sale: OrderStatus) => `Pedido de demonstração.\n${orderStatus(sale)}`,
+  demoGreeting: withDemoNotice,
   noOrderForPhone: 'Não encontrei pedido para este número.',
   noRecentOrderForPhone: 'Não encontrei pedido recente para este número.',
   welcomeNew:
@@ -191,6 +200,8 @@ export const msg = {
   fixPayment: 'Pagamento',
   saleCreated: (id: number, total: number) =>
     `Pedido nº ${id} confirmado! Total: ${formatMoney(total)}. Já estamos separando seu gás.`,
+  demoSaleCreated: (id: number, total: number) =>
+    `Pedido de demonstração nº ${id} registrado. Total: ${formatMoney(total)}. Nenhum gás será entregue.`,
   saleFailed:
     'Não consegui registrar seu pedido agora. Nada foi cobrado. Pode tentar de novo ou falar com um atendente.',
   saleRejected: (phone?: string) => `Não foi possível registrar seu pedido. ${storeContact(phone)}`,

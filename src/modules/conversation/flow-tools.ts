@@ -139,6 +139,7 @@ export class FlowToolsService {
       },
       serviceHours: async () => this.handoff.serviceHours(),
       storePhone: env.STORE_PHONE,
+      demo: env.REVGAS_MODE !== 'live',
       now: () => new Date(),
     };
   }

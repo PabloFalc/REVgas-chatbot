@@ -75,12 +75,19 @@ async function withHistory(
   return history.lastOrder ? { ...loaded, lastOrder: history.lastOrder } : loaded;
 }
 
+function greeting(message: string, tools: FlowTools): string {
+  return tools.demo ? msg.demoGreeting(message) : message;
+}
+
 export async function welcomeKnown(state: OrderState, tools: FlowTools): Promise<StepResult> {
   const { id, name } = state.customer;
   if (id === undefined || name === undefined) return nextStep(state, tools);
   const loaded = await withHistory(state, id, tools);
   const next = await offerOrNext(await keepOfferedProduct(loaded, tools), tools);
-  return { state: next.state, replies: [text(msg.welcomeBack(name)), ...next.replies] };
+  return {
+    state: next.state,
+    replies: [text(greeting(msg.welcomeBack(name), tools)), ...next.replies],
+  };
 }
 
 function contactStore(tools: FlowTools): StepResult {
@@ -96,7 +103,7 @@ export async function start(
   if (!customer) {
     return {
       state: { step: 'askName', customer: {}, ...seed },
-      replies: [text(msg.welcomeNew)],
+      replies: [text(greeting(msg.welcomeNew, tools))],
     };
   }
 

@@ -23,6 +23,22 @@ describe('start', () => {
     });
   });
 
+  it('em demonstração as boas-vindas avisam que os pedidos não são entregues', async () => {
+    const tools = createFakeTools({ demo: true });
+    const unknown = await start({ ...say('oi'), phone: '5500000000000' }, tools);
+    const known = await start(say('oi'), tools);
+    expect(unknown.replies).toEqual([
+      text(
+        'Olá! Ainda não te conhecemos. Para fazer seu pedido, preciso de alguns dados.\nEste é um atendimento de demonstração: os pedidos não são entregues.\nQual é o seu nome completo?',
+      ),
+    ]);
+    expect(known.replies[0]).toEqual(
+      text(
+        'Olá, Maria da Silva! Vamos fazer seu pedido.\nEste é um atendimento de demonstração: os pedidos não são entregues.',
+      ),
+    );
+  });
+
   it('cliente sem CPF recebe o contato da revenda', async () => {
     const tools = createFakeTools({
       findCustomer: async () => ({ id: 7, name: 'Joana Lima', cpf: null, tagId: 3 }),

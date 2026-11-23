@@ -270,6 +270,16 @@ cliente fica conhecido, o produto guardado é conferido de novo com a lista dele
 - **Expiração e lembrete:** o estado no Redis tem TTL de 15 min; se o cliente sumir, o carrinho expira. Aos 10 min sem mensagem, o bot manda um lembrete (ver [Lembrete de pedido parado](#lembrete-de-pedido-parado)).
 - **Fallback da IA:** se a IA falhar, demorar, passar do limite por telefone ou não entender, o bot diz "Não entendi." e repete a pergunta com os botões do estado atual (3 seguidos oferecem o atendente).
 
+## Atendimento de demonstração
+
+Com vendas simuladas (`REVGAS_MODE` `hybrid` ou `fake`, inclusive o automático), o cliente é avisado de que nada será entregue:
+
+- as boas-vindas (cliente novo ou conhecido) ganham a linha "Este é um atendimento de demonstração: os pedidos não são entregues.";
+- a confirmação vira "Pedido de demonstração nº 4521 registrado. Total: R$ 110,00. Nenhum gás será entregue.";
+- a resposta de status do pedido começa com a linha "Pedido de demonstração.".
+
+Com `REVGAS_MODE=live` os textos são os normais.
+
 ## Observações sobre o fluxo
 
 - O diagrama não mostra o atalho "repetir último pedido" nem a saída da verificação (telefone da revenda); eles só aparecem no texto.

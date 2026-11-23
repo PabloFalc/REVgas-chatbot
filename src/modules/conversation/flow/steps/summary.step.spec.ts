@@ -60,6 +60,20 @@ describe('summary', () => {
     expect(body).toContain('Dinheiro (troco para R$ 250,00)');
   });
 
+  it('em demonstração a confirmação diz que nenhum gás será entregue', async () => {
+    const tools = createFakeTools({ demo: true });
+    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    expect(result).toEqual({
+      state: null,
+      replies: [
+        text(
+          'Pedido de demonstração nº 4521 registrado. Total: R$ 110,00. Nenhum gás será entregue.',
+        ),
+      ],
+      saleId: 4521,
+    });
+  });
+
   it('confirmar salva o checkpoint antes de criar a venda e encerra', async () => {
     const tools = createFakeTools();
     const result = await handlers.summary?.(base, pick('summary:confirm'), tools);

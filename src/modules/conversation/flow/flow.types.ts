@@ -153,6 +153,7 @@ export interface FlowTools {
   requestHandoff(request: HandoffRequest): Promise<HandoffOutcome>;
   serviceHours(): Promise<ServiceHoursInfo>;
   storePhone?: string;
+  demo: boolean;
   now(): Date;
 }
 
