@@ -269,3 +269,12 @@ Ainda não há política definida. A definir com a revenda antes de produção:
 
 - **Performance** (não-segurança): compressão brotli em respostas pequenas (PERF-05) — avaliar
   priorizar `gzip` no dinâmico / subir o `threshold`. **Medir antes de mudar.**
+
+
+## Métricas do bot
+
+`bot_events` guarda apenas colunas tipadas de classificação, data, duração e contagem. Não recebe telefone, nome, CPF, endereço, mensagens, ids de cliente/venda da RevGás ou texto livre de erros. `cycle_id` é um UUID aleatório, sem derivação do telefone. A correlação temporal com outros logs ainda pode identificar uma atividade; restrinja o acesso e a exportação.
+
+A retenção padrão é de 180 dias, com limpeza na inicialização e a cada 24 horas. `METRICS_ENABLED=false` desliga tanto a gravação quanto a limpeza. Revise a retenção conforme a finalidade do tratamento; ausência de PII direta não elimina o risco de correlação.
+
+O Metabase só escuta em `127.0.0.1:3001`, com telemetria anônima desligada e banco de configuração separado. Segredos ficam em `docker/metabase.env`, fora do Git. A conexão analítica usa `metrics_reader`, com SELECT apenas em `bot_events`, até três conexões e timeout de 10 segundos. Não conecte o Metabase com o usuário administrativo da aplicação. Guia: [métricas](../guides/modules/metrics.md).
