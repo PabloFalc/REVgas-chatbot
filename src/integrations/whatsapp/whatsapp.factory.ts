@@ -39,6 +39,9 @@ export function createWhatsappClient(
   });
 }
 
-export function createWhatsappWebhook(config: WhatsappConfig): WhatsappWebhook {
-  return new WhatsappWebhook(config);
+export function createWhatsappWebhook(
+  config: WhatsappConfig,
+  logger?: WhatsappLogger,
+): WhatsappWebhook {
+  return new WhatsappWebhook(config, logger);
 }

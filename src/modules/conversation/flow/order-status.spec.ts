@@ -3,6 +3,7 @@ import { runFlow } from './flow';
 import type { OrderState } from './flow.types';
 import { msg } from './messages';
 import { isOrderStatusQuestion } from './order-status';
+import { text } from './replies';
 import { createFakeTools, FAKE_PHONE } from './testing/fake-tools';
 
 const input = (body: string, phone = FAKE_PHONE) => ({
@@ -91,6 +92,18 @@ describe('status do pedido', () => {
       status === 'WARNING' || status === 'WARN',
     );
     expect(tools.calls.some(call => call.name === 'requestHandoff')).toBe(false);
+  });
+
+  it.each([
+    [false, 'Pedido nº 8: recebido.'],
+    [true, 'Pedido de demonstração.\nPedido nº 8: recebido.'],
+  ])('demonstração %s ajusta a resposta do status', async (demo, expected) => {
+    const tools = createFakeTools({
+      demo,
+      latestOrderStatus: async () => ({ saleId: 8, status: 'OPEN' }),
+    });
+    const result = await runFlow(null, input('status do pedido'), tools);
+    expect(result.replies).toEqual([text(expected)]);
   });
 
   it.each([

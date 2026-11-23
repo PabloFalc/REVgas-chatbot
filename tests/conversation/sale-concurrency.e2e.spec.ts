@@ -176,7 +176,7 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
     await vi.waitFor(() =>
       expect(
         whatsapp.sent.filter(sent =>
-          JSON.stringify(sent.body).includes(msg.saleCreated(sale.id, total)),
+          JSON.stringify(sent.body).includes(msg.demoSaleCreated(sale.id, total)),
         ),
       ).toHaveLength(1),
     );
@@ -196,7 +196,7 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
     await vi.waitFor(() =>
       expect(
         whatsapp.sent.filter(sent =>
-          JSON.stringify(sent.body).includes(msg.saleCreated(sale.id, total)),
+          JSON.stringify(sent.body).includes(msg.demoSaleCreated(sale.id, total)),
         ),
       ).toHaveLength(1),
     );

@@ -128,4 +128,81 @@ describe('envConfigSchema', () => {
     expect(env.CHATWOOT_TIMEOUT_MS).toBe(5000);
     expect(env.CHATWOOT_URL).toBe('http://localhost:3000');
   });
+
+  it('WHATSAPP_ALLOWED_SENDERS vira lista de dígitos e vazio libera todos', () => {
+    expect(envConfigSchema.parse(base).WHATSAPP_ALLOWED_SENDERS).toEqual([]);
+    expect(
+      envConfigSchema.parse({ ...base, WHATSAPP_ALLOWED_SENDERS: ' 5586999990000, 5586988887777 ' })
+        .WHATSAPP_ALLOWED_SENDERS,
+    ).toEqual(['5586999990000', '5586988887777']);
+    const result = envConfigSchema.safeParse({
+      ...base,
+      WHATSAPP_ALLOWED_SENDERS: '+5586999990000',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('em produção com vendas simuladas exige WHATSAPP_ALLOWED_SENDERS', () => {
+    const production = {
+      ...base,
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://painel.exemplo.com',
+      REDIS_PASSWORD: 'senha-do-redis',
+    };
+    for (const REVGAS_MODE of ['', 'hybrid', 'fake']) {
+      const result = envConfigSchema.safeParse({ ...production, REVGAS_MODE });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]).toMatchObject({ path: ['WHATSAPP_ALLOWED_SENDERS'] });
+    }
+    const allowed = envConfigSchema.safeParse({
+      ...production,
+      REVGAS_MODE: 'hybrid',
+      WHATSAPP_ALLOWED_SENDERS: '5586999990000',
+    });
+    expect(allowed.success).toBe(true);
+  });
+
+  it('exige REDIS_PASSWORD em produção', () => {
+    const production = {
+      ...base,
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://painel.exemplo.com',
+      WHATSAPP_ALLOWED_SENDERS: '5586999990000',
+    };
+    const result = envConfigSchema.safeParse({ ...production, REDIS_PASSWORD: '' });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual([
+      expect.objectContaining({
+        path: ['REDIS_PASSWORD'],
+        message: 'REDIS_PASSWORD é obrigatório em produção',
+      }),
+    ]);
+    expect(envConfigSchema.safeParse({ ...production, REDIS_PASSWORD: 'senha' }).success).toBe(
+      true,
+    );
+  });
+
+  it('REVGAS_MODE=live exige REVGAS_ALLOW_LIVE_SALES=true', () => {
+    for (const REVGAS_ALLOW_LIVE_SALES of [undefined, 'false']) {
+      const result = envConfigSchema.safeParse({
+        ...base,
+        REVGAS_MODE: 'live',
+        REVGAS_ALLOW_LIVE_SALES,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]).toMatchObject({
+        path: ['REVGAS_ALLOW_LIVE_SALES'],
+        message: expect.stringContaining('vendas reais'),
+      });
+    }
+    const live = envConfigSchema.safeParse({
+      ...base,
+      REVGAS_MODE: 'live',
+      REVGAS_ALLOW_LIVE_SALES: 'true',
+    });
+    expect(live.success).toBe(true);
+    expect(envConfigSchema.parse({ ...base, REVGAS_MODE: 'hybrid' }).REVGAS_ALLOW_LIVE_SALES).toBe(
+      false,
+    );
+  });
 });

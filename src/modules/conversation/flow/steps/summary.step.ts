@@ -38,6 +38,10 @@ function buildOrder(state: OrderState): SaleOrder | null {
   };
 }
 
+function saleCreated(id: number, total: number, tools: FlowTools) {
+  return text(tools.demo ? msg.demoSaleCreated(id, total) : msg.saleCreated(id, total));
+}
+
 const summary: AskFn = async state => ({
   state: { ...state, step: 'summary' },
   replies: [
@@ -80,7 +84,7 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
   await tools.checkpoint(attempt);
   try {
     const id = await tools.createSale(order);
-    return { state: null, replies: [text(msg.saleCreated(id, order.total))], saleId: id };
+    return { state: null, replies: [saleCreated(id, order.total, tools)], saleId: id };
   } catch (error) {
     if (error instanceof ToolError) {
       if (error.cause instanceof SaleRejectedError) {
@@ -139,7 +143,7 @@ export async function cancelAfterFailedSale(
     if (existing !== null)
       return {
         state: null,
-        replies: [text(msg.saleCreated(existing, order.total))],
+        replies: [saleCreated(existing, order.total, tools)],
         saleId: existing,
       };
   }
@@ -156,7 +160,7 @@ const handleSaleFailed: HandleFn = async (state, input, tools) => {
   if (existing !== null)
     return {
       state: null,
-      replies: [text(msg.saleCreated(existing, order.total))],
+      replies: [saleCreated(existing, order.total, tools)],
       saleId: existing,
     };
   return submitSale(state, tools);

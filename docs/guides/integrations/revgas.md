@@ -45,12 +45,14 @@ revgas.sales.create(input) / get(id) / list(query?) / cancel(id, motiveCancelSal
 
 | Modo | O que faz |
 | --- | --- |
-| `live` | Tudo vai para a API real. Exige `REVGAS_API_KEY` e `REVGAS_ESTABLISHMENT_ID`. |
+| `live` | Tudo vai para a API real e as vendas são reais. Exige `REVGAS_API_KEY`, `REVGAS_ESTABLISHMENT_ID` e `REVGAS_ALLOW_LIVE_SALES=true` (sem ela o boot falha). |
 | `hybrid` | Leituras liberadas vão para a API real; o resto é simulado (tabela abaixo). Exige chave e estabelecimento. |
 | `fake` | Tudo simulado em memória, sem rede. Não exige nada. |
 
 Padrão (variável vazia): `hybrid` se houver `REVGAS_API_KEY`, senão `fake`. Em produção, qualquer
-modo diferente de `live` gera um aviso no log no boot. Variáveis: ver
+modo diferente de `live` gera um aviso no log no boot. Fora de `live` o bot avisa o cliente que o
+atendimento é de demonstração e que nenhum gás será entregue (ver
+[fluxo.md](../../project/fluxo.md#atendimento-de-demonstração)). Variáveis: ver
 [environment.md](../conventions/environment.md).
 
 ## Roteamento do modo `hybrid`

@@ -79,11 +79,13 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - **Embedding:** `EMBEDDING_API_KEY` (cai em `LLM_API_KEY` se vazia) segue as mesmas regras: só no
   header da chamada server-side, nunca em log, erro, resposta HTTP nem prompt. O log do embedding
   leva só a operação, o modelo, o status e a contagem de textos.
-- **Redis:** `REDIS_PASSWORD` e `REDIS_TLS` (opcionais em dev, obrigatórios na prática em prod) —
-  sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
+- **Redis:** `REDIS_PASSWORD` (obrigatória em produção, o boot falha sem ela) e `REDIS_TLS` (ligue
+  em produção com Redis gerenciado). Sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
   O `docker-compose.yml` configura `maxmemory-policy noeviction`: com memória cheia o Redis recusa
   gravações em vez de apagar chaves (trava, bloqueio de CPF, estado do pedido). Em produção, use a
   mesma política; `allkeys-*` poderia apagar o bloqueio de CPF.
+- `REVGAS_MODE=live` cria vendas reais no ERP e só sobe com `REVGAS_ALLOW_LIVE_SALES=true`, para
+  que ninguém ligue vendas reais sem querer.
 - **Swagger** protegido por `DOC_TOKEN` (header `x-doc-token`) e não montado em produção.
 
 ## Headers & transporte
@@ -142,6 +144,11 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   `fake` fora de produção a checagem pode ser pulada. Corpo que não é JSON não tem corpo cru e
   recebe 401.
 - Eventos de outro `phone_number_id`, ou sem ele, são descartados.
+- Com `WHATSAPP_ALLOWED_SENDERS` preenchida, mensagens de números fora da lista são descartadas logo
+  depois da assinatura, antes do dedup, da IA e do fluxo: não são lidas nem respondidas e geram um
+  log `warn` com o telefone mascarado. Status de entrega não são filtrados. Em produção com vendas
+  simuladas (`REVGAS_MODE` diferente de `live`) a lista é obrigatória e o boot falha sem ela, para
+  que uma implantação de teste não atenda desconhecidos.
 - Query da verificação validada (strings de até 256 caracteres; repetida → 400).
 - Responde 200 assim que a assinatura confere e processa em segundo plano, então envios lentos à
   Graph API não prendem a conexão da Meta.

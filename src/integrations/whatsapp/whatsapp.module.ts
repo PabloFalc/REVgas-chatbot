@@ -20,7 +20,7 @@ const config = () => resolveWhatsappConfig(env);
     },
     {
       provide: WHATSAPP_WEBHOOK,
-      useFactory: () => createWhatsappWebhook(config()),
+      useFactory: () => createWhatsappWebhook(config(), createLogger('WhatsappWebhook')),
     },
   ],
   exports: [WHATSAPP_CLIENT, WHATSAPP_WEBHOOK],

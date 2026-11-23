@@ -74,7 +74,7 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 |---|---|---|---|
 | `REDIS_HOST` | Não | `127.0.0.1` | Host do Redis. |
 | `REDIS_PORT` | Não | `6379` | Porta do Redis. |
-| `REDIS_PASSWORD` | Não (dev) | vazio | Senha (`AUTH`). Sem ela, um Redis exposto fica aberto a quem alcança a porta — e ele guarda **sessões** (`secondaryStorage`), rate limit e, no chatbot, o estado das conversas. **Defina em produção.** |
+| `REDIS_PASSWORD` | Em produção | vazio | Senha (`AUTH`). Sem ela, um Redis exposto fica aberto a quem alcança a porta — e ele guarda **sessões** (`secondaryStorage`), rate limit e, no chatbot, o estado das conversas. Em produção o boot falha sem ela. |
 | `REDIS_TLS` | Não | `false` | Liga TLS (`rediss://`). `false` em dev; **ligue em produção**. Redis gerenciado (Upstash/ElastiCache/Redis Cloud/Railway) normalmente **exige** TLS. |
 
 ## Under Pressure (circuit breaker de memória)
@@ -89,6 +89,7 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
 | `REVGAS_MODE` | Não | vazio = automático | `live`, `hybrid` ou `fake`. Vazio: `hybrid` se houver `REVGAS_API_KEY`, senão `fake`. Valor fora da lista derruba o boot. `fake` em produção = demo (dados simulados, nada vai ao ERP) e gera aviso. |
+| `REVGAS_ALLOW_LIVE_SALES` | Com `REVGAS_MODE=live` | `false` | Confirmação explícita de que o bot pode criar vendas reais no ERP. `REVGAS_MODE=live` sem `REVGAS_ALLOW_LIVE_SALES=true` derruba o boot em qualquer ambiente. |
 | `REVGAS_API_URL` | Não | `https://api.revgas.com/v1` | URL base da API pública do ERP RevGás. Vazio usa o default; validada como URL. |
 | `REVGAS_API_KEY` | Obrigatória em `live`/`hybrid` | vazio = não definida | API Key solicitada ao suporte da RevGás. **Fica só no servidor** (RNF02): nunca vai para o front, para o prompt da IA nem para logs. Vazar = qualquer um cria/consulta vendas no ERP da revenda. Sem ela nesses modos, `resolveRevgasConfig` lança erro. |
 | `REVGAS_ESTABLISHMENT_ID` | Obrigatória em `live`/`hybrid` | vazio = não definida | ID do estabelecimento (revenda) no ERP, numérico inteiro positivo. Sem ele nesses modos, `resolveRevgasConfig` lança erro; valor não numérico derruba o boot. |
@@ -111,6 +112,7 @@ Onde achar cada valor no painel da Meta: [whatsapp.md](../integrations/whatsapp.
 | `WHATSAPP_APP_SECRET` | Obrigatória em `live` e em produção | vazio | Chave secreta do app (≥ 32 caracteres); confere o `X-Hub-Signature-256` de cada POST no webhook. Sem ela (só possível em `fake` fora de produção), o webhook aceita qualquer requisição. |
 | `WHATSAPP_VERIFY_TOKEN` | Obrigatória em `live` e em produção | vazio | Texto escolhido por você (≥ 16 caracteres), repetido na configuração do webhook na Meta. Sem ele, a verificação (`GET /webhooks/whatsapp`) sempre responde 403. |
 | `WHATSAPP_TIMEOUT_MS` | Não | `10000` | Timeout de cada envio. Timeout vira resultado desconhecido (a mensagem pode ter saído) e não é repetido. |
+| `WHATSAPP_ALLOWED_SENDERS` | Em produção com `REVGAS_MODE` diferente de `live` | vazio = todos | Números que o bot atende, separados por vírgula, só dígitos do `wa_id` (ex.: `5586999990000,5586988887777`). Mensagens de outros números são descartadas logo depois da assinatura, sem resposta, com log `warn` e telefone mascarado. Valor com outro caractere derruba o boot. |
 
 > As quatro obrigatórias só são exigidas em `live` (checagem em `resolveWhatsappConfig`), então o app sobe em `fake` sem nada configurado. **Em produção**, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` são exigidos em qualquer modo: sem eles a rota pública do webhook ficaria sem autenticação, e o boot falha. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
 
@@ -233,6 +235,9 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 - `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `WHATSAPP_API_URL` / `LLM_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
 - **Em produção**, `CORS_ORIGIN` ausente → erro (`CORS_ORIGIN é obrigatório em produção`).
 - **Em produção**, `CORS_ORIGIN` contendo `*` → erro (`CORS_ORIGIN não pode conter "*"`).
+- Em produção, `REDIS_PASSWORD` vazia → erro (`REDIS_PASSWORD é obrigatório em produção`).
+- `REVGAS_MODE=live` sem `REVGAS_ALLOW_LIVE_SALES=true` → erro, em qualquer ambiente, porque `live` cria vendas reais na RevGás.
+- Em produção com `REVGAS_MODE` diferente de `live` (vazio também conta), `WHATSAPP_ALLOWED_SENDERS` vazia → erro. Vendas simuladas indicam implantação de teste, que não deve atender desconhecidos.
 
 ---
 
@@ -245,7 +250,9 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 - [ ] `DATABASE_URL` do banco gerenciado
 - [ ] `REDIS_PASSWORD` definido e `REDIS_TLS=true` (se gerenciado)
 - [ ] `REVGAS_API_KEY` (e `REVGAS_ESTABLISHMENT_ID`) via secrets (nunca no repo nem no front)
+- [ ] `REVGAS_MODE=hybrid` em demonstração; `live` só com `REVGAS_ALLOW_LIVE_SALES=true` e a decisão de criar vendas reais
 - [ ] `WHATSAPP_MODE=live` com token permanente, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` via secrets
+- [ ] `WHATSAPP_ALLOWED_SENDERS` com os números de teste, se as vendas forem simuladas
 - [ ] `DOC_TOKEN` definido (ou doc desativada)
 - [ ] `PRESSURE_MAX_*` calibrados ao limite de memória do container
 

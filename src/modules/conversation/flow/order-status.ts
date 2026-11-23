@@ -1,3 +1,4 @@
+import type { OrderStatus } from 'src/modules/order/contracts/order.types';
 import { normalizeText } from 'src/utils/text';
 import type { FlowTools, OrderState, StepResult } from './flow.types';
 import { offer, orderStartButton } from './handoff';
@@ -15,6 +16,10 @@ const STATUS_PHRASES = [
 export function isOrderStatusQuestion(raw: string): boolean {
   const normalized = normalizeText(raw).replace(/[^a-z0-9\s]/g, ' ');
   return STATUS_PHRASES.some(phrase => phrase.test(normalized));
+}
+
+function statusText(sale: OrderStatus, tools: FlowTools): string {
+  return tools.demo ? msg.demoOrderStatus(sale) : msg.orderStatus(sale);
 }
 
 export async function answerOrderStatus(
@@ -37,8 +42,8 @@ export async function answerOrderStatus(
   const sale = found?.status === 'WARN' ? { ...found, status: 'WARNING' } : found;
   const reply = sale
     ? sale.status === 'WARNING'
-      ? offer(msg.orderStatus(sale))
-      : text(msg.orderStatus(sale))
+      ? offer(statusText(sale, tools))
+      : text(statusText(sale, tools))
     : buttons(msg.noRecentOrderForPhone, [orderStartButton()]);
   if (state) {
     const answered = await repeatQuestion(state, tools, reply);

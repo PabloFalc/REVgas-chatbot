@@ -115,6 +115,23 @@ pnpm start:dev          # API em http://localhost:3100 — docs em /docs
 
 ---
 
+## Imagem de produção
+
+O `Dockerfile` gera a imagem com o build, as dependências de produção (sem as de dev, então sem
+`drizzle-kit`), `drizzle/` e `knowledge/`. O contêiner sobe só a API (`node dist/main`); migrations e
+ingestão da base não rodam sozinhas. Rode cada uma uma vez, no contêiner, com as mesmas variáveis
+da API:
+
+```bash
+node dist/cli/migrate.js     # aplica as migrations de drizzle/
+node dist/cli/kb-ingest.js   # indexa knowledge/base (precisa das migrations aplicadas)
+```
+
+Rode as migrations antes de subir uma versão nova da API. A ingestão só é necessária quando a base
+ou o modelo de embedding mudar.
+
+---
+
 ## Scripts
 
 | Tarefa | Comando |
@@ -131,6 +148,7 @@ pnpm start:dev          # API em http://localhost:3100 — docs em /docs
 | Indexar a base de conhecimento | `pnpm kb:ingest` (com `LLM_API_KEY` gera embeddings reais; sem ela usa vetores fake; ver [knowledge.md](./docs/guides/modules/knowledge.md)) |
 | Checagens com serviço real | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` (usam chaves reais; `rag:check` só em dev) |
 | Migrations | `pnpm db:generate` → `pnpm db:migrate` |
+| Migrations no build (sem drizzle-kit) | `pnpm db:migrate:prod` (roda `node dist/cli/migrate.js`) |
 | Drizzle Studio | `pnpm db:studio` |
 | Infra local | `pnpm docker:init` / `pnpm docker:stop` |
 | Chatwoot local (handoff) | `pnpm chatwoot:prepare` (1ª vez) · `pnpm chatwoot:up` · `pnpm chatwoot:stop` (ver [chatwoot.md](./docs/guides/integrations/chatwoot.md)) |
