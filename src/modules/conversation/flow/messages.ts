@@ -174,7 +174,7 @@ export const msg = {
   needsChange: 'Sim',
   askChangeAmount: 'Troco para quanto?',
   invalidChange: (total: number) =>
-    `Me manda um valor só, maior que o total de ${formatMoney(total)}. Troco para quanto?`,
+    `Troco para quanto? Manda um valor só, maior que o total de ${formatMoney(total)}.`,
   summary: (state: OrderState) =>
     [
       'Confira seu pedido:',
