@@ -111,6 +111,7 @@ Onde achar cada valor no painel da Meta: [whatsapp.md](../integrations/whatsapp.
 | `WHATSAPP_APP_SECRET` | Obrigatória em `live` e em produção | vazio | Chave secreta do app (≥ 32 caracteres); confere o `X-Hub-Signature-256` de cada POST no webhook. Sem ela (só possível em `fake` fora de produção), o webhook aceita qualquer requisição. |
 | `WHATSAPP_VERIFY_TOKEN` | Obrigatória em `live` e em produção | vazio | Texto escolhido por você (≥ 16 caracteres), repetido na configuração do webhook na Meta. Sem ele, a verificação (`GET /webhooks/whatsapp`) sempre responde 403. |
 | `WHATSAPP_TIMEOUT_MS` | Não | `10000` | Timeout de cada envio. Timeout vira resultado desconhecido (a mensagem pode ter saído) e não é repetido. |
+| `WHATSAPP_ALLOWED_SENDERS` | Em produção com `REVGAS_MODE` diferente de `live` | vazio = todos | Números que o bot atende, separados por vírgula, só dígitos do `wa_id` (ex.: `5586999990000,5586988887777`). Mensagens de outros números são descartadas logo depois da assinatura, sem resposta, com log `warn` e telefone mascarado. Valor com outro caractere derruba o boot. |
 
 > As quatro obrigatórias só são exigidas em `live` (checagem em `resolveWhatsappConfig`), então o app sobe em `fake` sem nada configurado. **Em produção**, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` são exigidos em qualquer modo: sem eles a rota pública do webhook ficaria sem autenticação, e o boot falha. Os testes e2e forçam `fake` (`vitest.config.e2e.ts`).
 
@@ -233,6 +234,7 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 - `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `WHATSAPP_API_URL` / `LLM_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
 - **Em produção**, `CORS_ORIGIN` ausente → erro (`CORS_ORIGIN é obrigatório em produção`).
 - **Em produção**, `CORS_ORIGIN` contendo `*` → erro (`CORS_ORIGIN não pode conter "*"`).
+- Em produção com `REVGAS_MODE` diferente de `live` (vazio também conta), `WHATSAPP_ALLOWED_SENDERS` vazia → erro. Vendas simuladas indicam implantação de teste, que não deve atender desconhecidos.
 
 ---
 
@@ -246,6 +248,7 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 - [ ] `REDIS_PASSWORD` definido e `REDIS_TLS=true` (se gerenciado)
 - [ ] `REVGAS_API_KEY` (e `REVGAS_ESTABLISHMENT_ID`) via secrets (nunca no repo nem no front)
 - [ ] `WHATSAPP_MODE=live` com token permanente, `WHATSAPP_APP_SECRET` e `WHATSAPP_VERIFY_TOKEN` via secrets
+- [ ] `WHATSAPP_ALLOWED_SENDERS` com os números de teste, se as vendas forem simuladas
 - [ ] `DOC_TOKEN` definido (ou doc desativada)
 - [ ] `PRESSURE_MAX_*` calibrados ao limite de memória do container
 

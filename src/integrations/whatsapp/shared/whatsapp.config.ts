@@ -10,6 +10,7 @@ export interface WhatsappConfig {
   phoneNumberId?: string;
   appSecret?: string;
   verifyToken?: string;
+  allowedSenders: string[];
   timeoutMs: number;
 }
 
@@ -47,6 +48,7 @@ export function resolveWhatsappConfig(env: Env): WhatsappConfig {
     phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
     appSecret: env.WHATSAPP_APP_SECRET,
     verifyToken: env.WHATSAPP_VERIFY_TOKEN,
+    allowedSenders: env.WHATSAPP_ALLOWED_SENDERS,
     timeoutMs: env.WHATSAPP_TIMEOUT_MS,
   };
 }

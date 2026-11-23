@@ -111,7 +111,9 @@ ids repetidos são ignorados por 24h.
      Por isso o app sobe com `rawBody: true` (`main.ts` e `tests/setup-e2e.ts`).
      Corpo que não é JSON (ex.: `text/plain`) não tem corpo cru e também recebe 401.
   2. Lê os eventos. Payloads que não são do WhatsApp, campos diferentes de `messages` e eventos de
-     outro `phone_number_id` (ou sem ele) são ignorados.
+     outro `phone_number_id` (ou sem ele) são ignorados. Com `WHATSAPP_ALLOWED_SENDERS` preenchida,
+     mensagens de números fora da lista também são ignoradas (log `warn` com o telefone mascarado,
+     sem resposta).
   3. Responde `200 { received: true }` na hora e processa em segundo plano. Falhas vão para o log e
      nunca derrubam os outros eventos do lote.
   4. Para cada mensagem: descarta se o id já foi visto (Redis, 24h; a Meta reenvia quando não

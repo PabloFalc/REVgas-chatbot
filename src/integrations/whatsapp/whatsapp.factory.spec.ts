@@ -13,6 +13,7 @@ const config = (overrides: Partial<WhatsappConfig> = {}): WhatsappConfig => ({
   phoneNumberId: '1122334455',
   appSecret: 'secret',
   verifyToken: 'verify-token-de-teste',
+  allowedSenders: [],
   timeoutMs: 1000,
   ...overrides,
 });

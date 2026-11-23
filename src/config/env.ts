@@ -82,6 +82,16 @@ export const envConfigSchema = z
       emptyAsUndefined,
       z.coerce.number().int().positive().default(10_000),
     ),
+    WHATSAPP_ALLOWED_SENDERS: z
+      .string()
+      .default('')
+      .transform(value =>
+        value
+          .split(',')
+          .map(sender => sender.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.string().regex(/^\d+$/, 'Use só os dígitos do wa_id, ex.: 5586999990000'))),
 
     // LLM (Gemini via API compativel com OpenAI)
     LLM_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'fake']).optional()),
@@ -195,7 +205,18 @@ export const envConfigSchema = z
   .refine(value => value.NODE_ENV !== 'production' || !value.CORS_ORIGIN?.includes('*'), {
     path: ['CORS_ORIGIN'],
     message: 'CORS_ORIGIN não pode conter "*" em produção',
-  });
+  })
+  .refine(
+    value =>
+      value.NODE_ENV !== 'production' ||
+      value.REVGAS_MODE === 'live' ||
+      value.WHATSAPP_ALLOWED_SENDERS.length > 0,
+    {
+      path: ['WHATSAPP_ALLOWED_SENDERS'],
+      message:
+        'WHATSAPP_ALLOWED_SENDERS é obrigatório em produção com vendas simuladas (REVGAS_MODE hybrid ou fake)',
+    },
+  );
 
 export const env = envConfigSchema.parse(process.env);
 

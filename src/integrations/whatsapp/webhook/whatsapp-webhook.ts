@@ -1,4 +1,6 @@
+import { maskPhone } from '../../../utils/mask';
 import { safeEqual } from '../../../utils/safe-equal';
+import type { WhatsappLogger } from '../cloud-api-whatsapp.client';
 import type { WhatsappConfig } from '../shared/whatsapp.config';
 import { isValidSignature } from './signature';
 import { parseWebhook } from './webhook.parser';
@@ -14,7 +16,11 @@ export type VerificationQuery = {
 
 export class WhatsappWebhook {
   constructor(
-    private readonly config: Pick<WhatsappConfig, 'appSecret' | 'verifyToken' | 'phoneNumberId'>,
+    private readonly config: Pick<
+      WhatsappConfig,
+      'appSecret' | 'verifyToken' | 'phoneNumberId' | 'allowedSenders'
+    >,
+    private readonly logger?: WhatsappLogger,
   ) {}
 
   challenge(query: VerificationQuery): string | null {
@@ -35,11 +41,24 @@ export class WhatsappWebhook {
   }
 
   parse(payload: unknown): WebhookEvent[] {
-    const events = parseWebhook(payload);
     const { phoneNumberId } = this.config;
-    if (!phoneNumberId) {
-      return events;
+    return parseWebhook(payload)
+      .filter(event => !phoneNumberId || event.phoneNumberId === phoneNumberId)
+      .filter(event => this.isAllowed(event));
+  }
+
+  private isAllowed(event: WebhookEvent): boolean {
+    const { allowedSenders } = this.config;
+    if (event.kind !== 'message' || allowedSenders.length === 0) {
+      return true;
     }
-    return events.filter(event => event.phoneNumberId === phoneNumberId);
+    if (allowedSenders.includes(event.from)) {
+      return true;
+    }
+    this.logger?.warn(
+      { component: 'whatsapp', from: maskPhone(event.from) },
+      'Mensagem de número fora de WHATSAPP_ALLOWED_SENDERS ignorada',
+    );
+    return false;
   }
 }

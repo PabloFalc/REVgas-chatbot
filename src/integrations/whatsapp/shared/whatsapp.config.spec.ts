@@ -57,7 +57,11 @@ describe('resolveWhatsappConfig', () => {
   });
 
   it('em produção exige app secret e verify token mesmo no modo fake', () => {
-    const production = { NODE_ENV: 'production', CORS_ORIGIN: 'https://painel.exemplo.com' };
+    const production = {
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://painel.exemplo.com',
+      WHATSAPP_ALLOWED_SENDERS: '5586999990000',
+    };
     expect(() => resolveWhatsappConfig(parse(production))).toThrow(
       /WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN obrigatório\(s\) em produção/,
     );

@@ -142,6 +142,11 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   `fake` fora de produção a checagem pode ser pulada. Corpo que não é JSON não tem corpo cru e
   recebe 401.
 - Eventos de outro `phone_number_id`, ou sem ele, são descartados.
+- Com `WHATSAPP_ALLOWED_SENDERS` preenchida, mensagens de números fora da lista são descartadas logo
+  depois da assinatura, antes do dedup, da IA e do fluxo: não são lidas nem respondidas e geram um
+  log `warn` com o telefone mascarado. Status de entrega não são filtrados. Em produção com vendas
+  simuladas (`REVGAS_MODE` diferente de `live`) a lista é obrigatória e o boot falha sem ela, para
+  que uma implantação de teste não atenda desconhecidos.
 - Query da verificação validada (strings de até 256 caracteres; repetida → 400).
 - Responde 200 assim que a assinatura confere e processa em segundo plano, então envios lentos à
   Graph API não prendem a conexão da Meta.
