@@ -171,3 +171,12 @@ describe('nextStep', () => {
     expect(reply.sections[0].rows.map(row => row.id)).toEqual(['product:1', 'product:2']);
   });
 });
+
+it.each([
+  { reason: 'max', stock: 50, quantity: 11 },
+  { reason: 'stock', stock: 1, quantity: 2 },
+])('registra limite $reason', async ({ reason, stock, quantity }) => {
+  const tools = createFakeTools();
+  await nextStep(stateWith({ address, product: { id: 1, name: 'P13', stock }, quantity }), tools);
+  expect(tools.calls).toContainEqual({ name: 'track', args: [{ name: 'quantity_limit', reason }] });
+});

@@ -59,3 +59,5 @@ docs/project/private/
 
 # Segredos do Chatwoot local (nunca commitar)
 docker/chatwoot.env
+
+docker/metabase.env

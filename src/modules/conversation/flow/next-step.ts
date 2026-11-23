@@ -27,6 +27,7 @@ async function checkQuantity(state: OrderState, tools: FlowTools): Promise<StepR
   if (!product || quantity === undefined) return null;
   const stock = product.stock;
   if (stock !== undefined && quantity > stock) {
+    tools.track({ name: 'quantity_limit', reason: 'stock' });
     const result = await goTo(withoutQuantity(state), 'chooseQuantity', tools);
     return {
       state: result.state,
@@ -34,6 +35,7 @@ async function checkQuantity(state: OrderState, tools: FlowTools): Promise<StepR
     };
   }
   if (quantity > MAX_QUANTITY) {
+    tools.track({ name: 'quantity_limit', reason: 'max' });
     const result = await goTo(withoutQuantity(state), 'chooseQuantity', tools);
     return { state: result.state, replies: [offer(msg.quantityAboveMax), ...result.replies] };
   }

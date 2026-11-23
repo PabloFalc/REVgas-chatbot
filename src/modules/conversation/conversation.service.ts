@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { WhatsappError } from 'src/core/erros/whatsapp/whatsapp.errors';
@@ -9,6 +10,8 @@ import type {
 import type { DeskInbound } from 'src/modules/handoff/contracts/handoff.types';
 import { HandoffService } from 'src/modules/handoff/handoff.service';
 import { maskPhone } from 'src/utils/mask';
+import { BotEventsRepository } from '../metrics/bot-events.repository';
+import type { MetricEvent } from '../metrics/contracts/metrics.types';
 import type { IncomingContent, IncomingMessage, Reply } from './contracts/conversation.types';
 import { ConversationRepository, type LockOutcome } from './conversation.repository';
 import { WINDOW_CLOSED_CODE } from './desk-events.service';
@@ -65,6 +68,7 @@ export class ConversationService {
     private readonly flowTools: FlowToolsService,
     private readonly handoff: HandoffService,
     private readonly logger: PinoLogger,
+    private readonly events: BotEventsRepository,
   ) {
     this.logger.setContext(ConversationService.name);
   }
@@ -87,6 +91,7 @@ export class ConversationService {
   }
 
   private async onMessage(event: InboundMessageEvent): Promise<void> {
+    const startedAt = Date.now();
     const log = {
       component: 'conversation',
       messageId: event.id,
@@ -122,13 +127,21 @@ export class ConversationService {
         if (context.route === 'agent') {
           await this.forward(event.from, inbound, log);
           if (inbound.type === 'text' && detectEmergency(inbound.text)) {
+            this.track({ name: 'emergency', reason: 'agent_route' });
             await this.flagEmergency(event.from, log);
           }
           return;
         }
         const { before } = context;
-        const { replies, result } = await this.advance(incoming, before, log);
+        const { replies, result, cycleId } = await this.advance(incoming, before, log);
         await this.sendAll(event.from, replies, log);
+        this.track({
+          name: 'turn',
+          cycleId,
+          prevStep: before?.step,
+          step: result.state?.step,
+          durationMs: Date.now() - startedAt,
+        });
         await this.mirror(incoming, inbound, replies, before, result, log);
       });
     } catch (error) {
@@ -217,10 +230,13 @@ export class ConversationService {
     incoming: IncomingMessage,
     before: OrderState | null,
     log: object,
-  ): Promise<{ replies: Reply[]; result: StepResult }> {
+  ): Promise<{ replies: Reply[]; result: StepResult; cycleId: string }> {
     const phone = incoming.from;
-    const tools = this.flowTools.forPhone(phone, state =>
-      this.conversations.saveOrder(phone, state),
+    const cycleId = before?.cycleId ?? randomUUID();
+    const tools = this.flowTools.forPhone(
+      phone,
+      state => this.conversations.saveOrder(phone, { ...state, cycleId }),
+      cycleId,
     );
     const result = await runFlow(
       before,
@@ -249,6 +265,7 @@ export class ConversationService {
       );
     }
 
+    if (result.state) result.state = { ...result.state, cycleId };
     const now = new Date();
     const saved = await this.persist(phone, result.state, now, log);
     await this.updateReminder(phone, result.state, now, log);
@@ -264,9 +281,9 @@ export class ConversationService {
       'Fluxo de pedido avançou',
     );
     if (!saved && result.saleId === undefined) {
-      return { replies: [text(msg.unavailable)], result };
+      return { replies: [text(msg.unavailable)], result, cycleId };
     }
-    return { replies: result.replies, result };
+    return { replies: result.replies, result, cycleId };
   }
 
   private async persist(
@@ -309,6 +326,10 @@ export class ConversationService {
     } catch (error) {
       this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao atualizar o lembrete');
     }
+  }
+
+  private track(event: MetricEvent): void {
+    this.events.record(event);
   }
 
   private async onStatus(event: StatusEvent): Promise<void> {

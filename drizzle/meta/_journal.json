@@ -22,6 +22,13 @@
       "when": 1794256301334,
       "tag": "0002_tired_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795446175368,
+      "tag": "0003_sturdy_red_skull",
+      "breakpoints": true
     }
   ]
 }

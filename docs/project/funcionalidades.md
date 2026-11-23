@@ -104,3 +104,10 @@ Decisão de 2026-10-22: nada desta seção é usado por enquanto. F12 e F14 fora
 | Query Rewriting | Exemplo do slide: "status do pedido", que pede reescrever a pergunta do cliente numa consulta à venda. Hoje a busca da base só higieniza a pergunta e tira palavras vazias no código (`search-query.ts`); a IA não reescreve nada. Faria sentido com F05: o bot reescreveria "meu gás chegou?" em uma leitura de `/sales` (somente leitura, viável com a chave atual) | Pendente, junto com F05 |
 | Multi-Query, HyDE, HyPE | Ganho pequeno para uma base pequena | Fora do escopo |
 | Text-to-SQL, GraphRAG, Agentic RAG | Não servem para criar venda | Fora do escopo |
+
+
+## Métricas
+
+Eventos do bot em PostgreSQL acompanham funil, conversão, abandono, vendas, handoff, dúvidas do RAG, limite de IA, latência e operação. A gravação não aguarda o banco e falhas de métrica preservam as respostas do cliente. A tabela não guarda dados pessoais nem identificadores de cliente ou venda da RevGás; os ciclos usam UUID aleatório.
+
+A retenção padrão é de 180 dias. O perfil opcional do Metabase permite consultar os cards SQL com um usuário de leitura, apenas em localhost. Relatórios de atendimento humano continuam no Chatwoot. Setup e limitações em [metrics.md](../guides/modules/metrics.md).

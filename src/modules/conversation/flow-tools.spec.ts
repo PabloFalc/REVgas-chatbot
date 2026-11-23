@@ -1,4 +1,5 @@
 import type { PinoLogger } from 'nestjs-pino';
+import { RevgasError } from 'src/core/erros/revgas/revgas.errors';
 import { describe, expect, it, vi } from 'vitest';
 import type { AddressService } from '../address/address.service';
 import type { AiUsageRepository } from '../assistant/ai-usage.repository';
@@ -7,6 +8,8 @@ import type { CatalogRepository } from '../catalog/catalog.repository';
 import type { CustomerRepository } from '../customer/customer.repository';
 import type { HandoffService } from '../handoff/handoff.service';
 import type { KnowledgeService } from '../knowledge/knowledge.service';
+import type { BotEventsRepository } from '../metrics/bot-events.repository';
+import { SaleRejectedError } from '../order/contracts/order.types';
 import type { OrderRepository } from '../order/order.repository';
 import type { ConversationRepository } from './conversation.repository';
 import { FlowToolsService } from './flow-tools';
@@ -47,6 +50,7 @@ function setup() {
     topics: vi.fn(async () => ['Troco']),
   };
   const aiUsage = { consume: vi.fn(async () => true) };
+  const events = { record: vi.fn() };
   const logger = { setContext: vi.fn(), warn: vi.fn() };
   const handoff = {
     requestHandoff: vi.fn(async () => ({ status: 'queued', open: true, nextOpening: null })),
@@ -63,9 +67,11 @@ function setup() {
     knowledge as unknown as KnowledgeService,
     aiUsage as unknown as AiUsageRepository,
     logger as unknown as PinoLogger,
+    events as unknown as BotEventsRepository,
   );
   return {
     service,
+    events,
     customers,
     catalog,
     orders,
@@ -261,4 +267,132 @@ describe('FlowToolsService.forPhone', () => {
     });
     expect(knowledge.answerQuestion).not.toHaveBeenCalled();
   });
+});
+
+const saleOrder = {
+  customerId: 1,
+  address: { street: 'Rua A', number: '1', neighborhood: 'Centro', city: 'Teresina', state: 'PI' },
+  productId: 1,
+  productName: 'P13',
+  quantity: 1,
+  unitPrice: 100,
+  paymentType: 'PIX',
+  total: 100,
+};
+
+describe('FlowToolsService métricas', () => {
+  it('grava criação e recuperação sem incluir dados do pedido', async () => {
+    const { service, events, orders } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined, 'cycle');
+    await expect(tools.createSale(saleOrder)).resolves.toBe(7);
+    expect(events.record).toHaveBeenLastCalledWith({
+      name: 'sale',
+      cycleId: 'cycle',
+      outcome: 'created',
+      reason: 'direct',
+    });
+    orders.findRecentSale.mockResolvedValueOnce(8 as never);
+    await expect(tools.findRecentSale(saleOrder, new Date())).resolves.toBe(8);
+    expect(events.record).toHaveBeenLastCalledWith({
+      name: 'sale',
+      cycleId: 'cycle',
+      outcome: 'created',
+      reason: 'recovered',
+    });
+  });
+
+  it.each([
+    [new Error('segredo'), 'failed', 'unexpected'],
+    [new SaleRejectedError('segredo'), 'rejected', 'unexpected'],
+    [new RevgasError('unavailable', 'segredo'), 'failed', 'unavailable'],
+  ])('preserva o erro de venda e registra apenas classificação', async (error, outcome, reason) => {
+    const { service, events, orders } = setup();
+    orders.createSale.mockRejectedValueOnce(error);
+    await expect(service.forPhone(PHONE, async () => undefined).createSale(saleOrder)).rejects.toBe(
+      error,
+    );
+    expect(events.record).toHaveBeenCalledWith({
+      name: 'sale',
+      cycleId: undefined,
+      outcome,
+      reason,
+    });
+  });
+
+  it('registra CPF, ofertas, handoff, RAG e uso de IA', async () => {
+    const { service, events, conversations, aiUsage, knowledge } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined);
+    conversations.registerCpfMismatch.mockResolvedValueOnce(3);
+    conversations.isBlocked.mockResolvedValueOnce(true);
+    conversations.registerMisunderstood.mockResolvedValueOnce(3);
+    await expect(tools.registerCpfMismatch(PHONE)).resolves.toBe(3);
+    await expect(tools.isBlocked(PHONE)).resolves.toBe(true);
+    await tools.registerMisunderstood();
+    await tools.registerOffense();
+    await tools.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+    await tools.answerQuestion('pergunta');
+    aiUsage.consume.mockResolvedValueOnce(false);
+    await tools.answerQuestion('pergunta');
+    knowledge.answerQuestion.mockResolvedValueOnce({
+      kind: 'unknown',
+      reason: 'no_match',
+    } as never);
+    await tools.answerQuestion('pergunta');
+    for (const event of [
+      { name: 'cpf', outcome: 'mismatch', amount: 3 },
+      { name: 'cpf', outcome: 'blocked', amount: 3 },
+      { name: 'cpf', outcome: 'blocked_hit', amount: 3 },
+      { name: 'handoff_offered', reason: 'stuck' },
+      { name: 'handoff_offered', reason: 'offense' },
+      { name: 'handoff', reason: 'customer_request', outcome: 'queued' },
+      { name: 'rag', outcome: 'answered', durationMs: expect.any(Number) },
+      { name: 'rag', outcome: 'unknown', reason: 'unavailable', durationMs: expect.any(Number) },
+      { name: 'rag', outcome: 'unknown', reason: 'no_match', durationMs: expect.any(Number) },
+      { name: 'ai_call', outcome: 'allowed', reason: 'question', amount: 2 },
+      { name: 'ai_call', outcome: 'limited', reason: 'question', amount: 2 },
+    ])
+      expect(events.record).toHaveBeenCalledWith(expect.objectContaining(event));
+  });
+
+  it('order_cancelled herda o ciclo como os demais eventos do fluxo', () => {
+    const { service, events } = setup();
+    service.forPhone(PHONE, async () => undefined, 'cycle').track({ name: 'order_cancelled' });
+    expect(events.record).toHaveBeenCalledWith({ name: 'order_cancelled', cycleId: 'cycle' });
+  });
+});
+
+it('registra resultado de consulta de pedido e mantém o valor', async () => {
+  const { service, events, orders } = setup();
+  const status = { saleId: 7, status: 'DELIVERED' };
+  Object.assign(orders, {
+    latestOrderStatus: vi.fn().mockResolvedValueOnce(status).mockResolvedValueOnce(null),
+  });
+  const tools = service.forPhone(PHONE, async () => undefined);
+  await expect(tools.latestOrderStatus(1, new Date())).resolves.toBe(status);
+  await expect(tools.latestOrderStatus(1, new Date())).resolves.toBeNull();
+  expect(events.record).toHaveBeenCalledWith(
+    expect.objectContaining({ name: 'order_status', outcome: 'found' }),
+  );
+  expect(events.record).toHaveBeenCalledWith(
+    expect.objectContaining({ name: 'order_status', outcome: 'none' }),
+  );
+});
+
+it('identifica o custo de cada chamada de IA', async () => {
+  const { service, events } = setup();
+  const tools = service.forPhone(PHONE, async () => undefined);
+  await tools.interpret('oi', { products: [], payments: [] });
+  await tools.readName('Ana');
+  await tools.addressFromText('rua');
+  await tools.answerQuestion('pergunta');
+  for (const [reason, amount] of [
+    ['interpret', 1],
+    ['read_name', 1],
+    ['address', 1],
+    ['question', 2],
+  ]) {
+    expect(events.record).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'ai_call', outcome: 'allowed', reason, amount }),
+    );
+  }
 });

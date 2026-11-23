@@ -143,6 +143,7 @@ export async function cancelAfterFailedSale(
         saleId: existing,
       };
   }
+  tools.track({ name: 'order_cancelled' });
   return { state: null, replies: [text(msg.cancelled)] };
 }
 
