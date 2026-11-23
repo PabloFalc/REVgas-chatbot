@@ -17,8 +17,8 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   painel da revenda (F08); detalhes em [auth.md](../guides/modules/auth.md).
 - **Standby:** a auth (e o `EmailService`) está no código mas **desligada** — `RoutesModule` não
   importa o `AuthModule`, então não há rotas `/auth/*` nem **guard global**: hoje toda rota é
-  pública por padrão. O webhook do WhatsApp (futuro) deve ser autenticado pela **assinatura do
-  provedor**. Ao ligar a auth, o `AuthGuard` passa a valer em todas as rotas e as públicas
+  pública por padrão. O webhook do WhatsApp, já implementado, é autenticado pela **assinatura do
+  provedor** (ver [Webhook do WhatsApp](#webhook-do-whatsapp)). Ao ligar a auth, o `AuthGuard` passa a valer em todas as rotas e as públicas
   precisam de `@Public()`.
 - **Só token Bearer** (plugin `bearer()`): o cliente envia `Authorization: Bearer <token>`.
   **Não há cookies** — logo não há superfície de **CSRF** (nenhuma credencial é anexada
@@ -47,7 +47,7 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 
 - `trustProxy` é derivado de **`TRUSTED_PROXY`** (`false` por padrão). Confiar no
   `X-Forwarded-For` de qualquer peer permitiria **spoof de IP** e **bypass do rate limit** (a
-  chave do throttler é `req.ip`). Atrás de proxy/LB, configure o IP/CIDR do proxy (contagem de hops é recusada no boot).
+  chave do throttler é `req.ip`). Atrás de proxy/LB, configure o IP/CIDR do proxy (contagem de hops é recusada no boot). **Sem `TRUSTED_PROXY` atrás de um proxy, todos os clientes aparecem com o IP do proxy** e dividem o mesmo limite; defina o valor no deploy.
 - Rate limit global (`@nestjs/throttler` + Redis): `default` 50/min; `sign-in`/`sign-up` com
   `STRICT_AUTH_THROTTLE` (10/min, bloqueio 5min); `/health` com `HEALTH_THROTTLE` (120/min); `/webhooks/whatsapp` com `WEBHOOK_THROTTLE`
   (1000/min, porque todo o tráfego vem dos IPs da Meta).
@@ -81,6 +81,9 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   leva só a operação, o modelo, o status e a contagem de textos.
 - **Redis:** `REDIS_PASSWORD` e `REDIS_TLS` (opcionais em dev, obrigatórios na prática em prod) —
   sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
+  O `docker-compose.yml` configura `maxmemory-policy noeviction`: com memória cheia o Redis recusa
+  gravações em vez de apagar chaves (trava, bloqueio de CPF, estado do pedido). Em produção, use a
+  mesma política; `allkeys-*` poderia apagar o bloqueio de CPF.
 - **Swagger** protegido por `DOC_TOKEN` (header `x-doc-token`) e não montado em produção.
 
 ## Headers & transporte
@@ -96,8 +99,19 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - `/health` público devolve só `{status,timestamp,uptime}` em produção; o detalhe por subsistema
   (`checks`) só aparece fora de prod (`publicHealth`).
 - Logs: segredos redigidos em todos os ambientes; `email` redigido em produção.
+- **LGPD nos logs:** erros do Redis registram só nome e mensagem do erro, nunca os argumentos do
+  comando, porque a chave leva telefone ou CPF (ex.: bloqueio e contadores por telefone). Telefone
+  é mascarado nos logs de webhook, envio e limitador.
 
 ## Resiliência / disponibilidade
+
+- **Redis é a dependência crítica:** `/health` responde 503 sem ele; Postgres fora só marca o serviço
+  como degradado (o fluxo de pedido não depende do Postgres, só a base de conhecimento).
+- **Trava por telefone nunca é ignorada:** se não for obtida em 120 s, o bot pede que o cliente reenvie
+  a mensagem em vez de processar sem a trava (evita dois pedidos concorrentes do mesmo telefone).
+- **Falha do Redis não é engolida** no estado do pedido, no bloqueio de CPF e no estado do handoff:
+  o bot responde "instabilidade". Engolir o erro faria o bloqueio de CPF falhar aberto. O limitador de
+  IA continua deixando a chamada passar (ver abaixo).
 
 - Pool do Postgres com limites + `statement_timeout` (vars `DB_*`) mitigam **DoS por query lenta**
   / exaustão de conexões.
@@ -113,6 +127,11 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   Redis). Só entrada só numérica (dígitos, espaços, pontos ou traços) com exatamente 3 dígitos
   conta como tentativa; texto de pedido com letras ("2 P13") nunca conta.
 - Cliente sem CPF no cadastro, ou bloqueado, recebe só o telefone da revenda; nada do cadastro é mostrado.
+- **Estado do pedido só com o prefixo de 3 dígitos do CPF** para cliente conhecido; no cliente novo, o
+  CPF inteiro sai do estado logo depois do cadastro.
+- **Limitação conhecida:** são ~1000 combinações de 3 dígitos e 3 tentativas por hora por telefone. É lento,
+  mas possível para quem controla o telefone ou tem tempo. Bloqueio progressivo (tempo crescente a cada
+  rodada) é trabalho futuro. O prefixo sozinho não expõe o CPF, mas libera endereços e pedidos do cliente.
 - Os 3 dígitos digitados nunca vão ao log nem ao prompt da IA (blocos soltos de 3 dígitos são removidos do texto livre; CPFs inteiros são removidos por `removeCpfs` antes de qualquer chamada à IA).
 
 ## Webhook do WhatsApp
@@ -230,16 +249,15 @@ Guard rails do fluxo (entregues, etapa B):
   texto das mensagens.
 - Não cadastrar webhook da conta além do da caixa (eventos em dobro).
 
-## Planejado (chatbot)
+## Retenção e acesso no Chatwoot
 
-Itens que entram junto com os módulos do chatbot (ver [specs.md](../project/specs.md) e
-[requisitos.md](../project/requisitos.md)):
+O Chatwoot espelha **cada turno** da conversa (mensagens do cliente e do bot), não só as de handoff.
+O CPF é ocultado (`[CPF ocultado]`), mas nome, endereço, telefone e o que o cliente escrever ficam lá.
+Ainda não há política definida. A definir com a revenda antes de produção:
 
-- **LGPD — mascaramento nos logs:** CPF, telefone e endereço dos clientes mascarados em todo log
-  (chamadas à API RevGás, handoffs, erros). Hoje a redaction do Pino cobre só segredos e `email`.
-- **Cliente `integrations/revgas`:** API Key injetada só no header da chamada server-side; retry com
-  backoff apenas em 5xx/timeout e com idempotência para não duplicar vendas.
-- **IA:** o prompt nunca recebe a API Key nem dados de outros clientes; saída validada com Zod.
+- por quanto tempo guardar as conversas e como apagá-las a pedido do titular (LGPD);
+- quem tem conta de atendente ou administrador e com que permissão;
+- onde o Chatwoot roda e como é feito o backup, já que ele guarda o próprio Postgres.
 
 ## Extensões com impacto de segurança
 
