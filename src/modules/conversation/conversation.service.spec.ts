@@ -767,16 +767,6 @@ describe('ConversationService métricas', () => {
     expect(events.record.mock.calls[2][0].cycleId).not.toBe(state.cycleId);
   });
 
-  it('record lançando preserva as respostas e o espelhamento', async () => {
-    const { service, events, whatsapp, handoff } = setup();
-    events.record.mockImplementation(() => {
-      throw new Error('indisponível');
-    });
-    await service.handle(parseWebhook(textWebhook('oi', 'metric.failure')));
-    expect(whatsapp.sent).toHaveLength(1);
-    expect(handoff.recordTurn).toHaveBeenCalledOnce();
-  });
-
   it('registra emergência na rota humana', async () => {
     const { service, events, handoff } = setup();
     handoff.routeFor.mockResolvedValueOnce('agent');

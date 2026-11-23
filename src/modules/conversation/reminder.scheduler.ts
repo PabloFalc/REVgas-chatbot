@@ -98,11 +98,7 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
     for (const reply of result.replies) {
       await this.messaging.send(phone, reply);
     }
-    try {
-      this.events.record({ name: 'reminder_sent', cycleId: state.cycleId, step: state.step });
-    } catch {
-      this.logger.warn('Falha ao gravar métrica');
-    }
+    this.events.record({ name: 'reminder_sent', cycleId: state.cycleId, step: state.step });
     if (result.state)
       await this.conversations.saveOrderKeepingTtl(phone, {
         ...result.state,

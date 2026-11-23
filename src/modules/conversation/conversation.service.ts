@@ -329,11 +329,7 @@ export class ConversationService {
   }
 
   private track(event: MetricEvent): void {
-    try {
-      this.events.record(event);
-    } catch {
-      this.logger.warn('Falha ao gravar métrica');
-    }
+    this.events.record(event);
   }
 
   private async onStatus(event: StatusEvent): Promise<void> {

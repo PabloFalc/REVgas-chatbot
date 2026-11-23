@@ -359,16 +359,6 @@ describe('FlowToolsService métricas', () => {
     service.forPhone(PHONE, async () => undefined, 'cycle').track({ name: 'order_cancelled' });
     expect(events.record).toHaveBeenCalledWith({ name: 'order_cancelled', cycleId: 'cycle' });
   });
-
-  it('record lançando não transforma sucesso da venda em falha', async () => {
-    const { service, events } = setup();
-    events.record.mockImplementation(() => {
-      throw new Error('fora');
-    });
-    await expect(
-      service.forPhone(PHONE, async () => undefined).createSale(saleOrder),
-    ).resolves.toBe(7);
-  });
 });
 
 it('registra resultado de consulta de pedido e mantém o valor', async () => {
