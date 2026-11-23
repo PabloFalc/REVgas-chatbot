@@ -76,6 +76,10 @@ Sidekiq. Os contêineres se chamam `revgas-chatwoot-pg`, `revgas-chatwoot-redis`
    cp docker/chatwoot.env.example docker/chatwoot.env
    ```
 2. Preencha `SECRET_KEY_BASE` (`openssl rand -hex 64`) e `POSTGRES_PASSWORD` (uma senha forte).
+   O exemplo também traz `SAFE_FETCH_ALLOW_PRIVATE_NETWORK=true`, que libera o webhook em
+   `host.docker.internal` (rede privada). Vale só para desenvolvimento local; em produção a variável
+   fica desligada. Se o seu `docker/chatwoot.env` é mais antigo e não tem essa linha, adicione-a e
+   recrie os contêineres com `pnpm chatwoot:stop && pnpm chatwoot:up`.
 3. Prepare o banco (cria o schema e roda as migrações):
    ```bash
    pnpm chatwoot:prepare
@@ -100,12 +104,14 @@ subir (migrações novas).
 ## Configurar o Chatwoot (primeira vez)
 
 1. Abra `http://localhost:3000`, crie o **administrador** e a **conta** (o cadastro público fica
-   desligado: `ENABLE_ACCOUNT_SIGNUP=false`).
+   desligado: `ENABLE_ACCOUNT_SIGNUP=false`). Se o assistente de boas-vindas travar o painel, conclua
+   ou pule as etapas dele.
 2. **Caixa de entrada → Adicionar → API.** Em **URL do webhook** use
    `http://host.docker.internal:3100/webhooks/chatwoot` (o contêiner alcança o bot no host; o compose
    define `host.docker.internal`). Em produção, use a URL pública do bot.
-3. Copie o **segredo do canal** da caixa (configurações da caixa; visível só a administradores e pode
-   ser rotacionado). Ele assina os webhooks → `CHATWOOT_WEBHOOK_SECRET` (mínimo 16 caracteres).
+3. Copie o campo **secret** da caixa (em Configurações da caixa, na parte de API; visível só a
+   administradores e pode ser rotacionado). Não é o `hmac_token`. Ele assina os webhooks →
+   `CHATWOOT_WEBHOOK_SECRET` (mínimo 16 caracteres).
 4. Ainda nas configurações da caixa, **desligue a atribuição automática**, senão o Chatwoot atribui
    a conversa a alguém antes de o atendente assumir.
 5. **Configurações → Integrações → Agent Bots**: crie um bot e copie o token → `CHATWOOT_BOT_TOKEN`.
@@ -241,6 +247,14 @@ bot enviou ao Chatwoot nos e2e, pegue o simulador com `app.get(CHATWOOT_CLIENT)`
 - **Sem templates da Meta:** fora da janela de 24 h o atendente não consegue escrever primeiro.
 - **Teste real pendente:** o fluxo ainda não foi exercitado contra um Chatwoot de verdade (exige a
   configuração manual da caixa e dos tokens acima). Os testes usam o fake.
+
+## Solução de problemas
+
+- **Mensagens espelhadas com "Failed to send":** o Chatwoot recusou a URL do webhook
+  (`host.docker.internal`) pela proteção SSRF. No log do sidekiq aparece "Hostname
+  'host.docker.internal' has no public ip addresses". Enquanto isso, as respostas do atendente não
+  chegam ao bot. Em desenvolvimento, confira `SAFE_FETCH_ALLOW_PRIVATE_NETWORK=true` (passo 2 da
+  subida local) e recrie os contêineres com `pnpm chatwoot:stop && pnpm chatwoot:up`.
 
 ## Armadilhas
 
