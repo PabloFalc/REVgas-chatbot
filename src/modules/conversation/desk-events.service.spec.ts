@@ -87,6 +87,19 @@ describe('DeskEventsService.handle', () => {
     });
   });
 
+  it('falha ao apagar o pedido não impede o repasse e vai para o log sem o telefone cru', async () => {
+    const { service, conversations, whatsapp, logger } = setup();
+    conversations.clearOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await service.handle([agentEvent()]);
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      { component: 'desk-events', phone: '*******1234', error: 'Error' },
+      'Falha ao apagar o pedido ao assumir o atendimento',
+    );
+  });
+
   it('o mesmo messageId duas vezes envia uma vez só', async () => {
     const { service, whatsapp } = setup();
 
