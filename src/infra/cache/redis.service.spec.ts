@@ -122,17 +122,27 @@ describe('RedisService primitivas novas', () => {
     expect(set).toHaveBeenCalledWith('p:k', '{"a":1}', 'KEEPTTL', 'XX');
   });
 
-  it('increment define TTL só na primeira vez', async () => {
-    const incr = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(2);
-    const expire = vi.fn().mockResolvedValue(1);
-    const service = buildWith({ incr, expire });
+  it('increment executa incremento e reparo de TTL no mesmo script', async () => {
+    const evalFn = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    const service = buildWith({ eval: evalFn });
 
     await expect(service.increment({ prefix: 'p', key: 'k', ttl: 3600 })).resolves.toBe(1);
-    expect(expire).toHaveBeenCalledWith('p:k', 3600);
-
-    expire.mockClear();
     await expect(service.increment({ prefix: 'p', key: 'k', ttl: 3600 })).resolves.toBe(2);
-    expect(expire).not.toHaveBeenCalled();
+
+    expect(evalFn).toHaveBeenCalledTimes(2);
+    expect(evalFn).toHaveBeenCalledWith(
+      "local count = redis.call('incr', KEYS[1]); if count == 1 or redis.call('ttl', KEYS[1]) == -1 then redis.call('expire', KEYS[1], ARGV[1]) end; return count",
+      1,
+      'p:k',
+      3600,
+    );
+  });
+
+  it('increment propaga falha do script', async () => {
+    const evalFn = vi.fn().mockRejectedValue(new Error('boom'));
+    const service = buildWith({ eval: evalFn });
+
+    await expect(service.increment({ key: 'k', ttl: 3600 })).rejects.toThrow('boom');
   });
 
   it('scheduleAdd chama zadd', async () => {
