@@ -2,6 +2,7 @@ import type { Interpretation, NameReading } from 'src/modules/assistant/contract
 import type { BasePrice } from 'src/modules/catalog/contracts/catalog.types';
 import type { HandoffOutcome, ServiceHoursInfo } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
+import type { MetricEvent } from 'src/modules/metrics/contracts/metrics.types';
 import type { FlowTools } from '../flow.types';
 
 export const FAKE_PHONE = '5586999990000';
@@ -43,6 +44,9 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
 
   const base = {
     phone: FAKE_PHONE,
+    track: (event: MetricEvent) => {
+      calls.push({ name: 'track', args: [event] });
+    },
     findCustomer: async (phone: string) => {
       calls.push({ name: 'findCustomer', args: [phone] });
       return phone === FAKE_PHONE ? customer : null;

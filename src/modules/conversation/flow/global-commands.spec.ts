@@ -62,6 +62,18 @@ describe('globalCommand', () => {
     },
   );
 
+  it('cancelar sem venda registra order_cancelled', async () => {
+    const tools = createFakeTools();
+    await globalCommand(state, say('cancelar'), tools);
+    expect(tools.calls).toContainEqual({ name: 'track', args: [{ name: 'order_cancelled' }] });
+  });
+
+  it('cancelar sem pedido não registra order_cancelled', async () => {
+    const tools = createFakeTools();
+    await globalCommand(null, say('cancelar'), tools);
+    expect(tools.calls).not.toContainEqual({ name: 'track', args: [{ name: 'order_cancelled' }] });
+  });
+
   it('cancelar dentro de uma frase maior não cancela', async () => {
     expect(
       await globalCommand(state, say('não quero cancelar nada'), createFakeTools()),

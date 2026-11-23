@@ -5,6 +5,7 @@ import { textWebhook, webhookPayload } from 'src/integrations/whatsapp/testing/w
 import { parseWebhook } from 'src/integrations/whatsapp/webhook/webhook.parser';
 import type { HandoffService } from 'src/modules/handoff/handoff.service';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BotEventsRepository } from '../metrics/bot-events.repository';
 import type { ConversationRepository, LockOutcome } from './conversation.repository';
 import { ConversationService } from './conversation.service';
 import { runFlow } from './flow/flow';
@@ -55,6 +56,7 @@ function setup(whatsapp = new FakeWhatsappClient()) {
     recordTurn: vi.fn(async () => undefined),
     noteWindowClosedFor: vi.fn(async () => undefined),
   };
+  const events = { record: vi.fn() };
   const logger = {
     setContext: vi.fn(),
     debug: vi.fn(),
@@ -68,8 +70,9 @@ function setup(whatsapp = new FakeWhatsappClient()) {
     flowTools as unknown as FlowToolsService,
     handoff as unknown as HandoffService,
     logger as unknown as PinoLogger,
+    events as unknown as BotEventsRepository,
   );
-  return { service, repository, flowTools, whatsapp, logger, handoff };
+  return { events, service, repository, flowTools, whatsapp, logger, handoff };
 }
 
 describe('ConversationService.handle', () => {
@@ -131,6 +134,7 @@ describe('ConversationService.handle', () => {
     expect(phone).toBe('5586999991234');
     await save({ step: 'askName', customer: {} });
     expect(repository.saveOrder).toHaveBeenCalledWith('5586999991234', {
+      cycleId: expect.any(String),
       step: 'askName',
       customer: {},
     });
@@ -540,6 +544,7 @@ describe('ConversationService lembrete', () => {
 
     expect(repository.saveOrder).toHaveBeenCalledWith('5586999991234', {
       ...saved,
+      cycleId: expect.any(String),
       lastInboundAt: now.toISOString(),
     });
     expect(repository.scheduleReminder).toHaveBeenCalledWith(
@@ -736,5 +741,36 @@ describe('ConversationService atendente', () => {
 
     expect(whatsapp.sent).toHaveLength(1);
     expect(logger.warn).toHaveBeenCalled();
+  });
+});
+
+describe('ConversationService métricas', () => {
+  it('registra turno e mantém o ciclo entre mensagens', async () => {
+    const { service, repository, events } = setup();
+    await service.handle(parseWebhook(textWebhook('oi', 'metric.1')));
+    const state = repository.saveOrder.mock.calls[0][1] as OrderState;
+    expect(state.cycleId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(events.record).toHaveBeenCalledWith({
+      name: 'turn',
+      cycleId: state.cycleId,
+      prevStep: undefined,
+      step: 'askName',
+      durationMs: expect.any(Number),
+    });
+    repository.loadOrder.mockResolvedValueOnce(state);
+    await service.handle(parseWebhook(textWebhook('oi', 'metric.2')));
+    expect(events.record).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cycleId: state.cycleId, prevStep: 'askName', step: 'askName' }),
+    );
+    repository.loadOrder.mockResolvedValueOnce(null);
+    await service.handle(parseWebhook(textWebhook('oi', 'metric.3')));
+    expect(events.record.mock.calls[2][0].cycleId).not.toBe(state.cycleId);
+  });
+
+  it('registra emergência na rota humana', async () => {
+    const { service, events, handoff } = setup();
+    handoff.routeFor.mockResolvedValueOnce('agent');
+    await service.handle(parseWebhook(textWebhook('está vazando gás', 'metric.emergency')));
+    expect(events.record).toHaveBeenCalledWith({ name: 'emergency', reason: 'agent_route' });
   });
 });

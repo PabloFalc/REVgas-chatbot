@@ -75,6 +75,19 @@ Depois, em qualquer etapa:
 - `tô sentindo cheiro de gás`: texto fixo de segurança (Bombeiros, 193) e fila do atendente, sem IA.
 - `/novo` no simulador apaga o pedido do telefone e recomeça.
 
+### Ver métricas (opcional)
+
+O bot grava eventos sem dados pessoais em `bot_events`, com retenção padrão de 180 dias.
+Para consultar a demo, configure a senha local e o usuário de leitura conforme o
+[guia de métricas](./docs/guides/modules/metrics.md), depois rode:
+
+```sh
+pnpm metabase:up
+```
+
+Abra http://localhost:3001 e use os [cards SQL](./docs/guides/metrics/sql/).
+Ao terminar, rode `pnpm metabase:stop`. Os volumes preservam a configuração.
+
 ---
 
 ## Pré-requisitos

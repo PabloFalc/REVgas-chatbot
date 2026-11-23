@@ -251,3 +251,13 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 
 > Estas decisões de segurança também estão consolidadas em
 > [security/SECURITY.md](../../security/SECURITY.md).
+
+
+## Métricas
+
+| Variável | Obrigatória | Default | Função e consequências |
+| --- | --- | --- | --- |
+| `METRICS_ENABLED` | Não | `true` | Liga os eventos do bot e sua limpeza. `false` desliga ambos sem alterar o fluxo. |
+| `METRICS_RETENTION_DAYS` | Não | `180` | Inteiro positivo. Eventos anteriores ao limite são removidos ao iniciar e a cada 24 horas; timer desligado em testes. |
+
+O Metabase usa `docker/metabase.env`, ignorado pelo Git. `POSTGRES_PASSWORD` e `MB_DB_PASS` devem ter a mesma senha do banco de configuração; essa credencial é diferente da usada para ler `bot_events`. Setup e catálogo em [metrics.md](../modules/metrics.md).
