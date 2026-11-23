@@ -11,5 +11,5 @@ SELECT u.step,
   count(*) AS ciclos
 FROM ultimos u
 WHERE u.occurred_at < now() - interval '15 minutes'
-  AND NOT EXISTS (SELECT 1 FROM eventos e WHERE e.cycle_id = u.cycle_id AND ((e.name = 'sale' AND e.outcome IN ('created', 'rejected')) OR e.name IN ('handoff', 'order_cancelled')))
+  AND NOT EXISTS (SELECT 1 FROM eventos e WHERE e.cycle_id = u.cycle_id AND ((e.name = 'sale' AND e.outcome IN ('created', 'rejected')) OR (e.name = 'handoff' AND e.outcome IN ('queued', 'active')) OR e.name = 'order_cancelled'))
 GROUP BY u.step, fase, lembrete ORDER BY ciclos DESC;
