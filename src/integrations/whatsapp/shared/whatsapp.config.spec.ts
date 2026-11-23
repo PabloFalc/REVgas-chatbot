@@ -60,6 +60,7 @@ describe('resolveWhatsappConfig', () => {
     const production = {
       NODE_ENV: 'production',
       CORS_ORIGIN: 'https://painel.exemplo.com',
+      REDIS_PASSWORD: 'senha-do-redis',
       WHATSAPP_ALLOWED_SENDERS: '5586999990000',
     };
     expect(() => resolveWhatsappConfig(parse(production))).toThrow(

@@ -79,11 +79,13 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - **Embedding:** `EMBEDDING_API_KEY` (cai em `LLM_API_KEY` se vazia) segue as mesmas regras: só no
   header da chamada server-side, nunca em log, erro, resposta HTTP nem prompt. O log do embedding
   leva só a operação, o modelo, o status e a contagem de textos.
-- **Redis:** `REDIS_PASSWORD` e `REDIS_TLS` (opcionais em dev, obrigatórios na prática em prod) —
-  sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
+- **Redis:** `REDIS_PASSWORD` (obrigatória em produção, o boot falha sem ela) e `REDIS_TLS` (ligue
+  em produção com Redis gerenciado). Sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
   O `docker-compose.yml` configura `maxmemory-policy noeviction`: com memória cheia o Redis recusa
   gravações em vez de apagar chaves (trava, bloqueio de CPF, estado do pedido). Em produção, use a
   mesma política; `allkeys-*` poderia apagar o bloqueio de CPF.
+- `REVGAS_MODE=live` cria vendas reais no ERP e só sobe com `REVGAS_ALLOW_LIVE_SALES=true`, para
+  que ninguém ligue vendas reais sem querer.
 - **Swagger** protegido por `DOC_TOKEN` (header `x-doc-token`) e não montado em produção.
 
 ## Headers & transporte

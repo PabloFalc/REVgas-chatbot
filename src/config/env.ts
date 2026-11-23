@@ -49,6 +49,7 @@ export const envConfigSchema = z
 
     // REVGAS
     REVGAS_MODE: z.preprocess(emptyAsUndefined, z.enum(['live', 'hybrid', 'fake']).optional()),
+    REVGAS_ALLOW_LIVE_SALES: z.stringbool().default(false),
     REVGAS_API_URL: z.preprocess(emptyAsUndefined, z.url().default('https://api.revgas.com/v1')),
     REVGAS_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
     REVGAS_ESTABLISHMENT_ID: z.preprocess(
@@ -205,6 +206,15 @@ export const envConfigSchema = z
   .refine(value => value.NODE_ENV !== 'production' || !value.CORS_ORIGIN?.includes('*'), {
     path: ['CORS_ORIGIN'],
     message: 'CORS_ORIGIN não pode conter "*" em produção',
+  })
+  .refine(value => value.NODE_ENV !== 'production' || !!value.REDIS_PASSWORD, {
+    path: ['REDIS_PASSWORD'],
+    message: 'REDIS_PASSWORD é obrigatório em produção',
+  })
+  .refine(value => value.REVGAS_MODE !== 'live' || value.REVGAS_ALLOW_LIVE_SALES, {
+    path: ['REVGAS_ALLOW_LIVE_SALES'],
+    message:
+      'REVGAS_MODE=live cria vendas reais na RevGás; confirme com REVGAS_ALLOW_LIVE_SALES=true',
   })
   .refine(
     value =>

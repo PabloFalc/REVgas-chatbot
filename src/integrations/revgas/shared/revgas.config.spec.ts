@@ -27,16 +27,23 @@ describe('resolveRevgasConfig', () => {
 
   it('respeita REVGAS_MODE explícito', () => {
     const config = resolveRevgasConfig(
-      parse({ REVGAS_MODE: 'live', REVGAS_API_KEY: 'k', REVGAS_ESTABLISHMENT_ID: '2' }),
+      parse({
+        REVGAS_MODE: 'live',
+        REVGAS_ALLOW_LIVE_SALES: 'true',
+        REVGAS_API_KEY: 'k',
+        REVGAS_ESTABLISHMENT_ID: '2',
+      }),
     );
     expect(config.mode).toBe('live');
     expect(config.apiKey).toBe('k');
   });
 
   it('falha em live/hybrid sem REVGAS_ESTABLISHMENT_ID', () => {
-    expect(() => resolveRevgasConfig(parse({ REVGAS_MODE: 'live', REVGAS_API_KEY: 'k' }))).toThrow(
-      /REVGAS_ESTABLISHMENT_ID/,
-    );
+    expect(() =>
+      resolveRevgasConfig(
+        parse({ REVGAS_MODE: 'live', REVGAS_ALLOW_LIVE_SALES: 'true', REVGAS_API_KEY: 'k' }),
+      ),
+    ).toThrow(/REVGAS_ESTABLISHMENT_ID/);
     expect(() => resolveRevgasConfig(parse({ REVGAS_API_KEY: 'k' }))).toThrow(
       /REVGAS_ESTABLISHMENT_ID/,
     );
