@@ -249,14 +249,9 @@ export class ConversationService {
       );
     }
 
-    try {
-      await this.persist(phone, result.state);
-    } catch (error) {
-      this.logger.error(
-        { ...log, error: errorInfo(error) },
-        'Falha ao gravar o pedido depois do fluxo',
-      );
-    }
+    const now = new Date();
+    const saved = await this.persist(phone, result.state, now, log);
+    await this.updateReminder(phone, result.state, now, log);
 
     this.logger.info(
       {
@@ -268,18 +263,52 @@ export class ConversationService {
       },
       'Fluxo de pedido avançou',
     );
+    if (!saved && result.saleId === undefined) {
+      return { replies: [text(msg.unavailable)], result };
+    }
     return { replies: result.replies, result };
   }
 
-  private async persist(phone: string, state: OrderState | null): Promise<void> {
-    if (state === null) {
-      await this.conversations.clearOrder(phone);
-      await this.conversations.cancelReminder(phone);
-      return;
+  private async persist(
+    phone: string,
+    state: OrderState | null,
+    now: Date,
+    log: object,
+  ): Promise<boolean> {
+    try {
+      if (state === null) {
+        await this.conversations.clearOrder(phone);
+      } else {
+        await this.conversations.saveOrder(phone, { ...state, lastInboundAt: now.toISOString() });
+      }
+      return true;
+    } catch (error) {
+      this.logger.error(
+        { ...log, error: errorInfo(error) },
+        'Falha ao gravar o pedido depois do fluxo',
+      );
+      return false;
     }
-    const now = new Date();
-    await this.conversations.saveOrder(phone, { ...state, lastInboundAt: now.toISOString() });
-    await this.conversations.scheduleReminder(phone, new Date(now.getTime() + REMINDER_AFTER_MS));
+  }
+
+  private async updateReminder(
+    phone: string,
+    state: OrderState | null,
+    now: Date,
+    log: object,
+  ): Promise<void> {
+    try {
+      if (state === null) {
+        await this.conversations.cancelReminder(phone);
+      } else {
+        await this.conversations.scheduleReminder(
+          phone,
+          new Date(now.getTime() + REMINDER_AFTER_MS),
+        );
+      }
+    } catch (error) {
+      this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao atualizar o lembrete');
+    }
   }
 
   private async onStatus(event: StatusEvent): Promise<void> {

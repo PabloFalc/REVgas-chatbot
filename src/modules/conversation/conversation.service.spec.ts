@@ -440,18 +440,70 @@ describe('ConversationService venda criada', () => {
     expect(handoff.recordTurn).toHaveBeenCalledWith(expect.objectContaining({ saleId: 55 }));
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ messageId: 'wamid.V5', from: '*******1234' }),
-      'Falha ao gravar o pedido depois do fluxo',
+      'Falha ao atualizar o lembrete',
     );
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain('5586999991234');
   });
 
-  it('falha ao gravar o pedido não impede a resposta do turno', async () => {
+  it('falha ao gravar o pedido avisa a instabilidade e o turno seguinte parte do estado gravado', async () => {
     const { service, repository, whatsapp } = setup();
+    let stored: OrderState | null = { step: 'askName', customer: {} };
+    repository.loadOrder.mockImplementation(async () => stored);
+    repository.saveOrder.mockImplementation(async (_phone: string, state: OrderState) => {
+      stored = state;
+    });
     repository.saveOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    const next: OrderState = { step: 'askCpf', customer: { name: 'Maria' } };
+    runFlowMock.mockResolvedValue({ state: next, replies: [text('Qual é o seu CPF?')] });
 
-    await service.handle(parseWebhook(textWebhook('oi', 'wamid.V6')));
+    await service.handle(parseWebhook(textWebhook('Maria', 'wamid.V6')));
+
+    expect(stored).toEqual({ step: 'askName', customer: {} });
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.unavailable);
+    expect(JSON.stringify(whatsapp.sent[0].body)).not.toContain('Qual é o seu CPF?');
+
+    await service.handle(parseWebhook(textWebhook('Maria', 'wamid.V7')));
+
+    expect(runFlowMock).toHaveBeenLastCalledWith(
+      { step: 'askName', customer: {} },
+      expect.anything(),
+      expect.anything(),
+      expect.any(Function),
+    );
+    expect(stored).toMatchObject(next);
+    expect(whatsapp.sent).toHaveLength(2);
+    expect(JSON.stringify(whatsapp.sent[1].body)).toContain('Qual é o seu CPF?');
+  });
+
+  it('falha ao agendar o lembrete não muda a resposta do turno', async () => {
+    const { service, repository, whatsapp, logger } = setup();
+    repository.scheduleReminder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    runFlowMock.mockResolvedValueOnce({
+      state: { step: 'askCpf', customer: { name: 'Maria' } },
+      replies: [text('Qual é o seu CPF?')],
+    });
+
+    await service.handle(parseWebhook(textWebhook('Maria', 'wamid.V8')));
 
     expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain('Qual é o seu CPF?');
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'wamid.V8' }),
+      'Falha ao atualizar o lembrete',
+    );
+  });
+
+  it('venda criada é confirmada mesmo se apagar o pedido falhar', async () => {
+    const { service, repository, whatsapp } = setup();
+    repository.clearOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    runFlowMock.mockResolvedValueOnce(saleResult);
+
+    await service.handle(parseWebhook(textWebhook('confirmar', 'wamid.V9')));
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain('Pedido nº 55 confirmado');
+    expect(repository.cancelReminder).toHaveBeenCalledWith('5586999991234');
   });
 
   it('não loga telefone cru nem venda quando não há saleId', async () => {
