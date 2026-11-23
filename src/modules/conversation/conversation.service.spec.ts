@@ -153,16 +153,49 @@ describe('ConversationService.handle', () => {
     );
   });
 
-  it('falha ao ler o pedido não trata a mensagem como conversa nova', async () => {
-    const { service, repository, whatsapp, logger } = setup();
+  it('falha ao ler o pedido não trata a mensagem como conversa nova e avisa a instabilidade', async () => {
+    const { service, repository, whatsapp, logger, handoff } = setup();
     repository.loadOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     await service.handle(parseWebhook(textWebhook('oi', 'wamid.LO')));
 
     expect(runFlowMock).not.toHaveBeenCalled();
     expect(repository.saveOrder).not.toHaveBeenCalled();
-    expect(whatsapp.sent).toEqual([]);
+    expect(handoff.recordTurn).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.unavailable);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'wamid.LO', from: '*******1234' }),
+      'Falha ao ler o estado da conversa',
+    );
+  });
+
+  it('falha ao consultar o handoff não devolve o cliente ao bot e avisa a instabilidade', async () => {
+    const { service, repository, whatsapp, logger, handoff } = setup();
+    handoff.routeFor.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.RF')));
+
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(repository.loadOrder).not.toHaveBeenCalled();
+    expect(handoff.forwardToAgent).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.unavailable);
     expect(logger.error).toHaveBeenCalledOnce();
+  });
+
+  it('falha no envio do aviso de instabilidade só vai para o log', async () => {
+    const whatsapp = new FakeWhatsappClient();
+    vi.spyOn(whatsapp, 'sendText').mockRejectedValueOnce(new Error('rede'));
+    const { service, repository, logger } = setup(whatsapp);
+    repository.loadOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await expect(
+      service.handle(parseWebhook(textWebhook('oi', 'wamid.LO2'))),
+    ).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('5586999991234');
   });
 
   it('erro inesperado do fluxo é logado sem responder e sem texto do cliente', async () => {

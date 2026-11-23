@@ -110,20 +110,40 @@ export class ConversationService {
     const incoming = toIncoming(event);
     const outcome = await this.conversations.withPhoneLock(event.from, async () => {
       const inbound = toDeskInbound(incoming.content);
-      if ((await this.handoff.routeFor(event.from)) === 'agent') {
+      const context = await this.loadContext(event.from, log);
+      if (context === null) {
+        await this.sendAll(event.from, [text(msg.unavailable)], log);
+        return;
+      }
+      if (context.route === 'agent') {
         await this.forward(event.from, inbound, log);
         if (inbound.type === 'text' && detectEmergency(inbound.text)) {
           await this.flagEmergency(event.from, log);
         }
         return;
       }
-      const { replies, before, result } = await this.advance(incoming, log);
+      const { before } = context;
+      const { replies, result } = await this.advance(incoming, before, log);
       await this.sendAll(event.from, replies, log);
       await this.mirror(incoming, inbound, replies, before, result, log);
     });
     if (!outcome.ran) {
       this.logger.warn(log, 'Lock do telefone não liberou a tempo; mensagem não processada');
       await this.sendAll(event.from, [text(msg.busy)], log);
+    }
+  }
+
+  private async loadContext(
+    phone: string,
+    log: object,
+  ): Promise<{ route: 'bot' | 'agent'; before: OrderState | null } | null> {
+    try {
+      const route = await this.handoff.routeFor(phone);
+      const before = route === 'bot' ? await this.conversations.loadOrder(phone) : null;
+      return { route, before };
+    } catch (error) {
+      this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao ler o estado da conversa');
+      return null;
     }
   }
 
@@ -185,13 +205,13 @@ export class ConversationService {
 
   private async advance(
     incoming: IncomingMessage,
+    before: OrderState | null,
     log: object,
-  ): Promise<{ replies: Reply[]; before: OrderState | null; result: StepResult }> {
+  ): Promise<{ replies: Reply[]; result: StepResult }> {
     const phone = incoming.from;
     const tools = this.flowTools.forPhone(phone, state =>
       this.conversations.saveOrder(phone, state),
     );
-    const before = await this.conversations.loadOrder(phone);
     const result = await runFlow(
       before,
       { phone, content: incoming.content },
@@ -238,7 +258,7 @@ export class ConversationService {
       },
       'Fluxo de pedido avançou',
     );
-    return { replies: result.replies, before, result };
+    return { replies: result.replies, result };
   }
 
   private async persist(phone: string, state: OrderState | null): Promise<void> {
