@@ -21,28 +21,19 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
 
   async get<T>(params: CacheGetParams): Promise<T | null> {
     const { key, prefix } = params;
-    try {
-      const result = await this.redis.get(this._makePrefix(key, prefix));
-      if (!result) return null;
-      return JSON.parse(result) as T;
-    } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache get error');
-      return null;
-    }
+    const result = await this.redis.get(this._makePrefix(key, prefix));
+    if (!result) return null;
+    return JSON.parse(result) as T;
   }
 
   async set(params: CacheSetParams): Promise<void> {
     const { key, value, ttl, prefix } = params;
-    try {
-      const serialized = JSON.stringify(value);
-      const keyWithPrefix = this._makePrefix(key, prefix);
-      if (ttl) {
-        await this.redis.setex(keyWithPrefix, ttl, serialized);
-      } else {
-        await this.redis.set(keyWithPrefix, serialized);
-      }
-    } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache set error');
+    const serialized = JSON.stringify(value);
+    const keyWithPrefix = this._makePrefix(key, prefix);
+    if (ttl) {
+      await this.redis.setex(keyWithPrefix, ttl, serialized);
+    } else {
+      await this.redis.set(keyWithPrefix, serialized);
     }
   }
 
@@ -58,21 +49,12 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
 
   async exists(params: CacheGetParams): Promise<boolean> {
     const { key, prefix } = params;
-    try {
-      return (await this.redis.exists(this._makePrefix(key, prefix))) === 1;
-    } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache exists error');
-      return false;
-    }
+    return (await this.redis.exists(this._makePrefix(key, prefix))) === 1;
   }
 
   async delete(params: CacheGetParams): Promise<void> {
     const { key, prefix } = params;
-    try {
-      await this.redis.del(this._makePrefix(key, prefix));
-    } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache delete error');
-    }
+    await this.redis.del(this._makePrefix(key, prefix));
   }
 
   async deleteIfEquals(params: CacheGetParams & { value: unknown }): Promise<boolean> {

@@ -300,5 +300,17 @@ describe('CatalogRepository', () => {
       ]);
       expect(vi.mocked(cache.set).mock.calls.every(([params]) => params.ttl === 600)).toBe(true);
     });
+
+    it('falls back to RevGás when the cache fails', async () => {
+      const { repository, productsList, cache } = build({
+        products: [product(1, 'P13')],
+        deals: [deal(1, 1, 'PIX', 100)],
+      });
+      vi.mocked(cache.get).mockRejectedValue(new Error('ECONNREFUSED'));
+      vi.mocked(cache.set).mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(repository.listProducts({})).resolves.toHaveLength(1);
+      expect(productsList).toHaveBeenCalledOnce();
+    });
   });
 });

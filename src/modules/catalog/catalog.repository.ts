@@ -134,10 +134,12 @@ export class CatalogRepository {
   }
 
   private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
-    const hit = await this.cache.get<T>({ prefix: CACHE_PREFIX, key });
+    const hit = await this.cache.get<T>({ prefix: CACHE_PREFIX, key }).catch(() => null);
     if (hit !== null) return hit;
     const value = await load();
-    await this.cache.set({ prefix: CACHE_PREFIX, key, value, ttl: CACHE_TTL_SECONDS });
+    await this.cache
+      .set({ prefix: CACHE_PREFIX, key, value, ttl: CACHE_TTL_SECONDS })
+      .catch(() => undefined);
     return value;
   }
 }

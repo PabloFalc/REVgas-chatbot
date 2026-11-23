@@ -143,13 +143,8 @@ export class HandoffService {
   }
 
   async routeFor(phone: string): Promise<'bot' | 'agent'> {
-    try {
-      const state = await this.activeState(phone);
-      return state?.status === 'active' ? 'agent' : 'bot';
-    } catch (error) {
-      this.warn(phone, error, 'Falha ao consultar o handoff');
-      return 'bot';
-    }
+    const state = await this.activeState(phone);
+    return state?.status === 'active' ? 'agent' : 'bot';
   }
 
   async forwardToAgent(phone: string, inbound: DeskInbound): Promise<void> {

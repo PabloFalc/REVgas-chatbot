@@ -153,6 +153,18 @@ describe('ConversationService.handle', () => {
     );
   });
 
+  it('falha ao ler o pedido não trata a mensagem como conversa nova', async () => {
+    const { service, repository, whatsapp, logger } = setup();
+    repository.loadOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await service.handle(parseWebhook(textWebhook('oi', 'wamid.LO')));
+
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(repository.saveOrder).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toEqual([]);
+    expect(logger.error).toHaveBeenCalledOnce();
+  });
+
   it('erro inesperado do fluxo é logado sem responder e sem texto do cliente', async () => {
     const { service, whatsapp, logger } = setup();
     runFlowMock.mockRejectedValueOnce(new Error('bug'));

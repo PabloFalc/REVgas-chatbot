@@ -17,21 +17,10 @@ describe('RedisService.delete', () => {
     expect(del).toHaveBeenCalledWith('p:k');
   });
 
-  it('loga o erro do Redis e não propaga', async () => {
+  it('propaga o erro do Redis', async () => {
     const del = vi.fn().mockRejectedValue(new Error('boom'));
-    const { service, logger } = build(del);
-    await expect(service.delete({ prefix: 'p', key: 'k' })).resolves.toBeUndefined();
-    expect(logger.error).toHaveBeenCalled();
-  });
-
-  it('não loga a chave no erro, só o prefixo', async () => {
-    const del = vi.fn().mockRejectedValue(new Error('boom'));
-    const { service, logger } = build(del);
-    await service.delete({ prefix: 'p', key: '5586999990000' });
-    const [fields] = logger.error.mock.calls[0];
-    expect(fields).toMatchObject({ component: 'cache', prefix: 'p' });
-    expect(JSON.stringify(fields)).not.toContain('5586999990000');
-    expect(fields).not.toHaveProperty('key');
+    const { service } = build(del);
+    await expect(service.delete({ prefix: 'p', key: 'k' })).rejects.toThrow('boom');
   });
 
   it('withPrefix expõe delete', async () => {
@@ -39,6 +28,27 @@ describe('RedisService.delete', () => {
     const { service } = build(del);
     await service.withPrefix('p').delete({ prefix: 'p', key: 'k' });
     expect(del).toHaveBeenCalledWith('p:k');
+  });
+});
+
+describe('RedisService get, set e exists', () => {
+  function buildFailing() {
+    const boom = vi.fn().mockRejectedValue(new Error('boom'));
+    const logger = { setContext: vi.fn(), error: vi.fn() };
+    const service = new RedisService(
+      { get: boom, set: boom, setex: boom, exists: boom } as unknown as Redis,
+      logger as unknown as PinoLogger,
+    );
+    return { service, logger };
+  }
+
+  it('propagam o erro do Redis em vez de devolver vazio', async () => {
+    const { service, logger } = buildFailing();
+    await expect(service.get({ prefix: 'p', key: 'k' })).rejects.toThrow('boom');
+    await expect(service.set({ prefix: 'p', key: 'k', value: 1 })).rejects.toThrow('boom');
+    await expect(service.set({ prefix: 'p', key: 'k', value: 1, ttl: 60 })).rejects.toThrow('boom');
+    await expect(service.exists({ prefix: 'p', key: 'k' })).rejects.toThrow('boom');
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });
 
