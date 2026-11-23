@@ -49,7 +49,7 @@ describe('globalCommand', () => {
       say('cancelar'),
       createFakeTools({ findRecentSale: async () => 321 }),
     );
-    expect(found).toEqual({ state: null, replies: [text(msg.saleCreated(321))], saleId: 321 });
+    expect(found).toEqual({ state: null, replies: [text(msg.saleCreated(321, 110))], saleId: 321 });
     const none = await globalCommand(failed, say('cancelar'), createFakeTools());
     expect(none).toEqual({ state: null, replies: [text(msg.cancelled)] });
   });

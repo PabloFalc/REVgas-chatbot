@@ -189,8 +189,9 @@ export const msg = {
   fixProduct: 'Produto',
   fixAddress: 'Endereço',
   fixPayment: 'Pagamento',
-  saleCreated: (id: number) => `Pedido nº ${id} confirmado! Já estamos separando seu gás.`,
   saleFailed: 'Não consegui registrar seu pedido agora.',
+  saleCreated: (id: number, total: number) =>
+    `Pedido nº ${id} confirmado! Total: ${formatMoney(total)}. Já estamos separando seu gás.`,
   saleRejected: (phone?: string) => `Não foi possível registrar seu pedido. ${storeContact(phone)}`,
   retry: 'Tentar de novo',
   saleInProgress: 'Estou registrando seu pedido, só um instante.',
