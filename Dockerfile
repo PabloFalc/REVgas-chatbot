@@ -12,7 +12,7 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN pnpm build
+RUN pnpm build && pnpm prune --prod
 
 FROM base AS runner
 WORKDIR /app
@@ -25,6 +25,7 @@ COPY --from=builder --chown=app:nodejs /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/knowledge ./knowledge
+COPY --from=builder /app/drizzle ./drizzle
 
 USER app
 
