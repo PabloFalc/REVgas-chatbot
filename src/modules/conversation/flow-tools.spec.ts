@@ -354,6 +354,12 @@ describe('FlowToolsService métricas', () => {
       expect(events.record).toHaveBeenCalledWith(expect.objectContaining(event));
   });
 
+  it('order_cancelled herda o ciclo como os demais eventos do fluxo', () => {
+    const { service, events } = setup();
+    service.forPhone(PHONE, async () => undefined, 'cycle').track({ name: 'order_cancelled' });
+    expect(events.record).toHaveBeenCalledWith({ name: 'order_cancelled', cycleId: 'cycle' });
+  });
+
   it('record lançando não transforma sucesso da venda em falha', async () => {
     const { service, events } = setup();
     events.record.mockImplementation(() => {

@@ -17,6 +17,7 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 | `turn` | Etapa anterior, próxima etapa e duração desde a entrada da mensagem até o fim do envio; apenas rota bot |
 | `reminder_sent` | Etapa do lembrete enviado |
 | `sale` | `created`, `failed`, `rejected`; razão `direct`, `recovered`, tipo de erro RevGás ou `unexpected` |
+| `order_cancelled` | Pedido cancelado pelo cliente sem venda criada |
 | `handoff` | Status do handoff; `customer_request`, `sale_failed`, `emergency` |
 | `handoff_offered` | `stuck` após três incompreensões ou `offense` após duas ofensas |
 | `quantity_limit` | `max` ou `stock` |

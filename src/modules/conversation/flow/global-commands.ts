@@ -58,6 +58,7 @@ export async function globalCommand(
   if (CANCEL.includes(text)) {
     if (state?.step === 'creatingSale') return { state, replies: [textReply(msg.saleInProgress)] };
     if (state?.step === 'saleFailed') return cancelAfterFailedSale(state, tools);
+    tools.track({ name: 'order_cancelled' });
     return { state: null, replies: [textReply(msg.cancelled)] };
   }
 

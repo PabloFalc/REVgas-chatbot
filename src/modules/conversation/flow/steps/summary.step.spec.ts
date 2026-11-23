@@ -328,10 +328,16 @@ describe('saleFailed', () => {
     expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(888))], saleId: 888 });
     expect(seen[0]).toEqual(order);
     expect(seen[1]).toEqual(new Date('2026-10-21T15:00:00.000Z'));
+    expect(tools.calls).not.toContainEqual({
+      name: 'track',
+      args: [{ name: 'order_cancelled' }],
+    });
   });
 
   it('cancelar depois da falha sem venda encontrada cancela normalmente', async () => {
-    const result = await cancelAfterFailedSale(state, createFakeTools());
+    const tools = createFakeTools();
+    const result = await cancelAfterFailedSale(state, tools);
     expect(result).toEqual({ state: null, replies: [text(msg.cancelled)] });
+    expect(tools.calls).toContainEqual({ name: 'track', args: [{ name: 'order_cancelled' }] });
   });
 });

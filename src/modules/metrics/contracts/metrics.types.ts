@@ -12,6 +12,7 @@ export type MetricEvent = Cycle &
         outcome: 'created' | 'failed' | 'rejected';
         reason: 'direct' | 'recovered' | RevgasErrorKind | 'unexpected';
       }
+    | { name: 'order_cancelled' }
     | { name: 'handoff'; outcome: HandoffStatus; reason: HandoffReason }
     | { name: 'handoff_offered'; reason: 'stuck' | 'offense' }
     | { name: 'quantity_limit'; reason: 'max' | 'stock' }
