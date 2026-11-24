@@ -10,6 +10,7 @@ correspondente.
 - [requisitos.md](./project/requisitos.md) — requisitos funcionais e não funcionais
 - [funcionalidades.md](./project/funcionalidades.md) — funcionalidades (F01…) e prioridades
 - [fluxo.md](./project/fluxo.md) — fluxo da conversa no WhatsApp
+- [fluxo-v2.md](./project/fluxo-v2.md) — fluxo alvo (requisitos de 2026-11-24): cliente novo, recorrente, gás, pagamento na entrega, atendente e testes dos endpoints
 - [revgas-ai-flow.md](./project/revgas-ai-flow.md) — documento original do projeto (fonte dos demais)
 
 ## Guias de área

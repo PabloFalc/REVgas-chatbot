@@ -52,6 +52,27 @@ describe.skipIf(!env.REVGAS_API_KEY)('RevGás API real (somente leitura)', () =>
     );
   });
 
+  it('produtos de gás têm preço base nas formas de pagamento na entrega', async () => {
+    const products = await revgas.products.list();
+    const gas = products.data.filter(product => /^GLP/i.test(product.description));
+    expect(gas.length).toBeGreaterThan(0);
+
+    const deals = await revgas.deals.listAll();
+    const onDelivery = ['MONEY', 'PIX', 'CARTAO_DE_DEBITO', 'CARTAO_DE_CREDITO'];
+    const priced = gas.filter(product =>
+      onDelivery.every(paymentType =>
+        deals.some(
+          deal =>
+            deal.product_id === product.id &&
+            deal.type === 'PAYMENT_TYPE' &&
+            deal.payment_type === paymentType &&
+            Number(deal.suggested_value) > 0,
+        ),
+      ),
+    );
+    expect(priced.length).toBeGreaterThan(0);
+  });
+
   it('lista vendas', async () => {
     const page = await revgas.sales.list({ page_size: 5 });
     expect(Array.isArray(page.data)).toBe(true);

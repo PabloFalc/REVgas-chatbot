@@ -133,8 +133,17 @@ pnpm revgas:check
 
 Roda `scripts/revgas.live-check.spec.ts` com `vitest.config.live.ts`, usando o `.env` local.
 Só faz GET, respeita o intervalo da config, usa logger silencioso e não imprime dados de cliente.
-Verifica estabelecimentos, produtos, negociações (todas com `payment_type`) e vendas, e espera
+Verifica estabelecimentos, produtos, negociações (todas com `payment_type`), que algum gás (`GLP`)
+tem preço base em dinheiro, Pix, débito e crédito, e vendas, e espera
 `RevgasForbiddenError` em clientes e formas de pagamento (documenta a permissão atual; quando a
 RevGás liberar, esses dois testes devem ser atualizados). Sem `REVGAS_API_KEY` a suíte é pulada.
 Se `REVGAS_ESTABLISHMENT_ID` não estiver definido, usa 2580. Fica fora de `pnpm test` e
 `pnpm test:e2e`.
+
+Os testes de clientes (cadastro, busca por telefone e por `cpf_or_cnpj`, CPF duplicado) ficam em
+`scripts/revgas-customers.live-check.spec.ts`, separados porque gravam na API. A parte de escrita
+só roda com `REVGAS_LIVE_WRITES=true`:
+
+```
+REVGAS_LIVE_WRITES=true pnpm exec vitest run --config vitest.config.live.ts scripts/revgas-customers.live-check.spec.ts
+```
