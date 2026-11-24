@@ -65,6 +65,7 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 | `REDIS_HOST` | Não | `127.0.0.1` | Host do Redis. |
 | `REDIS_PORT` | Não | `6379` | Porta do Redis. |
 | `REDIS_PASSWORD` | Em produção | vazio | Senha (`AUTH`). Sem ela, um Redis exposto fica aberto a quem alcança a porta — e ele guarda o rate limit e o estado das conversas. Em produção o boot falha sem ela. |
+| `REDIS_DB` | Não | `0` | Índice do banco lógico do Redis (0 a 15). Os e2e usam `1` (`vitest.config.e2e.ts`) para não dividir chaves com o bot em dev. Redis gerenciado com um banco só (cluster) aceita apenas `0`. |
 | `REDIS_TLS` | Não | `false` | Liga TLS (`rediss://`). `false` em dev; **ligue em produção**. Redis gerenciado (Upstash/ElastiCache/Redis Cloud/Railway) normalmente **exige** TLS. |
 
 ## Under Pressure (circuit breaker de memória)

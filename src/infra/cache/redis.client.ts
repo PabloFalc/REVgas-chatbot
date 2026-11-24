@@ -19,6 +19,7 @@ export const redis: () => Redis = () => {
     port: env.REDIS_PORT,
     password: env.REDIS_PASSWORD,
     tls: env.REDIS_TLS ? {} : undefined,
+    db: env.REDIS_DB,
     retryStrategy: times => {
       const delay = Math.min(times * 50, 2000);
 

@@ -38,6 +38,7 @@ export const envConfigSchema = z
     REDIS_PORT: z.coerce.number().default(6379),
     REDIS_PASSWORD: z.preprocess(emptyAsUndefined, z.string().optional()),
     REDIS_TLS: z.stringbool().default(false),
+    REDIS_DB: z.coerce.number().int().min(0).max(15).default(0),
 
     // UNDER PRESSURE
     PRESSURE_MAX_HEAP_BYTES: z.coerce.number().default(500_000_000),
