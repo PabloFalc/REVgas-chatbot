@@ -258,6 +258,11 @@ bot enviou ao Chatwoot nos e2e, pegue o simulador com `app.get(CHATWOOT_CLIENT)`
 
 ## Armadilhas
 
+- **Conversa apagada no painel:** o bot guarda o id da conversa no Redis (`handoff:thread`). Se a
+  conversa for apagada, a próxima chamada recebe 404 (`not_found`); o bot descarta estado, thread e
+  contato do telefone e abre uma conversa nova (log `Conversa não existe mais no Chatwoot; abrindo
+  outra`). No espelho e no pedido de atendente ele tenta de novo uma vez na conversa nova; numa
+  mensagem repassada a um atendente ativo, essa mensagem se perde e o cliente volta para o bot.
 - **Janela de 24 h da Meta:** o atendente só escreve até 24 h depois da última mensagem do cliente;
   por isso o bot pede que o cliente mande "oi" quando a revenda abrir.
 - **Atrás de Nginx**, ative `underscores_in_headers on;`, senão o header `api_access_token` das

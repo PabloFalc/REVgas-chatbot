@@ -36,6 +36,9 @@ function memoryRepository() {
     saveContact: async (phone: string, contact: DeskContact) => {
       contacts.set(phone, contact);
     },
+    clearContact: async (phone: string) => {
+      contacts.delete(phone);
+    },
     claimDeskMessage: async (id: number) => {
       if (claimed.has(id)) return false;
       claimed.add(id);
@@ -744,6 +747,91 @@ describe('HandoffService', () => {
       const { service } = setup();
       expect(await service.claimDeskMessage(1)).toBe(true);
       expect(await service.claimDeskMessage(1)).toBe(false);
+    });
+  });
+
+  describe('conversa apagada no Chatwoot', () => {
+    it('recordTurn abre outra conversa e espelha nela', async () => {
+      const { service, client, threads, logger } = setup();
+      await service.recordTurn(turn());
+      const old = threads.get(PHONE)?.conversationId as number;
+      client.conversations.delete(old);
+
+      await service.recordTurn(turn({ inbound: { type: 'text', text: 'de novo' } }));
+
+      const current = threads.get(PHONE)?.conversationId;
+      expect(current).toBeDefined();
+      expect(current).not.toBe(old);
+      expect(client.conversations.get(current as number)?.messages.map(m => m.content)).toEqual([
+        'de novo',
+        'Olá!',
+      ]);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ error: 'not_found' }),
+        'Conversa não existe mais no Chatwoot; abrindo outra',
+      );
+    });
+
+    it('recordTurn descarta a fila que apontava para a conversa apagada', async () => {
+      const { service, client, states, threads } = setup();
+      await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+      const old = states.get(PHONE)?.conversationId as number;
+      client.conversations.delete(old);
+
+      await service.recordTurn(turn());
+
+      expect(states.get(PHONE)).toBeUndefined();
+      expect(threads.get(PHONE)?.conversationId).not.toBe(old);
+      expect(client.conversations.size).toBe(1);
+    });
+
+    it('requestHandoff entra na fila numa conversa nova', async () => {
+      const { service, client, states, threads } = setup();
+      await service.recordTurn(turn());
+      const old = threads.get(PHONE)?.conversationId as number;
+      client.conversations.delete(old);
+
+      const outcome = await service.requestHandoff({
+        phone: PHONE,
+        reason: 'customer_request',
+        summary: null,
+      });
+
+      expect(outcome.status).toBe('queued');
+      const current = states.get(PHONE)?.conversationId as number;
+      expect(current).not.toBe(old);
+      expect(client.conversations.get(current)?.status).toBe('open');
+    });
+
+    it('forwardToAgent devolve o cliente ao bot quando a conversa sumiu', async () => {
+      const { service, client, states, threads } = setup();
+      const { id } = await client.createConversation({
+        contactId: 1,
+        sourceId: 's',
+        status: 'open',
+      });
+      await service.markAgentMessage(PHONE, id);
+      client.conversations.delete(id);
+
+      await expect(
+        service.forwardToAgent(PHONE, { type: 'text', text: 'oi' }),
+      ).resolves.toBeUndefined();
+
+      expect(states.get(PHONE)).toBeUndefined();
+      expect(threads.get(PHONE)).toBeUndefined();
+      await expect(service.routeFor(PHONE)).resolves.toBe('bot');
+    });
+
+    it('outras falhas não descartam a conversa', async () => {
+      const { service, client, threads } = setup();
+      await service.recordTurn(turn());
+      const id = threads.get(PHONE)?.conversationId;
+      client.failNext();
+
+      await service.recordTurn(turn());
+
+      expect(threads.get(PHONE)?.conversationId).toBe(id);
+      expect(client.conversations.size).toBe(1);
     });
   });
 });

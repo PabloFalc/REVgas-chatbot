@@ -63,6 +63,10 @@ export class HandoffRepository {
     });
   }
 
+  clearContact(phone: string): Promise<void> {
+    return this.cache.delete({ prefix: CONTACT_PREFIX, key: phone });
+  }
+
   async claimDeskMessage(messageId: number): Promise<boolean> {
     try {
       return await this.cache.setIfAbsent({

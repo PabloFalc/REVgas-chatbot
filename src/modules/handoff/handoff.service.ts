@@ -73,6 +73,10 @@ function errorKind(error: unknown): string {
   return error instanceof Error ? error.name : 'unknown';
 }
 
+function isGone(error: unknown): boolean {
+  return error instanceof ChatwootError && error.kind === 'not_found';
+}
+
 function isExpired(state: HandoffState, now: Date): boolean {
   if (state.status === 'active') {
     const last = Date.parse(state.lastAgentAt ?? state.since);
@@ -117,29 +121,37 @@ export class HandoffService {
     if (!this.desk.enabled) return outcome('unavailable');
     const { phone } = request;
     try {
-      const state = await this.activeState(phone);
-      if (state && request.reason === 'emergency') {
-        await this.postEmergencyNote(phone, state.conversationId);
-      }
-      if (state?.status === 'queued') return outcome('alreadyQueued');
-      if (state?.status === 'active') return outcome('active');
-      const conversationId = await this.ensureThread(phone);
-      await this.desk.postNote(
-        conversationId,
-        hideCpfs(handoffNote(request.reason, request.summary)),
-      );
-      await this.desk.setStatus(conversationId, 'open');
-      await this.repo.saveState(phone, {
-        status: 'queued',
-        conversationId,
-        reason: request.reason,
-        since: this.clock.now().toISOString(),
-      });
-      return outcome('queued');
+      return await this.retryIfGone(phone, () => this.handoff(request, outcome));
     } catch (error) {
       this.warn(phone, error, 'Falha ao transferir para o atendente');
       return outcome('unavailable');
     }
+  }
+
+  private async handoff(
+    request: HandoffRequest,
+    outcome: (status: HandoffStatus) => HandoffOutcome,
+  ): Promise<HandoffOutcome> {
+    const { phone } = request;
+    const state = await this.activeState(phone);
+    if (state && request.reason === 'emergency') {
+      await this.postEmergencyNote(phone, state.conversationId);
+    }
+    if (state?.status === 'queued') return outcome('alreadyQueued');
+    if (state?.status === 'active') return outcome('active');
+    const conversationId = await this.ensureThread(phone);
+    await this.desk.postNote(
+      conversationId,
+      hideCpfs(handoffNote(request.reason, request.summary)),
+    );
+    await this.desk.setStatus(conversationId, 'open');
+    await this.repo.saveState(phone, {
+      status: 'queued',
+      conversationId,
+      reason: request.reason,
+      since: this.clock.now().toISOString(),
+    });
+    return outcome('queued');
   }
 
   async routeFor(phone: string): Promise<'bot' | 'agent'> {
@@ -154,6 +166,7 @@ export class HandoffService {
       if (!state) return;
       await this.desk.postIncoming(state.conversationId, deskText(inbound, false));
     } catch (error) {
+      await this.forgetIfGone(phone, error);
       this.warn(phone, error, 'Falha ao repassar mensagem ao atendente');
     }
   }
@@ -165,32 +178,37 @@ export class HandoffService {
       if (!state) return;
       await this.postEmergencyNote(phone, state.conversationId);
     } catch (error) {
+      await this.forgetIfGone(phone, error);
       this.warn(phone, error, 'Falha ao avisar a emergência ao atendente');
     }
   }
 
   async recordTurn(turn: TurnRecord): Promise<void> {
     if (!this.desk.enabled) return;
-    const { phone } = turn;
     try {
-      const state = await this.activeState(phone);
-      if (!state && turn.newCycle) await this.resolveStaleThread(phone);
-      const conversationId = state?.conversationId ?? (await this.ensureThread(phone, turn.name));
-      await this.desk.postIncoming(conversationId, deskText(turn.inbound, turn.sensitive));
-      for (const message of turn.botMessages) {
-        await this.desk.postOutgoing(conversationId, hideCpfs(message));
-      }
-      if (turn.saleId !== undefined && state?.status === 'queued') {
-        await this.desk.postNote(conversationId, saleNote(turn.saleId));
-        await this.desk.setStatus(conversationId, 'resolved');
-        await this.repo.clearState(phone);
-        await this.repo.clearThread(phone);
-      } else if (turn.ended && !state) {
-        await this.desk.setStatus(conversationId, 'resolved');
-        await this.repo.clearThread(phone);
-      }
+      await this.retryIfGone(turn.phone, () => this.mirrorTurn(turn));
     } catch (error) {
-      this.warn(phone, error, 'Falha ao espelhar a conversa no Chatwoot');
+      this.warn(turn.phone, error, 'Falha ao espelhar a conversa no Chatwoot');
+    }
+  }
+
+  private async mirrorTurn(turn: TurnRecord): Promise<void> {
+    const { phone } = turn;
+    const state = await this.activeState(phone);
+    if (!state && turn.newCycle) await this.resolveStaleThread(phone);
+    const conversationId = state?.conversationId ?? (await this.ensureThread(phone, turn.name));
+    await this.desk.postIncoming(conversationId, deskText(turn.inbound, turn.sensitive));
+    for (const message of turn.botMessages) {
+      await this.desk.postOutgoing(conversationId, hideCpfs(message));
+    }
+    if (turn.saleId !== undefined && state?.status === 'queued') {
+      await this.desk.postNote(conversationId, saleNote(turn.saleId));
+      await this.desk.setStatus(conversationId, 'resolved');
+      await this.repo.clearState(phone);
+      await this.repo.clearThread(phone);
+    } else if (turn.ended && !state) {
+      await this.desk.setStatus(conversationId, 'resolved');
+      await this.repo.clearThread(phone);
     }
   }
 
@@ -203,6 +221,7 @@ export class HandoffService {
         await this.desk.postOutgoing(thread.conversationId, hideCpfs(text));
       }
     } catch (error) {
+      await this.forgetIfGone(phone, error);
       this.warn(phone, error, 'Falha ao espelhar o lembrete no Chatwoot');
     }
   }
@@ -251,6 +270,7 @@ export class HandoffService {
       if (!state) return;
       await this.desk.postNote(state.conversationId, WINDOW_CLOSED_NOTE);
     } catch (error) {
+      await this.forgetIfGone(phone, error);
       this.warn(phone, error, 'Falha ao avisar a janela de 24 h');
     }
   }
@@ -308,6 +328,28 @@ export class HandoffService {
     const conversationId = await this.desk.openConversation(contact);
     await this.repo.saveThread(phone, { conversationId });
     return conversationId;
+  }
+
+  private async retryIfGone<T>(phone: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      if (!isGone(error)) throw error;
+      this.warn(phone, error, 'Conversa não existe mais no Chatwoot; abrindo outra');
+      await this.forgetDesk(phone);
+      return run();
+    }
+  }
+
+  private async forgetIfGone(phone: string, error: unknown): Promise<void> {
+    if (!isGone(error)) return;
+    await this.forgetDesk(phone).catch(() => undefined);
+  }
+
+  private async forgetDesk(phone: string): Promise<void> {
+    await this.repo.clearState(phone);
+    await this.repo.clearThread(phone);
+    await this.repo.clearContact(phone);
   }
 
   private warn(phone: string, error: unknown, message: string): void {
