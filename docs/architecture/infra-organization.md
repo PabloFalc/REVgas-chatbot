@@ -4,10 +4,6 @@ A camada `src/infra` concentra a integração com recursos externos — **cache*
 **database** (Drizzle/Postgres) e **health** (monitoramento). Cada subpasta é um módulo NestJS
 com fronteiras explícitas (`imports`/`exports`).
 
-> Serviços cross-cutting que não são infraestrutura de dados ficam em `src/core/services/` — hoje
-> só o `EmailService` (Resend), em standby junto com a auth (ver
-> [email-service.md](../guides/services/email-service.md)).
-
 > Pela [especificação](../project/specs.md), `infra/` vai ganhar o estado da conversa (Redis com
 > TTL) e as tabelas do chatbot (histórico, vendas, handoffs, métricas). Clientes de serviços
 > externos (API RevGás, WhatsApp, LLM) **não** ficam aqui — vão para `src/integrations/`.
@@ -39,11 +35,10 @@ src/infra/
 │   │   └── soft-delete.ts       # notDeleted() para tabelas com deleted_at
 │   └── schemas/
 │       ├── index.ts
-│       ├── better-auth/
-│       │   ├── accounts.table.ts
-│       │   ├── sessions.table.ts
-│       │   ├── users.table.ts
-│       │   └── verifications.table.ts
+│       ├── knowledge/
+│       │   └── knowledge-chunks.table.ts
+│       ├── metrics/
+│       │   └── bot-events.table.ts
 │       └── shared/
 │           └── timestamps.ts
 └── health/
@@ -70,7 +65,7 @@ src/infra/
 - Design orientado a interfaces (`ICacheClient`, `IDatabaseClient`) permite trocar implementações
 - O padrão de registry dos health checks é extensível — novos indicadores se registram sozinhos,
   sem tocar no código existente (ver abaixo)
-- Schemas agrupados por domínio (`better-auth/`, `shared/`)
+- Schemas agrupados por domínio (`knowledge/`, `metrics/`, `shared/`)
 - Fronteiras de módulo NestJS bem definidas, com `imports`/`exports` explícitos
 
 ---
@@ -91,7 +86,7 @@ estiver registrado. Adicionar um novo recurso ao health check **não** exige toc
 | Indicadores | `MemoryHealthService` (em `health/`), `RedisHealthService` (em `cache/`) e `DrizzleHealthService` (em `database/`). Cada um implementa `IHealthChecks`. |
 | `HealthService` (`health.service.ts`) | Roda todos os indicadores (`Promise.allSettled`), monta o mapa `checks` e calcula o **status global**. |
 | `publicHealth` (`health.public.ts`) | Em produção, remove o `checks` da resposta (só `status`/`timestamp`/`uptime`). |
-| `HealthController` | `GET /health` — `@Public()`, `@Throttle(HEALTH_THROTTLE)` (120/min), retorna `publicHealth(result)`. |
+| `HealthController` | `GET /health` — `@Throttle(HEALTH_THROTTLE)` (120/min), retorna `publicHealth(result)`. |
 
 ### O fluxo de uma chamada a `/health`
 

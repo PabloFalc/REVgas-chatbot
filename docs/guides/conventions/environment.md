@@ -9,7 +9,7 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 > [`.env.example`](../../../.env.example) é o template versionado, só com **placeholders** — copie-o
 > para `.env` e preencha. Em produção, use **secrets** do servidor/CI, nunca um arquivo no repo.
 >
-> **`pnpm test` não precisa de `.env`:** `vitest.config.ts` define as variáveis do ambiente unitário e aponta `DOTENV_CONFIG_PATH` para `/dev/null`. O `pnpm test:e2e` lê o `.env` e exige `BETTER_AUTH_SECRET` preenchida (o CI define uma; veja [testing.md](./testing.md#testes-e2e)).
+> **`pnpm test` não precisa de `.env`:** `vitest.config.ts` define as variáveis do ambiente unitário e aponta `DOTENV_CONFIG_PATH` para `/dev/null`. O `pnpm test:e2e` lê o `.env` (veja [testing.md](./testing.md#testes-e2e)).
 
 ## Convenções de tipo
 
@@ -25,7 +25,7 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
-| `NODE_ENV` | Não | `development` | `development` \| `production` \| `test`. Controla hardening por ambiente (máscara de erros, `/health` enxuto, throttle real, Swagger desligado em produção, email log-only em `test`). Valor errado relaxa proteções de produção. |
+| `NODE_ENV` | Não | `development` | `development` \| `production` \| `test`. Controla hardening por ambiente (máscara de erros, `/health` enxuto, throttle real, Swagger desligado em produção). Valor errado relaxa proteções de produção. |
 | `PORT` | Não | `3100` | Porta HTTP. |
 | `HOST` | Não | `0.0.0.0` | Interface de bind. `0.0.0.0` aceita conexões externas (necessário em container). |
 | `LOG_LEVEL` | Não | por `NODE_ENV` (ver abaixo) | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace` \| `silent`. Sobrescreve o nível do logger (Pino). Sem ela, o default é `debug` em dev, `info` em produção e `silent` em test. Use para subir/baixar a verbosidade sem editar código — ex.: `LOG_LEVEL=trace` ao caçar um bug, ou `LOG_LEVEL=debug` para ligar logs ao depurar um teste. |
@@ -41,21 +41,11 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 > dos clientes do chatbot nos logs. Os exception filters logam apenas campos seguros
 > (`name`/`code`/`message`/`stack`), nunca o erro ou o `body` da request cru.
 
-## Better Auth (standby)
-
-> A auth está em standby (ver [auth.md](../modules/auth.md#status-standby)). Estas variáveis só
-> importam quando ela for ligada.
-
-| Variável | Obrigatória | Default | Função e consequências |
-|---|---|---|---|
-| `BETTER_AUTH_SECRET` | Não (standby; **sim** com a auth ligada) | vazio = não definida | Chave de assinatura dos tokens de sessão do Better Auth. Quando preenchida, **mín. 32 chars** (senão o boot falha). Se vazar, **sessões podem ser forjadas**. Gere com `openssl rand -base64 32`. |
-| `BETTER_AUTH_URL` | Não | `http://localhost:3100` | URL base da API; base do link de verificação de email (`/auth/email/verify`). Em produção, aponte para a URL pública real (ex.: `https://api.exemplo.com`). |
-
 ## CORS & proxy
 
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
-| `CORS_ORIGIN` | **Em produção** | vazio (modo aberto em dev) | Allowlist de origens (lista separada por vírgula). É a **fonte única** do CORS, do `trustedOrigins` do Better Auth e da validação de `callbackURL`. Em dev vazio/`*` → modo aberto. Em **produção é obrigatória e não pode conter `*`** (o boot falha — ver [refinamentos](#validações-de-boot)). Ex.: `https://app.exemplo.com,https://admin.exemplo.com`. |
+| `CORS_ORIGIN` | **Em produção** | vazio (modo aberto em dev) | Allowlist de origens (lista separada por vírgula). É a **fonte única** do CORS. Em dev vazio/`*` → modo aberto. Em **produção é obrigatória e não pode conter `*`** (o boot falha — ver [refinamentos](#validações-de-boot)). Ex.: `https://app.exemplo.com,https://admin.exemplo.com`. |
 | `TRUSTED_PROXY` | Não | vazio (não confia) | Confiança no `X-Forwarded-For`. Vazio = `trustProxy:false`. Confiar em qualquer peer permite **spoof de IP** e **bypass do rate limit** (a chave do throttler é `req.ip`). Atrás de proxy/LB informe o **IP/CIDR** do proxy. Contagem de hops (`1`) é **recusada no boot**: desde o Fastify 5.12 ela não confia em nenhum proxy, o que quebraria o rate limit sem aviso. |
 
 ## Banco de dados (Postgres)
@@ -68,13 +58,13 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 | `DB_CONNECTION_TIMEOUT_MS` | Não | `5000` | Tempo máx. para abrir conexão antes de falhar. |
 | `DB_STATEMENT_TIMEOUT_MS` | Não | `10000` | Tempo máx. de uma query. Mitiga **DoS por query lenta** / exaustão de conexões. |
 
-## Redis (estado da conversa, throttler, sessões)
+## Redis (estado da conversa, throttler)
 
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
 | `REDIS_HOST` | Não | `127.0.0.1` | Host do Redis. |
 | `REDIS_PORT` | Não | `6379` | Porta do Redis. |
-| `REDIS_PASSWORD` | Em produção | vazio | Senha (`AUTH`). Sem ela, um Redis exposto fica aberto a quem alcança a porta — e ele guarda **sessões** (`secondaryStorage`), rate limit e, no chatbot, o estado das conversas. Em produção o boot falha sem ela. |
+| `REDIS_PASSWORD` | Em produção | vazio | Senha (`AUTH`). Sem ela, um Redis exposto fica aberto a quem alcança a porta — e ele guarda o rate limit e o estado das conversas. Em produção o boot falha sem ela. |
 | `REDIS_TLS` | Não | `false` | Liga TLS (`rediss://`). `false` em dev; **ligue em produção**. Redis gerenciado (Upstash/ElastiCache/Redis Cloud/Railway) normalmente **exige** TLS. |
 
 ## Under Pressure (circuit breaker de memória)
@@ -194,17 +184,6 @@ Usadas pelo módulo `address` quando o cliente digita o endereço sem cidade ou 
 | `STORE_STATE` | Não | `PI` | UF (2 letras) assumida quando o endereço não traz UF. |
 | `STORE_PHONE` | Não | vazio | Telefone da revenda em texto livre (ex.: `(86) 3222-0000`), mostrado quando o CPF já está em outro cadastro e, com o Chatwoot desligado ou fora do ar, quando o cliente pede atendente. Sem ela, a mensagem diz só "fale direto com a revenda". |
 
-## E-mail — Resend (standby)
-
-Usadas só pelo `EmailService`, cujo único consumidor é a auth (standby). Ver
-[email-service.md](../services/email-service.md).
-
-| Variável | Obrigatória | Default | Função e consequências |
-|---|---|---|---|
-| `RESEND_API_KEY` | Não (na prática, sim em produção com a auth ligada) | vazio = não definida | Chave da API do Resend. Em `test` o envio é sempre log-only; em dev sem `EMAIL_DEV_REDIRECT` também. Em produção sem chave, emails de verificação/reset falham. |
-| `EMAIL_FROM` | Não | `onboarding@resend.dev` | Remetente. Sem domínio verificado o Resend só permite `onboarding@resend.dev` (e só para o dono da conta). Em produção: `"Nome <no-reply@exemplo.com>"` com DNS verificado (SPF/DKIM/DMARC). |
-| `EMAIL_DEV_REDIRECT` | Não (só dev) | vazio = não definida | Em dev, envia de verdade mas **redireciona todos** os emails para este endereço. Vazio em dev = log-only. Validada como email. Ignorada em produção (envia ao destinatário real). |
-
 ## Documentação (Swagger/Scalar)
 
 | Variável | Obrigatória | Default | Função e consequências |
@@ -231,8 +210,7 @@ app (que usa só a `DATABASE_URL`); existem para conveniência de dev e têm def
 
 Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violados:
 
-- `BETTER_AUTH_SECRET` preenchida com < 32 chars → erro.
-- `DATABASE_URL` / `BETTER_AUTH_URL` / `REVGAS_API_URL` / `WHATSAPP_API_URL` / `LLM_API_URL` / `EMAIL_DEV_REDIRECT` (se preenchidas) mal formadas → erro.
+- `DATABASE_URL` / `REVGAS_API_URL` / `WHATSAPP_API_URL` / `LLM_API_URL` (se preenchidas) mal formadas → erro.
 - **Em produção**, `CORS_ORIGIN` ausente → erro (`CORS_ORIGIN é obrigatório em produção`).
 - **Em produção**, `CORS_ORIGIN` contendo `*` → erro (`CORS_ORIGIN não pode conter "*"`).
 - Em produção, `REDIS_PASSWORD` vazia → erro (`REDIS_PASSWORD é obrigatório em produção`).
@@ -244,7 +222,6 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 ## Checklist de produção
 
 - [ ] `NODE_ENV=production`
-- [ ] Se a auth estiver ligada: `BETTER_AUTH_SECRET` forte (`openssl rand -base64 32`) via secrets, `BETTER_AUTH_URL` na URL pública (HTTPS), `RESEND_API_KEY` de produção e `EMAIL_FROM` de domínio verificado
 - [ ] `CORS_ORIGIN` com as origens reais do front, **sem `*`**
 - [ ] `TRUSTED_PROXY` conforme a topologia (IP/CIDR do proxy/LB; contagem de hops não é aceita)
 - [ ] `DATABASE_URL` do banco gerenciado

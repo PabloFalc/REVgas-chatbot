@@ -1,12 +1,5 @@
 import { applyDecorators, HttpCode, HttpStatus, UseInterceptors } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiOperation,
-  ApiParam,
-  ApiQuery,
-  ApiResponse,
-} from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { isZodDto } from 'nestjs-zod/dto';
 import { ZodResponseInterceptor } from 'src/core/interceptors/zod-response.interceptor';
@@ -18,10 +11,6 @@ export type ApiDocParams = {
   body?: ZodType | ZodDto;
   query?: ZodType | ZodDto;
   param?: Record<string, ZodType | ZodDto | 'string' | 'number' | 'boolean'>;
-
-  security?: {
-    bearer?: boolean;
-  };
 
   response?: Record<number, ZodType | ZodDto>;
   statusCode?: number;
@@ -59,7 +48,7 @@ function namedDto(schema: ZodType | ZodDto, name: string): ZodDto {
 function buildApiDocDecorators(props: ApiDocParams, route: string): MethodDecorator[] {
   const decorators: MethodDecorator[] = [];
 
-  const { summary, body, description, statusCode, query, response, security, param } = props;
+  const { summary, body, description, statusCode, query, response, param } = props;
 
   decorators.push(ApiOperation({ summary, description }));
 
@@ -79,10 +68,6 @@ function buildApiDocDecorators(props: ApiDocParams, route: string): MethodDecora
 
   if (query) {
     decorators.push(ApiQuery({ type: namedDto(query, `${route}Query`) }));
-  }
-
-  if (security?.bearer) {
-    decorators.push(ApiBearerAuth('bearer'));
   }
 
   if (response) {

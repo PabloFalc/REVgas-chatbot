@@ -10,16 +10,13 @@ Projeto de Extensão 2026.2 (ICEV) para a **Flow**. Escopo, requisitos e fluxo e
 [`docs/project/`](./docs/project/specs.md).
 
 **Stack:** NestJS 11 (adapter **Fastify**, Node), **Drizzle ORM** (Postgres), **Redis**
-(ioredis — estado da conversa, rate limit, sessões), **nestjs-zod**/Zod (validação),
-**Better Auth** + **Resend** (login do painel por token Bearer — em **standby**), **Pino** (logs),
+(ioredis — estado da conversa, rate limit), **nestjs-zod**/Zod (validação), **Pino** (logs),
 **Biome** (lint/format), **Vitest** (unit + e2e).
 
 > **Status (2026-11-23):** o fluxo de pedido está completo e testado: conversa, cliente,
 > catálogo, pedido, endereço, assistente (IA), handoff e base de conhecimento, mais os clientes de
 > RevGás, WhatsApp, ViaCEP, Chatwoot e LLM. Cada cliente externo tem modo `fake`, então tudo roda
-> sem chaves. A auth do painel e o envio de email estão no código, mas em standby (ver
-> [auth.md](./docs/guides/modules/auth.md#status-standby)). Pendente: F05 (status do pedido),
-> painel da revenda e salvar vendas e conversas no Postgres (melhorias futuras, ver
+> sem chaves. Pendente: F05 (status do pedido), painel da revenda e salvar vendas e conversas no Postgres (melhorias futuras, ver
 > [funcionalidades.md](./docs/project/funcionalidades.md)).
 >
 > Limite conhecido: a chave RevGás disponível é só de leitura, então criar venda e cadastrar
@@ -108,8 +105,7 @@ pnpm db:migrate         # aplica as migrations Drizzle
 pnpm start:dev          # API em http://localhost:3100 — docs em /docs
 ```
 
-> O `.env` **não é versionado**. `BETTER_AUTH_SECRET` e as variáveis de email só são necessárias
-> ao ligar a auth (gere o secret com `openssl rand -base64 32`, mín. 32 chars). A `REVGAS_API_KEY` é solicitada ao suporte da RevGás e fica **só no servidor**.
+> O `.env` **não é versionado**. A `REVGAS_API_KEY` é solicitada ao suporte da RevGás e fica **só no servidor**.
 > Referência de cada variável:
 > [docs/guides/conventions/environment.md](./docs/guides/conventions/environment.md).
 
@@ -143,7 +139,7 @@ ou o modelo de embedding mudar.
 | Lint · fix | `pnpm lint` · `pnpm lint:fix` |
 | Format | `pnpm format` |
 | Testes unitários | `pnpm test` (não precisa de `.env`) |
-| Testes e2e | `pnpm test:e2e` (precisa de Postgres/Redis e de `BETTER_AUTH_SECRET`; ver [testing.md](./docs/guides/conventions/testing.md)) |
+| Testes e2e | `pnpm test:e2e` (precisa de Postgres/Redis; ver [testing.md](./docs/guides/conventions/testing.md)) |
 | Simulador de chat | `pnpm chat` (ver [chat-simulator.md](./docs/guides/conventions/chat-simulator.md)) |
 | Indexar a base de conhecimento | `pnpm kb:ingest` (com `LLM_API_KEY` gera embeddings reais; sem ela usa vetores fake; ver [knowledge.md](./docs/guides/modules/knowledge.md)) |
 | Checagens com serviço real | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` (usam chaves reais; `rag:check` só em dev) |
@@ -162,11 +158,11 @@ ou o modelo de embedding mudar.
 ```
 src/
   config/         env (Zod), plugins (pino, swagger, cors, helmet, compress, under-pressure)
-  core/           cross-cutting: guards, filters, interceptors, pipes, errors, services/email (standby)
+  core/           cross-cutting: guards, filters, interceptors, pipes, errors
   infra/          database (Drizzle + schemas), cache (Redis), health
   integrations/   clientes externos, cada um com modo fake: revgas, whatsapp, chatwoot, llm, viacep
   modules/        domínio: conversation (fluxo e webhooks), customer, catalog, order, address,
-                  assistant (IA), handoff, knowledge (RAG); auth/ em standby
+                  assistant (IA), handoff, knowledge (RAG)
   cli/            chat (simulador) e kb-ingest
   utils/          helpers (CPF, dinheiro, palavrões...)
 knowledge/        base de conhecimento (Markdown) e perguntas de avaliação
@@ -193,12 +189,8 @@ antes de mexer no código correspondente.
 
 ### Guias
 
-- **[auth.md](./docs/guides/modules/auth.md)** — autenticação do painel (Better Auth, só token
-  Bearer): status standby e como ligar, `AuthGuard`, fluxos de email e rotas.
 - **[chatwoot.md](./docs/guides/integrations/chatwoot.md)** — handoff para atendente via Chatwoot:
   Docker local, configuração da caixa e dos tokens, webhook, estados do handoff e limitações.
-- **[email-service.md](./docs/guides/services/email-service.md)** — `EmailService` (Resend),
-  standby, modo log-only em dev/test e templates.
 - **[api-doc.md](./docs/guides/conventions/api-doc.md)** — o decorator `@ApiDoc` (Swagger +
   validação da resposta com Zod).
 - **[environment.md](./docs/guides/conventions/environment.md)** — variáveis de ambiente e

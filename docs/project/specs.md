@@ -13,7 +13,7 @@ Chatbot de WhatsApp que atende clientes de uma revenda de gás (GLP) e cria a ve
 | Runtime | Node 24 | Gerenciador de pacotes: pnpm |
 | HTTP | NestJS 11 + Fastify | Módulos, DI, guards/filters globais; validação com nestjs-zod |
 | Estado da conversa | Redis com TTL | ioredis |
-| Banco | PostgreSQL + Drizzle (pgvector) | Base de conhecimento (RAG) e tabelas da auth em standby. Vendas, histórico e métricas não são salvos (melhoria futura, RN13) |
+| Banco | PostgreSQL + Drizzle (pgvector) | Base de conhecimento (RAG) e métricas do bot. Vendas e histórico não são salvos (melhoria futura, RN13) |
 | Validação | Zod | Webhooks, respostas da API RevGás e saída da IA |
 | Testes | Vitest | Unit + e2e; máquina de estados pura, testável sem WhatsApp e sem IA |
 | Canal | WhatsApp Cloud API (oficial, da Meta) | Decidido; Evolution/Z-API descartados |
@@ -47,7 +47,6 @@ src/
     assistant/              # IA: interpretar, ler nome e endereço, limite por telefone
     handoff/                # fila do atendente no Chatwoot
     knowledge/              # RAG: base, busca híbrida e checagens de saída
-    auth/                   # standby, não montado
   infra/
     cache/                  # Redis (ioredis): estado, trava, dedup, contadores
     database/               # Postgres + Drizzle: client, schema, migrations
@@ -132,7 +131,7 @@ O catálogo da RevGás mistura gás, água, vasilhames (casco vendido à parte),
 | Onde | O quê |
 | --- | --- |
 | Redis (TTL) | Estado da conversa e carrinho (só o prefixo de 3 dígitos do CPF para cliente conhecido), trava por telefone, dedup, bloqueio de CPF, estado do handoff, contadores de IA |
-| Postgres | Base de conhecimento (trechos e vetores) e tabelas da auth (standby). Sem vendas, histórico nem métricas |
+| Postgres | Base de conhecimento (trechos e vetores) e eventos de métricas. Sem vendas nem histórico |
 | Chatwoot | Espelho das conversas (fora do nosso banco; ver [SECURITY.md](../security/SECURITY.md#retenção-e-acesso-no-chatwoot)) |
 
 ## Restrições do canal (WhatsApp)

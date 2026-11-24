@@ -33,7 +33,7 @@ Package manager is **pnpm** — use it for everything.
 src/
   config/       env.ts (dotenv + Zod, imported directly — no ConfigService) and Fastify plugins
   core/         global guards, filters, pipes, interceptors, decorators; erros/ (app errors at the
-                root, one folder per integration: revgas/, whatsapp/, llm/, viacep/, chatwoot/); services/email
+                root, one folder per integration: revgas/, whatsapp/, llm/, viacep/, chatwoot/)
   infra/        database (Drizzle + schemas), cache (Redis), health
   integrations/ revgas/, whatsapp/ (client + webhook), chatwoot/ (client + webhook), llm/, viacep/ —
                 each with a fake mode
@@ -42,7 +42,7 @@ src/
   modules/      conversation/ (webhook + order flow), customer/, catalog/, order/, address/,
                 assistant/ (LLM interpretation of free text), handoff/ (queue to a human
                 agent via Chatwoot), knowledge/ (RAG over the base, answers questions in the
-                flow), auth/ (on standby)
+                flow)
   cli/          dev entry points run from dist/: kb-ingest, chat (terminal simulator, `pnpm chat`)
   server.ts     createServer() — the Fastify app shared by main.ts and `pnpm chat`
 knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluation/ (rag:check questions)
@@ -51,14 +51,14 @@ knowledge/      base/ (the .md files ingested by `pnpm kb:ingest`) and evaluatio
 - `AppModule` = `CoreModule` + `RoutesModule` + `InfraModule`. `RoutesModule` imports only
   `ConversationModule` (which imports `KnowledgeModule`), which also hosts the Chatwoot webhook
   route (`POST /webhooks/chatwoot`, validated by `X-Chatwoot-Signature`).
-- `CoreModule` registers the global filters in the order `unexpected` → `betterAuth` → `drizzle`
-  → `http` (Nest checks the last registered first, so the catch-all stays first), plus
-  `rateLimit` and `zodValidationPipe`.
-- **Auth is on standby**: no `/auth/*` routes and no global auth guard, so routes are public.
-  Postgres runs with pgvector and is used by Better Auth and by the knowledge base (via
-  `pnpm kb:ingest`). The WhatsApp webhook is validated by the Meta signature
-  (`X-Hub-Signature-256`, needs `rawBody: true` in `main.ts`). To turn auth on and for its
-  conventions, see `docs/guides/modules/auth.md`.
+- `CoreModule` registers the global filters in the order `unexpected` → `drizzle` → `http` (Nest
+  checks the last registered first, so the catch-all stays first), plus `rateLimit` and
+  `zodValidationPipe`.
+- **No auth**: there is no login, no `/auth/*` routes and no global auth guard, so routes are
+  public. Each sensitive route authenticates itself: the WhatsApp webhook by the Meta signature
+  (`X-Hub-Signature-256`, needs `rawBody: true` in `main.ts`), the Chatwoot webhook by
+  `X-Chatwoot-Signature`, Swagger by `DOC_TOKEN`. Postgres runs with pgvector and holds the
+  knowledge base (via `pnpm kb:ingest`) and the bot metrics.
 
 Dependency rules:
 
@@ -108,7 +108,7 @@ Read the matching guide before touching an area:
 - `docs/guides/integrations/` — `revgas.md` (modes, never retry POST), `whatsapp.md`,
   `llm.md`, `viacep.md`, `chatwoot.md` (human handoff desk, local Docker)
 - `docs/guides/modules/metrics.md` — events, retention, read-only Metabase and SQL cards
-- `docs/guides/modules/auth.md` · `docs/guides/modules/knowledge.md` · `docs/guides/services/email-service.md`
+- `docs/guides/modules/knowledge.md`
 - `docs/guides/conventions/` — `environment.md` (env vars), `testing.md`, `chat-simulator.md`
   (`pnpm chat`), `api-doc.md`, `ci-cd.md` (develop/staging/main gitflow)
 - `docs/security/SECURITY.md` — attack vectors, mitigations, secrets

@@ -9,9 +9,7 @@ permissions:
 # Valores de teste do CI (servicos efemeros em localhost; nao sao segredos reais).
 env:
   NODE_ENV: test
-  BETTER_AUTH_SECRET: ci-test-better-auth-secret-0123456789abcdef
   DATABASE_URL: postgresql://docker:docker@localhost:5432/test_db
-  BETTER_AUTH_URL: http://localhost:3100
   CORS_ORIGIN: http://localhost:3000
   REDIS_HOST: localhost
   REDIS_PORT: 6379

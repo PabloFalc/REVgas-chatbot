@@ -39,14 +39,6 @@ const throttler = ThrottlerModule.forRootAsync({
   }),
 });
 
-const STRICT_AUTH_THROTTLE = {
-  default: {
-    ttl: 60_000,
-    limit: env.NODE_ENV === 'test' ? 9999 : 10,
-    blockDuration: 300_000,
-  },
-};
-
 const HEALTH_THROTTLE = {
   default: {
     ttl: 60_000,
@@ -61,11 +53,4 @@ const WEBHOOK_THROTTLE = {
   },
 };
 
-export {
-  HEALTH_THROTTLE,
-  RateLimitGuard,
-  rateLimit,
-  STRICT_AUTH_THROTTLE,
-  throttler,
-  WEBHOOK_THROTTLE,
-};
+export { HEALTH_THROTTLE, RateLimitGuard, rateLimit, throttler, WEBHOOK_THROTTLE };

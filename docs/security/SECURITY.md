@@ -3,7 +3,7 @@
 Referência viva das **decisões e práticas de segurança** do revgas-chatbot. Foca no que é
 durável: vetores de ataque e suas mitigações, gestão de credenciais e escolhas de design com
 impacto de segurança. Detalhe de implementação fica no código e nos guias de área
-([auth.md](../guides/modules/auth.md), [environment.md](../guides/conventions/environment.md)).
+([environment.md](../guides/conventions/environment.md)).
 
 > **Princípio geral:** *fail-closed* e **hardening por ambiente** — dev é permissivo para não
 > atrapalhar o trabalho; produção é restrita e, em vários pontos, **não sobe** se mal configurada
@@ -11,33 +11,18 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 
 ---
 
-## Autenticação & sessão
+## Autenticação
 
-- Auth via **Better Auth** (singleton em `src/modules/auth/auth.ts`), só para o login do futuro
-  painel da revenda (F08); detalhes em [auth.md](../guides/modules/auth.md).
-- **Standby:** a auth (e o `EmailService`) está no código mas **desligada** — `RoutesModule` não
-  importa o `AuthModule`, então não há rotas `/auth/*` nem **guard global**: hoje toda rota é
-  pública por padrão. O webhook do WhatsApp, já implementado, é autenticado pela **assinatura do
-  provedor** (ver [Webhook do WhatsApp](#webhook-do-whatsapp)). Ao ligar a auth, o `AuthGuard` passa a valer em todas as rotas e as públicas
-  precisam de `@Public()`.
-- **Só token Bearer** (plugin `bearer()`): o cliente envia `Authorization: Bearer <token>`.
-  **Não há cookies** — logo não há superfície de **CSRF** (nenhuma credencial é anexada
-  automaticamente pelo browser). Contrapartida: o painel deve guardar o token com cuidado
-  (exposição a **XSS** se ficar em local legível por JS).
-- Com a auth ligada, o `AuthGuard` (provido pelo `AuthModule`, não pelo `CoreModule`) é
-  **fail-closed**: por padrão exige sessão **e** email verificado (`403` sem verificação).
-  Liberação explícita via `@Public` / `@AllowAnonymous` / `@AllowUnverified`.
-- Links de email (verify) validam o `callbackURL` contra a allowlist de origens
-  (`isTrustedCallbackURL`) para evitar **open redirect**; o `redirectTo` do reset é validado pelo
-  `trustedOrigins` do Better Auth.
-- Sessão expira em 7 dias. Leitura servida do **Redis** (`secondaryStorage`); **Postgres é a fonte
-  de verdade** (`storeSessionInDatabase`). `cookieCache` desligado.
+- O projeto **não tem login nem sessão de usuário**. Não há rotas `/auth/*` nem guard global:
+  toda rota é pública por padrão. Cada rota sensível se autentica por conta própria — o webhook
+  do WhatsApp pela **assinatura do provedor** (ver [Webhook do WhatsApp](#webhook-do-whatsapp)),
+  o do Chatwoot por `X-Chatwoot-Signature` e o Swagger por `DOC_TOKEN`.
 - O header `authorization` (e `password`, `token`, `secret`…) é redigido nos logs (Pino).
 
 ## Origens & CORS
 
 - **Fonte única** de origens em `src/config/origins.ts`, consumida pelo **CORS**
-  (`cors.config.ts`), pelo **`trustedOrigins`** do Better Auth e pela validação de `callbackURL`.
+  (`cors.config.ts`).
 - Comportamento por ambiente:
   - dev/test sem `CORS_ORIGIN` (ou `*`) → **aberto** (reflete a origem);
   - origem definida → **estrito** (só a lista);
@@ -48,8 +33,7 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - `trustProxy` é derivado de **`TRUSTED_PROXY`** (`false` por padrão). Confiar no
   `X-Forwarded-For` de qualquer peer permitiria **spoof de IP** e **bypass do rate limit** (a
   chave do throttler é `req.ip`). Atrás de proxy/LB, configure o IP/CIDR do proxy (contagem de hops é recusada no boot). **Sem `TRUSTED_PROXY` atrás de um proxy, todos os clientes aparecem com o IP do proxy** e dividem o mesmo limite; defina o valor no deploy.
-- Rate limit global (`@nestjs/throttler` + Redis): `default` 50/min; `sign-in`/`sign-up` com
-  `STRICT_AUTH_THROTTLE` (10/min, bloqueio 5min); `/health` com `HEALTH_THROTTLE` (120/min); `/webhooks/whatsapp` com `WEBHOOK_THROTTLE`
+- Rate limit global (`@nestjs/throttler` + Redis): `default` 50/min; `/health` com `HEALTH_THROTTLE` (120/min); `/webhooks/whatsapp` com `WEBHOOK_THROTTLE`
   (1000/min, porque todo o tráfego vem dos IPs da Meta).
 
 ## Gestão de segredos
@@ -57,10 +41,6 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 - `.env` **fora do git** (`.gitignore`); o `.env.example` só tem placeholders.
 - O CI (`tests.yml`) só tem **valores de teste** para serviços efêmeros do runner; segredos reais
   de produção nunca entram nos workflows.
-- `BETTER_AUTH_SECRET` é opcional enquanto a auth está em standby; quando preenchida exige
-  **≥ 32 chars** (validado no schema de env).
-- **Resend:** `RESEND_API_KEY` opcional (standby). Em dev/test o envio é log-only por padrão, para
-  não disparar tokens de verificação/reset para destinatários reais.
 - **API Key da RevGás (`REVGAS_API_KEY`) fica só no servidor** (RNF02): nunca vai para o front,
   para o prompt da IA, para respostas da API nem para logs. Vazada, permite criar/consultar vendas
   no ERP da revenda.
@@ -80,7 +60,7 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   header da chamada server-side, nunca em log, erro, resposta HTTP nem prompt. O log do embedding
   leva só a operação, o modelo, o status e a contagem de textos.
 - **Redis:** `REDIS_PASSWORD` (obrigatória em produção, o boot falha sem ela) e `REDIS_TLS` (ligue
-  em produção com Redis gerenciado). Sem auth, o Redis (sessões, rate limit e estado das conversas) fica aberto a quem alcança a porta.
+  em produção com Redis gerenciado). Sem senha, o Redis (rate limit e estado das conversas) fica aberto a quem alcança a porta.
   O `docker-compose.yml` configura `maxmemory-policy noeviction`: com memória cheia o Redis recusa
   gravações em vez de apagar chaves (trava, bloqueio de CPF, estado do pedido). Em produção, use a
   mesma política; `allkeys-*` poderia apagar o bloqueio de CPF.
@@ -265,12 +245,6 @@ Ainda não há política definida. A definir com a revenda antes de produção:
 - por quanto tempo guardar as conversas e como apagá-las a pedido do titular (LGPD);
 - quem tem conta de atendente ou administrador e com que permissão;
 - onde o Chatwoot roda e como é feito o backup, já que ele guarda o próprio Postgres.
-
-## Extensões com impacto de segurança
-
-- **Login social (OAuth):** não está no escopo. Se for adicionado, as colunas
-  `access_token`/`refresh_token`/`id_token` em `accounts` são gravadas em **texto plano** —
-  **ative a criptografia de tokens do Better Auth** ao habilitar OAuth.
 
 ## Itens em aberto
 

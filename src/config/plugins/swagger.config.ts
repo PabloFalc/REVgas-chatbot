@@ -38,15 +38,6 @@ export const swagger: AppSetup = async app => {
   const config = new DocumentBuilder()
     .setTitle('RevGás Chatbot API')
     .setDescription('API do chatbot de WhatsApp da RevGás')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        description:
-          'Token retornado no body de POST /auth/email/sign-in ou POST /auth/email/sign-up.',
-      },
-      'bearer',
-    )
     .addServer(`http://localhost:${env.PORT}`, 'Servidor de desenvolvimento')
     .setVersion(version)
     .build();

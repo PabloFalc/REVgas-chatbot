@@ -16,9 +16,6 @@ correspondente.
 
 ### Módulos (`guides/modules/`)
 
-- [auth.md](./guides/modules/auth.md) — autenticação do painel (Better Auth, só token Bearer):
-  status standby e como ligar, `AuthGuard`, `@AllowUnverified`, fluxos de email e rotas
-
 - [knowledge.md](./guides/modules/knowledge.md) — base de conhecimento (`src/modules/knowledge`):
   como escrever a base, `pnpm kb:ingest`, busca híbrida (vetor + texto), checagens da resposta,
   `pnpm rag:check`, valores calibrados e o banco com pgvector
@@ -42,11 +39,6 @@ correspondente.
 - [llm.md](./guides/integrations/llm.md) — cliente da LLM (`src/integrations/llm`, Gemini pelo endpoint
   compatível com OpenAI): modos `live`/`fake`, chave, como um módulo consome, erros, `FakeLlmClient`,
   trocar de provedor, embeddings (`EmbeddingClient`) e o check manual `pnpm llm:check`
-
-### Serviços (`guides/services/`)
-
-- [email-service.md](./guides/services/email-service.md) — `EmailService` (Resend), standby
-  (só a auth usa) e o modo log-only em dev/test
 
 ### Convenções (`guides/conventions/`)
 

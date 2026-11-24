@@ -44,10 +44,6 @@ export type ApiDocParams = {
   query?: ZodType | ZodDto;
   param?: Record<string, ZodType | ZodDto | 'string' | 'number' | 'boolean'>;
 
-  security?: {
-    bearer?: boolean;
-  };
-
   response?: Record<number, ZodType | ZodDto>;
   statusCode?: number;
 };
@@ -88,7 +84,7 @@ function routeName(target, propertyKey) {
 ```
 
 Junta a classe (sem o sufixo `Controller`) com o método em PascalCase:
-`EmailAuthController.signUp` → `EmailAuthSignUp`. É confiável: a classe já existe quando seus
+`ConversationController.receive` → `ConversationReceive`. É confiável: a classe já existe quando seus
 métodos são decorados, então não depende da ordem dos decorators nem do metadata do `@Controller`.
 
 ### 3. Criação do model (`namedDto`)
@@ -121,7 +117,6 @@ Com o `route` em mãos, monta a lista de decorators do NestJS/Swagger:
 - `ApiParam` para cada `param`;
 - `ApiBody` para `body`;
 - `ApiQuery` para `query`;
-- `ApiBearerAuth('bearer')` quando `security.bearer`;
 - quando há `response`: registra o `ZodResponseInterceptor` (mapa status → schema) e um
   `ApiResponse` por status;
 - `HttpCode(statusCode ?? 200)`.
@@ -132,10 +127,10 @@ O nome de cada model no Swagger é **sempre** `${rota}${sufixo}`:
 
 | Campo | Sufixo | Exemplo |
 | --- | --- | --- |
-| `body` | `Body` | `EmailAuthSignUpBody` |
+| `body` | `Body` | `ConversationReceiveBody` |
 | `query` | `Query` | `OrderListQuery` |
 | `param` (com schema/DTO) | `<chave>Param` | `OrderGetidParam` (método `get`, chave `id`) |
-| `response` | `<status>` | `EmailAuthSignUp201` |
+| `response` | `<status>` | `HealthCheck200` |
 
 E, de novo, **tanto faz passar schema raw ou `createZodDto`** — o nome é o mesmo:
 
@@ -252,18 +247,6 @@ schema/DTO no `param` do `@ApiDoc` (aí vira o model `${rota}<chave>Param`):
 async findById(@Param() params: FindUserParamsDto) { /* ... */ }
 ```
 
-### `security`
-
-**Apenas documenta** a autenticação (`ApiBearerAuth`). **Não protege** a rota — a auth em runtime
-é o `AuthGuard` global (fail-closed, provido pelo `AuthModule` — só existe com a auth ligada; hoje
-está em standby), controlado por `@Public()`/`@AllowAnonymous()`/`@AllowUnverified()`.
-Marcar `security` não tranca a rota; omitir não abre. A API só usa token Bearer (não há cookies),
-então a única opção é:
-
-```ts
-security: { bearer: true }          // Authorization: Bearer <token>
-```
-
 ### `response`
 
 Mapa `status HTTP → schema`. Quando informado, o `@ApiDoc` injeta o `ZodResponseInterceptor`, que:
@@ -320,7 +303,7 @@ src/modules/users/
     user.schemas.ts
 ```
 
-É o padrão usado no projeto — veja `src/modules/auth/email/docs/`, `src/modules/auth/session/docs/`
+É o padrão usado no projeto — veja `src/modules/conversation/docs/`
 e `src/infra/health/docs/`.
 
 `user.schemas.ts`:
@@ -381,8 +364,8 @@ export class UsersController {
 1. Escreva o schema Zod do contrato (body/query/param/response).
 2. Para entrada que valida, crie a classe `createZodDto(schema)`.
 3. Crie um `ApiDocParams` em `*.doc.ts` (ou `docs/*.doc.ts`).
-4. Informe `summary`, `description` quando ajudar, `statusCode`, `body`/`query`/`param`,
-   `security` e `response`.
+4. Informe `summary`, `description` quando ajudar, `statusCode`, `body`/`query`/`param`
+   e `response`.
 5. Use `@ApiDoc(documento)` no controller.
 6. Use as **classes DTO** nos parâmetros `@Body()/@Query()/@Param()` que precisam de validação.
 7. Cadastre em `response` todos os status que devem ser documentados e validados.
@@ -419,14 +402,12 @@ import { createOrderSchema, orderResponseSchema } from '../dtos/order.schemas';
 
 export const createOrderDoc: ApiDocParams = {
   summary: 'Cria um pedido',
-  description: 'Cria um pedido para o usuário autenticado.',
+  description: 'Cria um pedido.',
   statusCode: 201,
-  security: { bearer: true },
   body: createOrderSchema,
   response: {
     201: orderResponseSchema,
     400: httpReplySchema,
-    401: httpReplySchema,
   },
 };
 ```
@@ -454,7 +435,6 @@ Resultado:
 - a rota aparece no Swagger/Scalar com `summary`/`description`;
 - o body é documentado como `OrderCreateBody`;
 - o body é validado pelo `ZodValidationPipe` (porque o parâmetro é `CreateOrderDto`);
-- a rota fica marcada como autenticada por token Bearer (documentação);
 - o status principal é `201`;
 - a resposta `201` é documentada como `OrderCreate201` e validada pelo `ZodResponseInterceptor`;
-- os erros `400` (`OrderCreate400`) e `401` (`OrderCreate401`) ficam documentados.
+- o erro `400` (`OrderCreate400`) fica documentado.

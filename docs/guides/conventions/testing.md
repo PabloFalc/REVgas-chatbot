@@ -12,7 +12,7 @@ Comandos:
 | Tarefa | Comando |
 | --- | --- |
 | Unit | `pnpm test` (não precisa de `.env` nem de infra) |
-| E2e | `pnpm test:e2e` (precisa de infra, `pnpm docker:init`, e de `BETTER_AUTH_SECRET` no `.env`) |
+| E2e | `pnpm test:e2e` (precisa de infra: `pnpm docker:init` + `pnpm db:migrate`) |
 | Infra local | `pnpm docker:init` / `pnpm docker:stop` |
 
 > **Testar a conversa na mão, sem WhatsApp:** `pnpm chat` sobe o app e abre um chat no terminal,
@@ -61,8 +61,7 @@ O arquivo fica ao lado da unidade testada (`*.spec.ts` dentro de `src/`).
 
 ## Testes e2e
 
-> **Pré-requisitos do e2e:** `.env` com `BETTER_AUTH_SECRET` preenchida (mín. 32 caracteres; o CI usa
-> um valor fixo de teste em `.github/workflows/tests.yml`) e Postgres e Redis no ar. O e2e usa o
+> **Pré-requisitos do e2e:** Postgres e Redis no ar. O e2e usa o
 > banco do `.env` (o de desenvolvimento). O unitário (`pnpm test`) não lê `.env`: o
 > `vitest.config.ts` define o ambiente.
 
@@ -79,169 +78,59 @@ E2e sobe o app **inteiro** (Fastify + DI + plugins) e faz requisições HTTP de 
 export async function createApp(extraImports: (Type | DynamicModule)[] = []): Promise<NestFastifyApplication>;
 ```
 
-`createApp` monta um módulo de teste `[AppModule, ...extraImports]`. Isso permite testar módulos
-que estão **fora** do `AppModule` — hoje, a auth em standby:
+`createApp` monta um módulo de teste `[AppModule, ...extraImports]`. Os `extraImports` servem para
+montar módulos só de teste — ex.: `tests/core/drizzle-exception.e2e.spec.ts` passa um módulo com
+rotas que disparam erros do banco.
 
-- `createApp()` → o app como roda hoje (sem auth, sem guard global).
-- `createApp(authModule)` → o app com a auth ligada (`AuthModule` + rotas `/auth` + `AuthGuard`
-  global + `EmailModule`). É o que a suíte `tests/auth/email/email-auth.e2e.spec.ts` usa.
+`tests/app.e2e.spec.ts` cobre o app padrão: `GET /health` → `200`.
 
-`tests/app.e2e.spec.ts` cobre o app padrão: `GET /health` → `200` e
-`POST /auth/email/sign-in` → `404` (garante que a auth continua em standby).
-
-Em `NODE_ENV=test` os rate limits ficam relaxados (limite 9999), o envio de email é sempre
-**log-only** e o logger fica `silent` (suba com `LOG_LEVEL=debug` ao depurar).
+Em `NODE_ENV=test` os rate limits ficam relaxados (limite 9999) e o logger fica `silent` (suba com
+`LOG_LEVEL=debug` ao depurar).
 
 > ⚠️ Hoje o e2e roda contra o **mesmo banco do desenvolvimento** (a `DATABASE_URL` do `.env`).
 > Por isso a limpeza é **escopada por suíte** (apaga só os dados daquele teste) — nunca um
 > `TRUNCATE` global, que apagaria seus dados de dev.
 
-Estrutura típica de uma suíte (ver `tests/auth/email/email-auth.e2e.spec.ts`):
+Estrutura típica de uma suíte que grava no banco (ver `tests/metrics/bot-events.e2e.spec.ts`):
 
 ```ts
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { users } from 'src/infra/database/schemas';
+import { inArray } from 'drizzle-orm';
+import { db } from 'src/infra/database/drizzle-client';
+import { botEvents } from 'src/infra/database/schemas';
 import supertest from 'supertest';
-import { authModule } from 'src/modules/auth/auth.module';
-import { bearer, signUpVerified } from '../../helpers/auth';
-import { deleteBy } from '../../helpers/db';
-import { createApp } from '../../setup-e2e';
+import { createApp } from '../setup-e2e';
 
-describe('SessionController (e2e)', () => {
+describe('Métricas (e2e)', () => {
   let app: NestFastifyApplication;
   let request: ReturnType<typeof supertest>;
-  let token: string;
-
-  const user = {
-    email: 'session@user.com',
-    password: 'Test1234!',
-    name: 'Session User',
-    userName: 'sessionuser',
-  };
-
-  async function cleanup() {
-    await deleteBy(users, users.email, [user.email]);
-  }
+  const cycles: string[] = [];
 
   beforeAll(async () => {
-    app = await createApp(authModule);
+    app = await createApp();
     request = supertest(app.getHttpServer());
-    await cleanup();
-
-    token = await signUpVerified(request, user);
   }, 30000);
 
   afterAll(async () => {
-    await cleanup();
+    if (cycles.length) await db.delete(botEvents).where(inArray(botEvents.cycleId, cycles));
     await app.close();
   }, 30000);
-
-  it('retorna a sessão atual', async () => {
-    const response = await request.get('/auth/get-session').set(bearer(token));
-
-    expect(response.status).toBe(200);
-    expect(response.body.user.email).toBe(user.email);
-  });
 });
 ```
 
 Pontos do padrão:
 
-- `cleanup()` roda **no `beforeAll` e no `afterAll`**. O `beforeAll` garante slate limpo
-  mesmo que um run anterior tenha morrido no meio (senão o sign-up daria `409`).
-- `createApp(authModule)` liga a auth só nesta suíte.
-- `request` é reaproveitado em toda a suíte; o `token` vem do `signUpVerified` e vai no header
-  via `bearer(token)`.
+- A limpeza apaga **só** as linhas que a suíte criou (por uma coluna natural, como `cycle_id`).
+- `request` é reaproveitado em toda a suíte.
 - O `app.close()` no `afterAll` libera as conexões.
-
-## Helpers principais
-
-Ficam em `tests/helpers/`. Importe-os em vez de recriar a lógica.
-
-### `deleteBy` — limpeza escopada (`tests/helpers/db.ts`)
-
-```ts
-export async function deleteBy<T extends Column>(
-  table: PgTable,
-  column: T,
-  values: readonly T['_']['data'][],
-): Promise<void>;
-```
-
-Apaga linhas de uma tabela onde uma coluna casa com qualquer um dos `values`.
-
-```ts
-await deleteBy(users, users.email, [user.email, other.email]);
-```
-
-- **A chave é a coluna, não a tabela.** Cada suíte limpa por `email` (ou outra coluna natural) —
-  não por `id` —, então a coluna é parte do filtro.
-- `<T extends Column>` amarra o tipo de `values` ao tipo da coluna (sem `any`).
-- Sempre `inArray` (valor único = array de 1). Array vazio é no-op (guard interno), então não
-  precisa de `if (values.length)` no chamador.
-- **Cascade faz o resto.** `sessions` e `accounts` têm `onDelete: cascade`; apagar `users` já
-  limpa essas tabelas.
-- **Exceção: `verifications`.** Não tem FK (a coluna `value` guarda o id do user como texto
-  solto), então precisa ser apagada explicitamente **antes** de `users` quando a suíte gera
-  tokens (verify-email, reset de senha, change-email):
-
-  ```ts
-  const rows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(inArray(users.email, testEmails));
-
-  await deleteBy(verifications, verifications.value, rows.map(row => row.id));
-  await deleteBy(users, users.email, testEmails);
-  ```
-
-### `signIn`, `signUpVerified` e `bearer` — autenticação (`tests/helpers/auth.ts`)
-
-Só fazem sentido em suítes criadas com `createApp(authModule)`.
-
-```ts
-export async function signIn(
-  request: ReturnType<typeof supertest>,
-  credentials: { email: string; password: string },
-): Promise<string>;
-
-export async function signUpVerified(
-  request: ReturnType<typeof supertest>,
-  account: { email: string; password: string; name: string; userName: string },
-): Promise<string>;
-
-export function bearer(token: string): { Authorization: string };
-```
-
-- `signIn` chama `POST /auth/email/sign-in` e devolve o **token** da sessão. O usuário precisa
-  existir.
-- `signUpVerified` faz **sign-up → marca `emailVerified = true` direto no banco → sign-in** e
-  devolve o token. Use-o sempre que o teste precisar de rotas que exigem email verificado (a
-  maioria).
-- `bearer(token)` monta o header para o supertest: `request.get(...).set(bearer(token))`.
-
-Não há cookies: tudo é token. Um token de usuário **não verificado** (sign-up/sign-in comum) só
-passa em rotas `@AllowUnverified` (get-session, sign-out, verify-email); nas demais o guard
-responde `403`.
 
 ## Armadilhas (gotchas)
 
 ### Identificadores únicos por suíte
 
 O e2e roda **em série** (`fileParallelism: false`), mas todas as suítes compartilham o mesmo
-banco. Como a limpeza é escopada (não global), **cada suíte deve usar emails/userNames
-próprios** pra não colidir com outra. Reaproveitar o mesmo email entre suítes quebra dependendo
-da ordem.
-
-### Auth em standby → 404
-
-`createApp()` sem argumentos **não** monta a auth: as rotas `/auth/*` respondem `404` e não há
-guard global. Esqueceu o `authModule` numa suíte de auth? É isso.
-
-### Já autenticado → 409
-
-`sign-in` e `sign-up` respondem `409` quando a request já traz um token válido. Não reaproveite o
-header `bearer(token)` nessas chamadas, a menos que seja exatamente isso que o teste verifica.
+banco e o mesmo Redis. Como a limpeza é escopada (não global), **cada suíte deve usar ids,
+telefones e ids de mensagem próprios** pra não colidir com outra.
 
 ### WhatsApp sempre simulado
 
@@ -262,11 +151,8 @@ O mesmo arquivo define `CHATWOOT_MODE=fake`, `CHATWOOT_INBOX_ID=1` e um `CHATWOO
 ## Checklist para uma suíte e2e nova
 
 1. Crie `tests/<área>/<algo>.e2e.spec.ts`.
-2. Use `createApp` (com `authModule` se a suíte usa auth) + `supertest` no `beforeAll`.
-3. Escolha emails/userNames **exclusivos** dessa suíte.
-4. Escreva um `cleanup()` com `deleteBy` para cada tabela tocada (e `verifications` se houver
-   tokens).
-5. Chame `cleanup()` no `beforeAll` **e** no `afterAll`.
-6. Obtenha o token com `signUpVerified` (ou `signIn`); envie com `bearer(token)`.
-7. Feche o app com `app.close()` no `afterAll`.
-8. Rode `pnpm docker:init` e depois `pnpm test:e2e`.
+2. Use `createApp` + `supertest` no `beforeAll`.
+3. Escolha ids, telefones e ids de mensagem **exclusivos** dessa suíte.
+4. Apague no `afterAll` só as linhas que a suíte criou.
+5. Feche o app com `app.close()` no `afterAll`.
+6. Rode `pnpm docker:init`, `pnpm db:migrate` e depois `pnpm test:e2e`.

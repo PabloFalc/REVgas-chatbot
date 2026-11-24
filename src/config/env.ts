@@ -15,10 +15,6 @@ export const envConfigSchema = z
     ),
     LOG_FILE: z.preprocess(emptyAsUndefined, z.string().min(1).optional()),
 
-    // BETTER AUTH (standby)
-    BETTER_AUTH_SECRET: z.preprocess(emptyAsUndefined, z.string().min(32).optional()),
-    BETTER_AUTH_URL: z.url().default('http://localhost:3100'),
-
     // CORS
     CORS_ORIGIN: z.preprocess(emptyAsUndefined, z.string().min(1).optional()),
 
@@ -193,11 +189,6 @@ export const envConfigSchema = z
           }
         }),
     ),
-
-    // RESEND (standby)
-    RESEND_API_KEY: z.preprocess(emptyAsUndefined, z.string().optional()),
-    EMAIL_FROM: z.string().default('onboarding@resend.dev'),
-    EMAIL_DEV_REDIRECT: z.preprocess(emptyAsUndefined, z.email().optional()),
   })
   .refine(value => value.NODE_ENV !== 'production' || !!value.CORS_ORIGIN, {
     path: ['CORS_ORIGIN'],

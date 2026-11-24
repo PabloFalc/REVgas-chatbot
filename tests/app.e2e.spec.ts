@@ -20,10 +20,4 @@ describe('AppModule (e2e)', () => {
 
     expect(response.status).toBe(200);
   });
-
-  it('não expõe as rotas de auth enquanto o módulo está em standby', async () => {
-    const response = await request.post('/auth/email/sign-in').send({});
-
-    expect(response.status).toBe(404);
-  });
 });

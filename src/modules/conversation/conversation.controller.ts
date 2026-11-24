@@ -13,7 +13,6 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ApiDoc } from 'src/core/decorators/api-doc/api-doc.decorator';
-import { Public } from 'src/core/decorators/auth/auth-metadata.decorator';
 import { ForbiddenError, UnauthorizedError } from 'src/core/erros/http.errors';
 import { WEBHOOK_THROTTLE } from 'src/core/guards/rate-limit.guard';
 import {
@@ -24,7 +23,6 @@ import { VerificationQueryDto } from './contracts/verification-query.dto';
 import { ConversationService } from './conversation.service';
 import { receiveWebhookDocument, verifyWebhookDocument } from './docs/webhook.doc';
 
-@Public()
 @Throttle(WEBHOOK_THROTTLE)
 @Controller('/webhooks/whatsapp')
 export class ConversationController {

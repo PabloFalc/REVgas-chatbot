@@ -29,6 +29,13 @@
       "when": 1795446175368,
       "tag": "0003_sturdy_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795538730065,
+      "tag": "0004_drop_better_auth",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,6 @@ import { Body, Controller, Headers, Inject, Post, type RawBodyRequest, Req } fro
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyRequest } from 'fastify';
 import { ApiDoc } from 'src/core/decorators/api-doc/api-doc.decorator';
-import { Public } from 'src/core/decorators/auth/auth-metadata.decorator';
 import { BadRequestError, UnauthorizedError } from 'src/core/erros/http.errors';
 import { WEBHOOK_THROTTLE } from 'src/core/guards/rate-limit.guard';
 import {
@@ -12,7 +11,6 @@ import {
 import { DeskEventsService } from './desk-events.service';
 import { receiveDeskWebhookDocument } from './docs/desk-webhook.doc';
 
-@Public()
 @Throttle(WEBHOOK_THROTTLE)
 @Controller('/webhooks/chatwoot')
 export class DeskWebhookController {
