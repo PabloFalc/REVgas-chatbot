@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
-import { buttons } from '../replies';
+import { buttons, text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
 import { handlers } from './index';
 import { offerOrNext } from './repeat.step';
@@ -20,7 +20,7 @@ const lastOrder: LastOrder = { productId: 1, quantity: 1, paymentType: 'PIX', ad
 
 const base: OrderState = {
   step: 'askCpfPrefix',
-  customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   addresses: [address],
   lastOrder,
 };
@@ -54,7 +54,9 @@ describe('offerOrNext', () => {
         { id: 'repeat:new', title: 'Novo pedido' },
       ]),
     ]);
-    expect(msg.offerRepeat(offer)).toContain('1× Botijão P13 · Pix');
+    expect(msg.offerRepeat(offer)).toBe(
+      'Quer repetir seu último pedido?\n1× Botijão P13 · Pix · Total R$ 110,00\nRua das Flores, 120 – Centro',
+    );
   });
 
   it('Repetir vai ao resumo com o preço do quote de hoje', async () => {
@@ -75,6 +77,18 @@ describe('offerOrNext', () => {
     );
     const result = await answer(offered.state, pick('repeat:yes'), tools);
     expect(result?.state?.step).toBe('askNeedsChange');
+  });
+
+  it('Repetir com quantidade acima do estoque atual volta à quantidade', async () => {
+    const tools = createFakeTools({
+      listProducts: async () => [{ id: 1, name: 'Botijão P13', stock: 2 }],
+    });
+    const offered = await offerOrNext({ ...base, lastOrder: { ...lastOrder, quantity: 5 } }, tools);
+    const result = await answer(offered.state, pick('repeat:yes'), tools);
+    expect(result?.state?.step).toBe('chooseQuantity');
+    expect(result?.state?.quantity).toBeUndefined();
+    expect(result?.state?.quote).toBeUndefined();
+    expect(result?.replies[0]).toEqual(text(msg.stockLimit(2, 'Botijão P13')));
   });
 
   it('Novo pedido segue o fluxo normal', async () => {

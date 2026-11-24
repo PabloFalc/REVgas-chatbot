@@ -10,19 +10,20 @@ O fluxo tem 8 passos e só chama "criar venda" no passo 7, depois do "confirmo" 
 flowchart TD
     A["1. Cliente manda mensagem<br/>Webhook do WhatsApp chega no backend"] --> B["2. Identificar cliente<br/>API: buscar cliente pelo telefone"]
     B --> C{Cliente existe?}
-    C -- não --> D["Cadastrar cliente<br/>Coleta nome, CPF, endereço → API"]
+    C -- não --> D["Coletar nome e CPF"]
     C -- sim --> V["Verificar identidade<br/>3 primeiros dígitos do CPF"]
-    V --> E["3. Produto e quantidade<br/>API: produtos com preço e estoque"]
-    D --> E
-    E --> F["4. Confirmar endereço<br/>Sim ou alterar"]
-    F --> G["5. Forma de pagamento<br/>Pix, cartão ou dinheiro com troco"]
+    D --> F["3. Endereço<br/>CEP ou texto, confirmação; cliente novo é cadastrado aqui"]
+    V --> F
+    F --> E["4. Produto e quantidade<br/>API: produtos com estoque; quantidade de 1 a 10, até o estoque"]
+    E --> G["5. Forma de pagamento<br/>Pix, cartão ou dinheiro com troco"]
     G --> H["6. Resumo e confirmação<br/>Itens, endereço e total vindo da API"]
     H --> I{Cliente confirmou?}
-    I -- "não, corrige" --> E
+    I -- "não, corrige" --> X["chooseCorrection<br/>produto, endereço ou pagamento"]
+    X --> F
     I -- sim --> J["7. Criar venda<br/>API: criar venda"]
     J --> K{API respondeu 2xx?}
-    K -- não --> L["Avisar falha<br/>Botão Tentar de novo (volta ao 7)"]
-    K -- sim --> M["8. Avisar o cliente<br/>Nº da venda, entregador e tempo estimado"]
+    K -- não --> L["Avisar falha<br/>Tentar de novo (volta ao 7) ou atendente"]
+    K -- sim --> M["8. Avisar o cliente<br/>Nº da venda"]
     style J stroke-width:3px
 ```
 
@@ -33,7 +34,7 @@ O estado do pedido (`OrderState.step`) vive no Redis por 15 min. Os valores de `
 | Step | O que faz | Entrada esperada |
 | --- | --- | --- |
 | `askName` | Cliente novo: pede o nome (a IA tira o nome de frases como "meu nome é João Silva") | Texto |
-| `askCpf` | Cliente novo: pede o CPF e cadastra | Texto (CPF inválido ou já usado → pede de novo) |
+| `askCpf` | Cliente novo: pede o CPF (o cadastro na RevGás acontece depois, ao confirmar o endereço) | Texto (CPF inválido → pede de novo) |
 | `askCpfPrefix` | Cliente existente: pede os 3 primeiros dígitos do CPF (ver [Verificação de identidade](#verificação-de-identidade)) | Texto (3 dígitos) |
 | `offerRepeat` | Cliente verificado: oferece repetir o último pedido (ver [Repetir último pedido](#repetir-último-pedido)) | Botão (`repeat:yes\|new`) |
 | `chooseAddress` | Mostra os endereços salvos (≤ 2 em botões, mais em lista) | Botão / lista (`address:<i>`, `address:new`) |
@@ -44,7 +45,7 @@ O estado do pedido (`OrderState.step`) vive no Redis por 15 min. Os valores de `
 | `chooseProduct` | Lista produtos (≤ 10 em lista; acima disso 9 + busca) | Lista (`product:<id>`, `product:search`) |
 | `searchProduct` | Busca produto por texto | Texto |
 | `chooseQuantity` | Quantidade em botões (1, 2, outra) | Botão (`qty:*`) |
-| `askQuantity` | Quantidade digitada | Texto numérico |
+| `askQuantity` | Quantidade digitada (1 a 10; ver [Limite de quantidade](#limite-de-quantidade)) | Texto numérico |
 | `choosePayment` | Formas de pagamento com preço para o produto e o cliente (≤ 3 em botões) | Botão / lista (`pay:<TYPE>`) |
 | `askNeedsChange` | Dinheiro: precisa de troco? | Botão (`change:no\|yes`) |
 | `askChangeAmount` | Dinheiro: troco para quanto (acima do total; um valor só, "200 300" não vale) | Texto numérico |
@@ -53,7 +54,19 @@ O estado do pedido (`OrderState.step`) vive no Redis por 15 min. Os valores de `
 | `creatingSale` | Cria a venda (único POST, sem retry automático) | — |
 | `saleFailed` | Falha ao criar: avisa e oferece "Tentar de novo" | Botão (`retry:sale`) |
 
-Ao concluir, o estado é apagado e o bot envia o número da venda.
+Ao concluir, o estado é apagado e o bot envia o número da venda. O status pode ser consultado depois (F05); a API não tem tempo estimado.
+
+### Cadastro de cliente novo
+
+O CPF é pedido em `askCpf`, mas o cliente só é criado na RevGás quando confirma o endereço (`confirmAddress`, em `flow/steps/address.step.ts`). O CPF fica no estado só até esse ponto e é apagado logo depois do cadastro; o estado guarda apenas o prefixo de 3 dígitos para cliente conhecido. Se a RevGás diz que o CPF já tem cadastro com outro telefone, a conversa termina com o telefone da revenda (`cpfTaken`) e o estado é apagado; o bot não pede outro CPF. Se a RevGás rejeita o cadastro por outro motivo, volta a `askName`.
+
+### Limite de quantidade
+
+A quantidade vai de 1 a 10 (`MAX_QUANTITY`) e nunca passa do estoque do produto. A checagem fica num ponto só, em `nextStep` (`flow/next-step.ts`), então vale para botão, texto digitado, texto livre da IA e repetir pedido. Acima do estoque, o bot informa o limite e volta a `chooseQuantity`. Acima de 10, avisa que pedidos maiores são atendidos por um atendente, oferece o botão "Falar com atendente" e volta a `chooseQuantity`. Decisão de 2026-11-23.
+
+### Mensagens simultâneas e trava por telefone
+
+O `ConversationService` processa uma mensagem por vez por telefone (trava no Redis). Se a trava não é obtida em 120 s, o bot não segue sem ela: pede que o cliente reenvie a mensagem. A mesma mensagem (mesmo id) entregue duas vezes é descartada (dedup por 24 h). Erro do Redis ao ler ou gravar o estado do pedido, o bloqueio de CPF ou o estado do handoff não é engolido: o bot responde "instabilidade" e o estado não muda. Limitação conhecida: a trava expira em 120 s e não é renovada, então um turno mais longo que isso pode se sobrepor ao seguinte; a venda continua protegida pelo checkpoint `creatingSale`, gravado antes do POST, e renovar a trava é a correção se o bot rodar em mais de uma instância.
 
 ### Regra do `nextStep`
 
@@ -63,7 +76,7 @@ texto de endereço pendente (`askNewAddress`, que o transforma em rascunho) e, p
 `chooseAddress` se há salvos ou `askNewAddress`. No produto, se há candidatos do texto livre vai
 para `pickProduct`; senão, `chooseProduct`. Com tudo
 preenchido, calcula a cotação (sem preço para o pagamento → volta a `choosePayment`) e vai para
-`askNeedsChange` (dinheiro sem troco definido) ou `summary`. Por isso "Corrigir" limpa só o campo
+`askNeedsChange` (dinheiro sem troco definido) ou `summary`. A checagem de quantidade (limite e estoque) também roda aqui. Por isso "Corrigir" limpa só o campo
 escolhido e o fluxo retoma dali.
 
 ### Comandos globais
@@ -124,6 +137,16 @@ pode ter mudado de dono.
 - **Texto livre:** blocos soltos de 3 dígitos são removidos antes de o texto ir à IA, para o CPF nunca chegar ao prompt. Se não sobra texto, repete a pergunta.
 - **Cliente novo:** quem acabou de se cadastrar (digitou o CPF inteiro) já fica verificado por 15 dias; o próximo pedido não pede os 3 dígitos.
 
+## Status do pedido
+
+F05 é uma consulta só leitura. Frases como "cadê meu gás", "status do pedido" e "já saiu pra entrega?" acionam o fluxo sem IA; o texto livre também aceita a intenção `order_status`. "Quero um gás" segue como compra nova.
+
+O telefone precisa identificar um cliente com CPF e verificação válida por 15 dias. Sem verificação, o bot pede os 3 primeiros dígitos e consulta logo após o acerto. Telefone desconhecido recebe texto fixo e o botão "Fazer pedido", sem consultar vendas.
+
+A consulta lê até 10 vendas WhatsApp dos últimos 7 dias e mostra a não cancelada mais recente: número, status, entregador e data de entrega quando disponíveis. `OPEN` significa recebido, `ACTIVE` em andamento, `CONFIRM` confirmado, `CHECK` em conferência e `WARNING` com pendência, oferecendo atendente. Status desconhecido fica como em andamento. Não há tempo estimado. Sem venda recente, oferece "Fazer pedido"; falha da RevGás usa a mensagem de indisponibilidade.
+
+O pedido em andamento é preservado. Após responder, o bot repete a pergunta da etapa; se precisou verificar o CPF, retoma essa mesma etapa.
+
 ## Repetir último pedido
 
 Depois de verificado (`welcomeKnown`), se o cliente ainda não informou nada do pedido, o bot
@@ -162,7 +185,7 @@ telefone, separado do pedido (que expira em 15 min).
 - **Entrada na fila:** nota interna com o resumo (motivo, etapa, produto, quantidade, endereço, pagamento, total, nome; nunca CPF). Antes da verificação de identidade a nota não leva nome, endereço nem pedido. A resposta ao cliente é só o texto do handoff ("Já chamei um atendente...", "Você já está na fila..."); fora do horário (`SERVICE_HOURS`) o bot diz quando abre e pede que o cliente mande "oi" quando abrirmos.
 - **Em `queued`** o bot segue o fluxo normal. Se ele cria a venda, a conversa é resolvida e o cliente sai da fila. "Cancelar" não tira da fila.
 - **Em `active`** o pedido e o lembrete são apagados; mensagens do cliente vão só ao Chatwoot (não suportadas viram `[cliente enviou áudio]`); as do atendente chegam como `*Maria (atendente):* ...`. Mensagem de vazamento não recebe o texto de segurança: vai ao atendente com uma nota interna de emergência (ver [Emergência de gás](#emergência-de-gás)).
-- **Espelho:** todas as mensagens do cliente e do bot são copiadas para uma conversa do Chatwoot por ciclo, depois do envio ao WhatsApp e sem nunca atrasar a resposta. CPF vira `[CPF ocultado]`.
+- **Espelho:** todas as mensagens do cliente e do bot são copiadas para uma conversa do Chatwoot por ciclo, depois do envio ao WhatsApp e sem nunca atrasar a resposta. CPF vira `[CPF ocultado]`; mensagem só de dígitos, quando não há estado anterior (pode ser um CPF digitado fora de etapa), não é espelhada.
 - **Chatwoot indisponível ou desligado:** volta ao telefone da revenda (`STORE_PHONE`).
 
 ## Texto livre e fallback
@@ -185,7 +208,7 @@ Código em `flow/free-text.ts` e `flow/intent.ts`; o serviço de IA fica em `src
 
 O que a IA devolve e como vira pedido:
 
-- Saída validada com Zod: `intent`, `topic`, `unknownProduct`, `products`, `quantity`, `payment`, `address`, `newAddress` e `confidence`. As intenções são `order`, `question`, `price`, `handoff`, `off_topic`, `offense` e `other`. `topic` vem em `question` (`hours`, `payments`, `invite`, `capabilities` ou `general`) e em `price` (`delivery_fee`, para taxa de entrega e frete); fora dessas combinações é descartado. `unknownProduct` é o item pedido que não está no catálogo.
+- Saída validada com Zod: `intent`, `topic`, `unknownProduct`, `products`, `quantity`, `payment`, `address`, `newAddress` e `confidence`. As intenções são `order_status`, `order`, `question`, `price`, `handoff`, `off_topic`, `offense` e `other`. `topic` vem em `question` (`hours`, `payments`, `invite`, `capabilities` ou `general`) e em `price` (`delivery_fee`, para taxa de entrega e frete); fora dessas combinações é descartado. `unknownProduct` é o item pedido que não está no catálogo.
 - Frase negada não pede nada: o prompt manda classificar "não quero tirar minhas dúvidas" ou "não preciso de atendente" como `other`.
 - **Só `order` altera o pedido.** As outras intenções são respondidas pelo roteamento abaixo e o estado não muda ("quanto tá o P13?" não põe o P13 no pedido).
 - Confiança abaixo de 0,6 ou falha da IA (`null`) → "Não entendi." e repete a pergunta. O estado não muda.
@@ -223,7 +246,7 @@ preços longa), ela vai em texto e os botões seguem numa mensagem curta ("Quer 
 - **Cliente travado:** 3 "Não entendi" seguidos viram "Não estou conseguindo entender. Quer falar com um atendente?" com o botão. O contador fica no Redis (TTL 15 min), fora do pedido, e zera quando uma mensagem é entendida.
 - **Ofensas:** contador por telefone no Redis (TTL 1 h), fora do pedido. Vale para o palavrão pego pelo código ([Palavrões](#palavrões)) e para a ofensa da IA.
 - **Texto guiado:** quando a IA não entende em `askCpf`, `askCpfPrefix`, `askQuantity` ou `askChangeAmount`, o bot mostra o texto de ajuda da etapa (por exemplo, "Mande a quantidade...") em vez de "Não entendi.", até chegar ao 3º seguido.
-- **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora). `interpret` custa 1, ler o nome (`readName`) custa 1, ler endereço em texto livre (`addressFromText`) custa 1 e responder dúvida custa 2; a lista de assuntos não usa IA. Passou do limite, o bot segue sem IA (como se ela estivesse fora do ar; no endereço, pede o endereço de novo). Se o Redis do limitador falhar, a chamada passa. Ver [environment.md](../guides/conventions/environment.md).
+- **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora). `interpret` custa 1, ler o nome (`readName`) custa 1, ler endereço em texto livre (`addressFromText`) custa 1 e responder dúvida custa 2; a lista de assuntos não usa IA. Passou do limite ou se o contador falhar, a chamada de IA é bloqueada e o bot continua sem IA com os botões do fluxo (no endereço, pede o endereço de novo). Ver [environment.md](../guides/conventions/environment.md).
 - **A base nunca informa** preço, porcentagem, horário de funcionamento nem formas de pagamento; essas respostas vêm do código.
 
 **Primeira mensagem só com dúvida.** Se a primeira mensagem é uma dúvida (ou preço, convite para perguntar, pergunta sobre os assuntos, fora do assunto etc.), o bot responde e mostra o botão "Fazer pedido". Não cria pedido nem pede identificação até o cliente tocar. Vale mesmo com palavra de pedido: o prompt manda classificar dúvida, problema ou condição sobre o serviço como `question` ("quero trocar o casco do botijão mas ele está danificado"), e só `order` inicia o cadastro com os dados extraídos.
@@ -240,16 +263,26 @@ cliente fica conhecido, o produto guardado é conferido de novo com a lista dele
 - **Fora de ordem (passos 3–5):** se o cliente escreve "2 botijões no Pix pra mesma casa", a IA extrai tudo de uma vez e o bot só pergunta o que faltou (ver [Texto livre e fallback](#texto-livre-e-fallback)).
 - **Repetir último pedido:** cliente conhecido e verificado pode ir direto do passo 2 para o passo 6 (ver [Repetir último pedido](#repetir-último-pedido)).
 - **Pedido de atendente:** de qualquer estado, entra na fila do Chatwoot (ver [Handoff para atendente](#handoff-para-atendente)); o pedido em andamento não muda. Em `saleFailed` o motivo é `sale_failed`; nas demais, `customer_request`.
-- **Falha ao criar a venda (`saleFailed`):** dois botões, "Tentar de novo" e "Falar com atendente".
+- **Falha ao criar a venda (`saleFailed`):** dois botões, "Tentar de novo" e "Falar com atendente". Se a venda foi criada mas o registro posterior no Redis falha, a confirmação com o número da venda ainda é enviada.
 - **Pedido de desconto:** resposta fixa ("o preço é o da tabela"); o estado não muda.
 - **Dúvida no meio do fluxo:** respondida pela base ou pelo código e a pergunta da etapa é repetida; o estado não muda (ver [Dúvidas, preço e guard rails](#dúvidas-preço-e-guard-rails)). Sem resposta, oferece o atendente.
 - **Emergência de gás:** texto de segurança e fila do atendente, em qualquer etapa; com o atendente no controle (`active`), só repasse e nota interna (ver [Emergência de gás](#emergência-de-gás)).
 - **Expiração e lembrete:** o estado no Redis tem TTL de 15 min; se o cliente sumir, o carrinho expira. Aos 10 min sem mensagem, o bot manda um lembrete (ver [Lembrete de pedido parado](#lembrete-de-pedido-parado)).
 - **Fallback da IA:** se a IA falhar, demorar, passar do limite por telefone ou não entender, o bot diz "Não entendi." e repete a pergunta com os botões do estado atual (3 seguidos oferecem o atendente).
 
+## Atendimento de demonstração
+
+Com vendas simuladas (`REVGAS_MODE` `hybrid` ou `fake`, inclusive o automático), o cliente é avisado de que nada será entregue:
+
+- as boas-vindas (cliente novo ou conhecido) ganham a linha "Este é um atendimento de demonstração: os pedidos não são entregues.";
+- a confirmação vira "Pedido de demonstração nº 4521 registrado. Total: R$ 110,00. Nenhum gás será entregue.";
+- a resposta de status do pedido começa com a linha "Pedido de demonstração.".
+
+Com `REVGAS_MODE=live` os textos são os normais.
+
 ## Observações sobre o fluxo
 
 - O diagrama não mostra o atalho "repetir último pedido" nem a saída da verificação (telefone da revenda); eles só aparecem no texto.
-- "Corrigir" sempre volta ao passo 3. Vale perguntar *o que* corrigir (produto, endereço ou pagamento) e voltar só àquele passo.
-- O passo 8 promete "tempo estimado", mas a API não fornece esse dado nem webhook de status: dá para informar só o status e o entregador, consultando a venda.
-- O preço vem dos acordos da RevGás e pode depender da forma de pagamento. Se depender, o passo 3 mostra no máximo um preço de referência e o total definitivo só sai no passo 6, depois do pagamento.
+- "Corrigir" abre `chooseCorrection` (produto, endereço ou pagamento); só o campo escolhido é limpo e `nextStep` retoma dali.
+- O passo 8 envia só o número da venda. A API não tem tempo estimado nem webhook de status comercial; status e entregador (`deliverer_name`, `delivered_at`) dá para ler consultando a venda, pela consulta de status (F05).
+- O preço vem dos acordos da RevGás e pode depender da forma de pagamento. Se depender, o passo 4 mostra no máximo um preço de referência e o total definitivo só sai no passo 6, depois do pagamento.

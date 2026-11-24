@@ -1,6 +1,6 @@
 import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
 import { describe, expect, it, vi } from 'vitest';
-import type { FlowTools, OrderState } from './flow.types';
+import { type FlowTools, MAX_QUANTITY, type OrderState } from './flow.types';
 import {
   applyInterpretation,
   type Catalog,
@@ -241,7 +241,7 @@ describe('messages de texto livre', () => {
 describe('freeText', () => {
   const paying: OrderState = {
     step: 'choosePayment',
-    customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+    customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
     address,
     product: p13,
     quantity: 1,
@@ -322,6 +322,13 @@ describe('freeText', () => {
     expect(out.state?.quantity).toBe(2);
     expect(out.misunderstood).toBeUndefined();
     expect(called(fake, 'registerMisunderstood')).toBe(0);
+  });
+
+  it('quantidade acima do máximo oferece atendente e volta à quantidade', async () => {
+    const out = await freeText(paying, 'quero 11', tools(result({ quantity: MAX_QUANTITY + 1 })));
+    expect(out.state?.step).toBe('chooseQuantity');
+    expect(out.state?.quantity).toBeUndefined();
+    expect(out.replies).toContainEqual(offer(msg.quantityAboveMax));
   });
 
   it('nas etapas de CPF os dígitos não chegam à IA', async () => {

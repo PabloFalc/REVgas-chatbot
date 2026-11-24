@@ -49,7 +49,7 @@ describe('globalCommand', () => {
       say('cancelar'),
       createFakeTools({ findRecentSale: async () => 321 }),
     );
-    expect(found).toEqual({ state: null, replies: [text(msg.saleCreated(321))], saleId: 321 });
+    expect(found).toEqual({ state: null, replies: [text(msg.saleCreated(321, 110))], saleId: 321 });
     const none = await globalCommand(failed, say('cancelar'), createFakeTools());
     expect(none).toEqual({ state: null, replies: [text(msg.cancelled)] });
   });
@@ -61,6 +61,18 @@ describe('globalCommand', () => {
       expect(result).toEqual({ state: null, replies: [text(msg.cancelled)] });
     },
   );
+
+  it('cancelar sem venda registra order_cancelled', async () => {
+    const tools = createFakeTools();
+    await globalCommand(state, say('cancelar'), tools);
+    expect(tools.calls).toContainEqual({ name: 'track', args: [{ name: 'order_cancelled' }] });
+  });
+
+  it('cancelar sem pedido não registra order_cancelled', async () => {
+    const tools = createFakeTools();
+    await globalCommand(null, say('cancelar'), tools);
+    expect(tools.calls).not.toContainEqual({ name: 'track', args: [{ name: 'order_cancelled' }] });
+  });
 
   it('cancelar dentro de uma frase maior não cancela', async () => {
     expect(
@@ -146,7 +158,7 @@ describe('globalCommand', () => {
       { phone: FAKE_PHONE, content: { type: 'unsupported' } },
       createFakeTools(),
     );
-    expect(result).toEqual({ state, replies: [text(msg.textOnly), question] });
+    expect(result).toEqual({ state, replies: [offer(msg.textOnly), question] });
   });
 
   it('áudio sem pedido em andamento começa pela saudação', async () => {

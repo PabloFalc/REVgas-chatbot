@@ -1,5 +1,7 @@
 # Design — Pedido em texto livre (F03) e fallback de intenção
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 Data: 2026-10-22 · Status: rascunho para aprovação
 
 ## Intenção

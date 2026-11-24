@@ -1,5 +1,7 @@
 # Pedido em texto livre (F03) e fallback de intenção — Plano de implementação
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Quando uma etapa não entende o texto do cliente, a IA lê a mensagem; o backend aplica ao pedido o que for válido (produto, quantidade, pagamento, endereço) e o fluxo pergunta só o que falta. Mensagem fora do pedido recebe resposta fixa e a pergunta da etapa é repetida.

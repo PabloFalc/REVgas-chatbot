@@ -54,6 +54,8 @@ describe('AssistantService', () => {
     expect(system).toContain('Botijão P13');
     expect(system).toContain('PIX');
     expect(system).toContain('mesma casa');
+    expect(system).toContain('order_status');
+    expect(system).toContain('quero um gás');
     const user = call?.messages.find(message => message.role === 'user')?.content ?? '';
     expect(user).not.toContain('12345678909');
   });
@@ -69,7 +71,7 @@ describe('AssistantService', () => {
     confidence: 0.9,
   };
 
-  it.each(['price', 'handoff', 'off_topic', 'offense', 'other'] as const)(
+  it.each(['order_status', 'price', 'handoff', 'off_topic', 'offense', 'other'] as const)(
     'aceita a intenção %s',
     async intent => {
       llm.queueObject({ ...base, intent });

@@ -223,7 +223,11 @@ describe('conversas completas', () => {
     await chat.send(say('250'));
     expect(chat.step).toBe('summary');
     const done = await chat.send(pick('summary:confirm'));
-    expect(done).toEqual({ state: null, replies: [text(msg.saleCreated(4521))], saleId: 4521 });
+    expect(done).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(4521, 220))],
+      saleId: 4521,
+    });
     const createSale = tools.calls.find(call => call.name === 'createSale');
     expect(createSale?.args[0]).toMatchObject({
       customerId: 2,
@@ -250,7 +254,7 @@ describe('conversas completas', () => {
     expect(chat.step).toBe('summary');
     const done = await chat.send(pick('summary:confirm'));
     expect(done.state).toBeNull();
-    expect(done.replies).toEqual([text(msg.saleCreated(4521))]);
+    expect(done.replies).toEqual([text(msg.saleCreated(4521, 110))]);
     const createSale = tools.calls.find(call => call.name === 'createSale');
     expect(createSale?.args[0]).toMatchObject({ productId: 2, paymentType: 'PIX', total: 110 });
     expect(createSale?.args[0]).not.toHaveProperty('observation');
@@ -296,7 +300,11 @@ describe('conversas completas', () => {
     expect(chat.step).toBe('saleFailed');
     expect(failed.replies[0].type).toBe('buttons');
     const retried = await chat.send(pick('retry:sale'));
-    expect(retried).toEqual({ state: null, replies: [text(msg.saleCreated(9001))], saleId: 9001 });
+    expect(retried).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(9001, 110))],
+      saleId: 9001,
+    });
     expect(createAttempts).toBe(1);
     expect(sinceSeen).toEqual([FAKE_NOW]);
   });
@@ -624,7 +632,7 @@ describe('texto livre no meio do pedido', () => {
   const credit = { type: 'CARTAO_DE_CREDITO', label: 'Cartão de crédito' };
   const paying: OrderState = {
     step: 'choosePayment',
-    customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+    customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
     address: {
       street: 'Rua das Flores',
       number: '120',

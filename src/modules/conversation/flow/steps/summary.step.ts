@@ -38,6 +38,10 @@ function buildOrder(state: OrderState): SaleOrder | null {
   };
 }
 
+function saleCreated(id: number, total: number, tools: FlowTools) {
+  return text(tools.demo ? msg.demoSaleCreated(id, total) : msg.saleCreated(id, total));
+}
+
 const summary: AskFn = async state => ({
   state: { ...state, step: 'summary' },
   replies: [
@@ -80,7 +84,7 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
   await tools.checkpoint(attempt);
   try {
     const id = await tools.createSale(order);
-    return { state: null, replies: [text(msg.saleCreated(id))], saleId: id };
+    return { state: null, replies: [saleCreated(id, order.total, tools)], saleId: id };
   } catch (error) {
     if (error instanceof ToolError) {
       if (error.cause instanceof SaleRejectedError) {
@@ -137,8 +141,13 @@ export async function cancelAfterFailedSale(
     const since = new Date(state.saleAttemptAt ?? tools.now().toISOString());
     const existing = await tools.findRecentSale(order, since);
     if (existing !== null)
-      return { state: null, replies: [text(msg.saleCreated(existing))], saleId: existing };
+      return {
+        state: null,
+        replies: [saleCreated(existing, order.total, tools)],
+        saleId: existing,
+      };
   }
+  tools.track({ name: 'order_cancelled' });
   return { state: null, replies: [text(msg.cancelled)] };
 }
 
@@ -149,7 +158,11 @@ const handleSaleFailed: HandleFn = async (state, input, tools) => {
   const since = new Date(state.saleAttemptAt ?? tools.now().toISOString());
   const existing = await tools.findRecentSale(order, since);
   if (existing !== null)
-    return { state: null, replies: [text(msg.saleCreated(existing))], saleId: existing };
+    return {
+      state: null,
+      replies: [saleCreated(existing, order.total, tools)],
+      saleId: existing,
+    };
   return submitSale(state, tools);
 };
 

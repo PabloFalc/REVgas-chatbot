@@ -23,6 +23,8 @@ correspondente.
   como escrever a base, `pnpm kb:ingest`, busca híbrida (vetor + texto), checagens da resposta,
   `pnpm rag:check`, valores calibrados e o banco com pgvector
 
+- [metrics.md](./guides/modules/metrics.md) — eventos do bot, retenção, privacidade, Metabase local e cards SQL
+
 ### Integrações (`guides/integrations/`)
 
 - [revgas.md](./guides/integrations/revgas.md) — cliente da API RevGás (`src/integrations/revgas`), organizado por módulo da API: modos

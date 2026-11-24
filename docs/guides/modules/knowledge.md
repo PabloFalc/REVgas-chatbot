@@ -83,8 +83,9 @@ A pasta é o primeiro argumento que não começa com `--`; `--force` pode vir em
   nome do erro, se ela vier vazia); erro de consulta do Drizzle vira `Falha na consulta ao banco
   (<erro> <código>)`, sem a query nem os parâmetros. Ao terminar, fecha o contexto do Nest e o pool
   do Postgres (`closeDatabasePool`).
-- **Docker.** A imagem leva `knowledge/` e o build. No contêiner: `node dist/cli/kb-ingest.js`
-  (`pnpm kb:ingest` faz `nest build` antes, então só serve em dev).
+- **Docker.** A imagem leva `knowledge/`, `drizzle/` e o build. No contêiner, uma vez: `node
+  dist/cli/migrate.js` e depois `node dist/cli/kb-ingest.js` (`pnpm kb:ingest` faz `nest build`
+  antes, então só serve em dev). A ingestão não roda ao subir o contêiner.
 
 ## Como a busca funciona
 

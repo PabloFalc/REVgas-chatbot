@@ -13,6 +13,7 @@ import type {
 const INSTRUCTIONS = [
   'Você interpreta a mensagem de um cliente de uma revenda de gás que quer fazer um pedido pelo WhatsApp.',
   'Identifique a intenção:',
+  '"order_status" quando o cliente consulta um pedido existente (ex.: "meu pedido chegou?", "cadê meu gás", "já saiu pra entrega?"); nunca use para uma compra nova ("quero um gás").',
   '"order" somente quando o cliente quer comprar (ex.: "quero 2 botijões"); se pedir um produto que não está na lista (ex.: "quero carvão"), use order e informe o nome dito em unknownProduct.',
   'Se a mensagem traz uma dúvida, um problema ou uma condição sobre o serviço (troca do casco, botijão danificado, vale-gás, entrega), use "question" com topic "general", mesmo que tenha palavras de pedido como "quero", "botijão" ou "gás" (ex.: "quero trocar o casco do botijão mas ele está danificado", "meu botijão tá amassado, vocês trocam?").',
   '"price" para perguntas de preço ou total, mesmo citando um produto (ex.: "quanto tá o P13").',
@@ -38,7 +39,16 @@ const INSTRUCTIONS = [
 ].join(' ');
 
 const interpretationSchema = z.object({
-  intent: z.enum(['order', 'question', 'price', 'handoff', 'off_topic', 'offense', 'other']),
+  intent: z.enum([
+    'order_status',
+    'order',
+    'question',
+    'price',
+    'handoff',
+    'off_topic',
+    'offense',
+    'other',
+  ]),
   products: z.array(z.string()).nullable(),
   quantity: z.number().int().min(1).nullable(),
   payment: z.string().nullable(),

@@ -4,7 +4,7 @@ import { FakeWhatsappClient } from 'src/integrations/whatsapp/fake-whatsapp.clie
 import type { DeskEvent } from 'src/modules/handoff/contracts/handoff.types';
 import type { HandoffService } from 'src/modules/handoff/handoff.service';
 import { describe, expect, it, vi } from 'vitest';
-import type { ConversationRepository } from './conversation.repository';
+import type { ConversationRepository, LockOutcome } from './conversation.repository';
 import { DeskEventsService } from './desk-events.service';
 import { MessagingGateway } from './messaging.gateway';
 
@@ -29,10 +29,12 @@ function setup(whatsapp = new FakeWhatsappClient()) {
   const order: string[] = [];
   const claimed = new Set<number>();
   const conversations = {
-    withPhoneLock: vi.fn(async (_phone: string, work: () => Promise<unknown>) => {
-      order.push('lock');
-      return work();
-    }),
+    withPhoneLock: vi.fn(
+      async (_phone: string, work: () => Promise<unknown>): Promise<LockOutcome<unknown>> => {
+        order.push('lock');
+        return { ran: true, value: await work() };
+      },
+    ),
     clearOrder: vi.fn(async () => {
       order.push('clearOrder');
     }),
@@ -43,6 +45,9 @@ function setup(whatsapp = new FakeWhatsappClient()) {
       if (claimed.has(id)) return false;
       claimed.add(id);
       return true;
+    }),
+    releaseDeskMessage: vi.fn(async (id: number) => {
+      claimed.delete(id);
     }),
     markAgentMessage: vi.fn(async () => ({ becameActive: true })),
     endFromDesk: vi.fn(async () => undefined),
@@ -80,6 +85,19 @@ describe('DeskEventsService.handle', () => {
       to: PHONE,
       body: { text: { body: '*Maria (atendente):* Olá, tudo bem?' } },
     });
+  });
+
+  it('falha ao apagar o pedido não impede o repasse e vai para o log sem o telefone cru', async () => {
+    const { service, conversations, whatsapp, logger } = setup();
+    conversations.clearOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await service.handle([agentEvent()]);
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      { component: 'desk-events', phone: '*******1234', error: 'Error' },
+      'Falha ao apagar o pedido ao assumir o atendimento',
+    );
   });
 
   it('o mesmo messageId duas vezes envia uma vez só', async () => {
@@ -152,5 +170,38 @@ describe('DeskEventsService.handle', () => {
 
     expect(conversations.withPhoneLock).toHaveBeenCalledWith(PHONE, expect.any(Function));
     expect(handoff.endFromDesk).toHaveBeenCalledWith(PHONE, 10);
+  });
+
+  it('lock ocupado não repassa a mensagem e avisa no log sem o telefone cru', async () => {
+    const { service, conversations, whatsapp, logger } = setup();
+    conversations.withPhoneLock.mockResolvedValueOnce({ ran: false });
+
+    await service.handle([agentEvent()]);
+
+    expect(whatsapp.sent).toEqual([]);
+    expect(conversations.clearOrder).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      { component: 'desk-events', kind: 'agentMessage', phone: '*******1234' },
+      'Lock do telefone não liberou a tempo; evento não processado',
+    );
+  });
+
+  it('lock ocupado libera a mensagem para a reentrega ser repassada', async () => {
+    const { service, conversations, handoff, whatsapp } = setup();
+    conversations.withPhoneLock.mockResolvedValueOnce({ ran: false });
+
+    await service.handle([agentEvent()]);
+    await service.handle([agentEvent()]);
+
+    expect(handoff.releaseDeskMessage).toHaveBeenCalledWith(100);
+    expect(whatsapp.sent).toHaveLength(1);
+  });
+
+  it('mensagem repassada não é liberada', async () => {
+    const { service, handoff } = setup();
+
+    await service.handle([agentEvent()]);
+
+    expect(handoff.releaseDeskMessage).not.toHaveBeenCalled();
   });
 });

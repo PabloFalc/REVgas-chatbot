@@ -1,5 +1,6 @@
 import { SaleRejectedError } from 'src/modules/order/contracts/order.types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { runFlow } from '../flow';
 import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { msg } from '../messages';
 import { text } from '../replies';
@@ -25,7 +26,7 @@ const money = { type: 'MONEY', label: 'Dinheiro' };
 
 const base: OrderState = {
   step: 'summary',
-  customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   addresses: [address],
   address,
   product: { id: 1, name: 'Botijão P13' },
@@ -59,10 +60,31 @@ describe('summary', () => {
     expect(body).toContain('Dinheiro (troco para R$ 250,00)');
   });
 
+  it('em demonstração a confirmação diz que nenhum gás será entregue', async () => {
+    const tools = createFakeTools({ demo: true });
+    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    expect(result).toEqual({
+      state: null,
+      replies: [
+        text(
+          'Pedido de demonstração nº 4521 registrado. Total: R$ 110,00. Nenhum gás será entregue.',
+        ),
+      ],
+      saleId: 4521,
+    });
+  });
+
   it('confirmar salva o checkpoint antes de criar a venda e encerra', async () => {
     const tools = createFakeTools();
     const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(4521))], saleId: 4521 });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(4521, 110))],
+      saleId: 4521,
+    });
+    expect(msg.saleCreated(4521, 110)).toBe(
+      'Pedido nº 4521 confirmado! Total: R$ 110,00. Já estamos separando seu gás.',
+    );
     expect(tools.calls.map(c => c.name)).toEqual(['checkpoint', 'createSale']);
     expect(tools.calls[0].args[0]).toMatchObject({
       step: 'creatingSale',
@@ -261,8 +283,27 @@ describe('saleFailed', () => {
   it('tentar de novo acha a venda recente e encerra sem criar outra', async () => {
     const tools = createFakeTools({ findRecentSale: async () => 777 });
     const result = await handlers.saleFailed?.(state, pick('retry:sale'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(777))], saleId: 777 });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(777, 110))],
+      saleId: 777,
+    });
     expect(tools.calls.map(c => c.name)).not.toContain('createSale');
+  });
+
+  it('erro ao consultar venda recente mantém saleFailed e não cria venda', async () => {
+    const findRecentSale = vi.fn(async () => {
+      throw new Error('fora');
+    });
+    const createSale = vi.fn(async () => 4521);
+    const tools = createFakeTools({
+      findRecentSale,
+      createSale,
+    });
+    const result = await runFlow(state, pick('retry:sale'), tools);
+    expect(result?.state).toEqual(state);
+    expect(findRecentSale).toHaveBeenCalledOnce();
+    expect(createSale).not.toHaveBeenCalled();
   });
 
   it('consulta a venda desde o momento da tentativa', async () => {
@@ -281,7 +322,11 @@ describe('saleFailed', () => {
   it('sem venda recente, salva novo checkpoint e cria a venda', async () => {
     const tools = createFakeTools();
     const result = await handlers.saleFailed?.(state, pick('retry:sale'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(4521))], saleId: 4521 });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(4521, 110))],
+      saleId: 4521,
+    });
     expect(tools.calls.map(c => c.name)).toEqual(['findRecentSale', 'checkpoint', 'createSale']);
     expect(tools.calls[1].args[0]).toMatchObject({
       step: 'creatingSale',
@@ -309,13 +354,23 @@ describe('saleFailed', () => {
       },
     });
     const result = await cancelAfterFailedSale(state, tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleCreated(888))], saleId: 888 });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(888, 110))],
+      saleId: 888,
+    });
     expect(seen[0]).toEqual(order);
     expect(seen[1]).toEqual(new Date('2026-10-21T15:00:00.000Z'));
+    expect(tools.calls).not.toContainEqual({
+      name: 'track',
+      args: [{ name: 'order_cancelled' }],
+    });
   });
 
   it('cancelar depois da falha sem venda encontrada cancela normalmente', async () => {
-    const result = await cancelAfterFailedSale(state, createFakeTools());
+    const tools = createFakeTools();
+    const result = await cancelAfterFailedSale(state, tools);
     expect(result).toEqual({ state: null, replies: [text(msg.cancelled)] });
+    expect(tools.calls).toContainEqual({ name: 'track', args: [{ name: 'order_cancelled' }] });
   });
 });

@@ -11,6 +11,7 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { CustomerModule } from '../customer/customer.module';
 import { HandoffModule } from '../handoff/handoff.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { MetricsModule } from '../metrics/metrics.module';
 import { OrderModule } from '../order/order.module';
 import { ConversationController } from './conversation.controller';
 import { ConversationRepository } from './conversation.repository';
@@ -36,6 +37,7 @@ import { ReminderScheduler } from './reminder.scheduler';
     HandoffModule,
     ChatwootModule,
     KnowledgeModule,
+    MetricsModule,
   ],
   controllers: [ConversationController, DeskWebhookController],
   providers: [

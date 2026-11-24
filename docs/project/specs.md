@@ -13,11 +13,11 @@ Chatbot de WhatsApp que atende clientes de uma revenda de gás (GLP) e cria a ve
 | Runtime | Node 24 | Gerenciador de pacotes: pnpm |
 | HTTP | NestJS 11 + Fastify | Módulos, DI, guards/filters globais; validação com nestjs-zod |
 | Estado da conversa | Redis com TTL | ioredis |
-| Banco | PostgreSQL + Drizzle | Histórico, vendas criadas, métricas |
+| Banco | PostgreSQL + Drizzle (pgvector) | Base de conhecimento (RAG) e tabelas da auth em standby. Vendas, histórico e métricas não são salvos (melhoria futura, RN13) |
 | Validação | Zod | Webhooks, respostas da API RevGás e saída da IA |
 | Testes | Vitest | Unit + e2e; máquina de estados pura, testável sem WhatsApp e sem IA |
 | Canal | WhatsApp Cloud API (oficial, da Meta) | Decidido; Evolution/Z-API descartados |
-| IA | Gemini Flash (plano gratuito) via endpoint compatível com OpenAI | Só duas funções (ver abaixo); cliente em `integrations/llm` |
+| IA | Gemini Flash (plano gratuito) via endpoint compatível com OpenAI | Funções em `src/modules/assistant/` (interpretar, ler nome e endereço, redigir dúvida pela base); cliente em `integrations/llm` |
 | CEP | ViaCEP | — |
 
 ## Estrutura de pastas
@@ -26,76 +26,56 @@ Três camadas:
 
 - **`modules/`**: os domínios da aplicação. Cada domínio tem seus controllers, services e repositórios.
 - **`infra/`**: conexão com cache e banco de dados.
-- **`integrations/`**: clientes de serviços de terceiros que a aplicação consome (API RevGás, WhatsApp e LLM).
+- **`integrations/`**: clientes de serviços de terceiros que a aplicação consome (API RevGás, WhatsApp, Chatwoot, LLM e ViaCEP).
 
 ```
 src/
-  main.ts                   # bootstrap do NestJS (Fastify)
+  main.ts / server.ts       # bootstrap do NestJS (Fastify)
   app.module.ts             # registro dos módulos
   modules/
-    conversation/           # máquina de estados do pedido (puro) + controller do webhook
-      conversation.controller.ts
-      conversation.service.ts       # recebe os eventos (dedup, envio) + função pura com transições e mensagens fixas
-      conversation.repository.ts    # dedup de mensagens e estado da conversa (via infra/cache)
+    conversation/           # webhook, estado do pedido e máquina de estados
+      conversation.controller.ts / desk-webhook.controller.ts
+      conversation.service.ts       # eventos (dedup, trava por telefone, envio)
+      conversation.repository.ts    # dedup, estado e trava (via infra/cache)
       messaging.gateway.ts          # envia as respostas (via integrations/whatsapp)
-      contracts/                    # DTOs e tipos de entrada/saída do módulo
-      conversation.states.ts
+      flow/                         # funções puras: etapas (steps/), nextStep, comandos globais
+      contracts/                    # DTOs e tipos do módulo
     customer/               # identificar e cadastrar cliente (RF02, RF03)
-      customer.service.ts
-      customer.repository.ts        # API RevGás (via integrations/revgas)
     catalog/                # produtos, preço, estoque e formas de pagamento (RF04, RF06)
-    order/                  # resumo, total, idempotência e criação da venda (RF07, RF08, RF09)
-      order.service.ts
-      order.repository.ts           # API RevGás + vendas salvas no Postgres
-    assistant/              # interpret(): texto livre e fallback de intenção (responderFaq() é futuro)
-    metrics/                # painel da revenda (F08)
+    order/                  # resumo, total e criação da venda (RF07, RF08)
+    address/                # endereço (ViaCEP e IA)
+    assistant/              # IA: interpretar, ler nome e endereço, limite por telefone
+    handoff/                # fila do atendente no Chatwoot
+    knowledge/              # RAG: base, busca híbrida e checagens de saída
+    auth/                   # standby, não montado
   infra/
-    cache/                  # Redis (ioredis): estado da conversa com TTL
+    cache/                  # Redis (ioredis): estado, trava, dedup, contadores
     database/               # Postgres + Drizzle: client, schema, migrations
+    health/
   integrations/
-    revgas/                 # cliente HTTP da API RevGás: API Key, retry com backoff, logs mascarados
-    whatsapp/               # Cloud API da Meta: envio de texto, lista e botões + webhook
-    llm/                    # cliente do modelo de IA
+    revgas/ whatsapp/ chatwoot/ llm/ viacep/   # cada um com cliente real e fake
+  cli/                      # chat (simulador) e kb-ingest
 ```
 
 **Regras de dependência:**
 - `modules/` depende de `infra/` e de `integrations/`, nunca o contrário.
 - `integrations/` não conhece o domínio: só fala com o serviço externo e valida as respostas com Zod.
 - Os services de um módulo não importam SDKs direto (Redis, Drizzle, `integrations/`). Esse acesso passa por **repositórios** (`*.repository.ts`: ler e gravar dados, seja no Redis, no Postgres ou em registros da API RevGás) ou por **gateways** (`*.gateway.ts`: ações de saída que não guardam nada, como enviar mensagem no WhatsApp).
-- Cada cliente de `integrations/` tem um mock para os testes (API RevGás, provedor de mensagens e LLM).
-- O `conversation.service` cuida dos eventos (dedup, envio, logs), mas a decisão do que responder fica numa função pura no mesmo arquivo: recebe o estado e a mensagem, devolve o novo estado e as respostas. Assim o fluxo inteiro pode ser testado com Vitest, sem WhatsApp e sem IA (RNF08).
+- Cada cliente de `integrations/` tem um modo `fake` para testes e demonstração.
+- O `conversation.service` cuida dos eventos (dedup, trava, envio, logs), mas a decisão do que responder fica em funções puras em `flow/`: recebem o estado e a mensagem e devolvem o novo estado e as respostas. Assim o fluxo inteiro pode ser testado com Vitest, sem WhatsApp e sem IA (RNF08).
 - Os schemas Zod ficam no módulo que os usa (`*.schemas.ts`); nos módulos de domínio, DTOs e tipos de entrada/saída ficam em `contracts/`. As tabelas Drizzle ficam em `infra/database/schemas`.
-
-> Os nomes dos domínios e dos arquivos são uma proposta para validar com o grupo.
 
 ## Contratos de IA
 
 ### `interpret(text, context)`
 
-Implementado em `src/modules/assistant/` e ligado ao fluxo como `FlowTools.interpret`. Chamada só quando a etapa não entendeu a mensagem (tabela em [fluxo.md](fluxo.md#texto-livre-e-fallback)). Devolve `null` se a IA falhar, demorar ou devolver algo inválido. Saída validada com Zod:
-
-```ts
-interface InterpretContext {
-  products: string[]                           // nomes dos produtos oferecidos
-  payments: { type: string; label: string }[]  // formas de pagamento da revenda
-}
-
-interface Interpretation {
-  intent: 'order' | 'question' | 'other'
-  products?: string[]    // nomes copiados da lista; vários = ambíguo
-  quantity?: number      // inteiro >= 1
-  payment?: string       // type copiado da lista
-  address?: string       // trecho do endereço como o cliente escreveu
-  newAddress?: boolean   // "outro endereço" sem dizer qual
-  confidence: number     // 0..1; abaixo de 0,6 → "Não entendi." e repete a pergunta
-}
-```
+Implementado em `src/modules/assistant/` e ligado ao fluxo como `FlowTools.interpret`. Chamada só quando a etapa não entendeu a mensagem (tabela em [fluxo.md](fluxo.md#texto-livre-e-fallback)). Devolve `null` se a IA falhar, demorar ou devolver algo inválido. A saída é validada com Zod; o contrato (`InterpretContext`, `Interpretation` com as intenções `order`, `question`, `price`, `handoff`, `off_topic`, `offense` e `other`) fica em [`assistant.types.ts`](../../src/modules/assistant/contracts/assistant.types.ts). Confiança abaixo de 0,6 vira "Não entendi." e repete a pergunta.
 
 O contexto traz só dados da revenda, nunca do cliente; CPFs são removidos do texto antes de ir à IA. Toda saída é conferida contra `listProducts` / `listPaymentOptions`, e a IA nunca define preço, total ou troco.
 
-### `responderFaq(pergunta)` (futuro)
+### Dúvidas pela base (RAG, entregue)
 
-Melhoria futura (F06, RF10), fora do escopo atual. Hoje a dúvida recebe resposta fixa com o telefone da revenda. A ideia: responder a partir de um FAQ curto (poucas dezenas de perguntas) embutido no prompt. RAG com pgvector só se a base crescer.
+F06, F13 e RF10 foram entregues em 2026-11-10. A busca (vetor + texto, no Postgres com pgvector) e a redação ficam em `src/modules/knowledge/`; a IA responde só com os trechos achados e a resposta passa por checagens de saída. Ver [knowledge.md](../guides/modules/knowledge.md) e [fluxo.md](fluxo.md#dúvidas-preço-e-guard-rails).
 
 **Regras:** saída inválida → perguntar de novo; IA indisponível → voltar aos botões; o prompt nunca recebe a API Key nem dados de outros clientes.
 
@@ -105,7 +85,7 @@ Melhoria futura (F06, RF10), fora do escopo atual. Hoje a dúvida recebe respost
 
 **Ambiente:** só produção. A homologação existe na doc, mas está marcada como "Não utilizar". Toda venda criada com a chave real é uma venda de verdade; desenvolvimento e testes usam o mock de `integrations/revgas`.
 
-**Operações necessárias** (conferidas na spec em 2026-10-19; rotas e campos detalhados na spec privada, `docs/project/private/`, fora do git):
+**Operações necessárias** (conferidas na spec em 2026-10-19; rotas e campos na [spec pública](https://revgas.stoplight.io/docs/revgas-api); a cópia privada em `docs/project/private/` não está versionada):
 
 | # | Operação | Quando | Observação |
 | --- | --- | --- | --- |
@@ -118,40 +98,42 @@ Melhoria futura (F06, RF10), fora do escopo atual. Hoje a dúvida recebe respost
 | 6 | Listar formas de pagamento | Escolha do pagamento | Enum fixo (dinheiro, Pix, cartões, vale-gás…); **não há campo de troco** → vai na observação |
 | 7 | **Criar venda** | Após "confirmo" | Endereço, itens com valor unitário, pagamentos, canal `WHATSAPP`; retorna ID, total e status |
 | 8 | Listar vendas | Repetir pedido / anti-duplicata | Filtro por cliente, canal e período (máx. 366 dias; sem datas = mês corrente) |
-| 9 | Detalhar venda | "Meu gás chegou?" | Status e entregador; **não há webhook de status nem tempo estimado** |
+| 9 | Detalhar venda | "Meu gás chegou?" (F05, pendente) | A spec pública traz status (CANCEL, OPEN, ACTIVE, WARNING, CONFIRM, CHECK), `deliverer_name` e `delivered_at`; não há tempo estimado nem webhook de status comercial |
 
 ### Preço
 
 O preço vem dos **acordos** da RevGás, não do produto. Um acordo liga um produto a um valor sugerido e um valor mínimo e vale para um cliente, uma categoria de cliente, uma forma de pagamento ou como padrão da loja. O backend resolve o acordo aplicável e usa esse valor na venda; o cliente e a IA nunca definem preço (RN06).
 
-Confirmado com dados reais (2026-10-19): **todo acordo é ligado a uma forma de pagamento**. Há três tipos: preço base por produto × forma de pagamento, preço por categoria de cliente e preço por cliente. O mesmo botijão pode custar diferente no Pix e no cartão, então o total definitivo só é mostrado depois do passo de pagamento. Prioridade suposta (a confirmar): cliente > categoria > base.
+Confirmado com dados reais (2026-10-19): **todo acordo é ligado a uma forma de pagamento**. Há três tipos: preço base por produto × forma de pagamento, preço por categoria de cliente e preço por cliente. O mesmo botijão pode custar diferente no Pix e no cartão, então o total definitivo só é mostrado depois do passo de pagamento. Prioridade entre acordos sobrepostos: suposição não confirmada. (cliente > categoria > base). A spec pública da RevGás não documenta essa ordem e marca os acordos por cliente como descontinuados em favor dos de categoria; confirmar com a RevGás.
 
 A lista de formas de pagamento aceitas pode ser derivada dos acordos. Os dados reais trazem valores fora do enum da spec (ex.: `GAS_DO_POVO`), então o schema é tolerante a valores novos.
 
 O catálogo da RevGás mistura gás, água, vasilhames (casco vendido à parte), acessórios e itens de teste: o bot oferece só uma lista curada de produtos.
 
-**Permissões da chave:** a chave atual é **só de leitura**: lê estabelecimentos, produtos, acordos e vendas, recebe 403 em clientes e formas de pagamento e não tem permissão para criar venda. Não há outra chave disponível. Até a RevGás liberar, identificação, cadastro e criação de venda (RF02, RF03, RF08) são desenvolvidos e demonstrados contra o mock de `integrations/revgas`, seguindo a spec; só as leituras são conferidas na API real.
+**Permissões da chave:** a chave atual é **só de leitura**: lê estabelecimentos, produtos, acordos e vendas, recebe 403 em clientes e formas de pagamento e não tem permissão para criar venda. Não há outra chave disponível. Até a RevGás liberar, identificação, cadastro e criação de venda (RF02, RF03, RF08) são desenvolvidos e demonstrados contra o mock de `integrations/revgas`, seguindo a spec; só as leituras são conferidas na API real (`pnpm revgas:check`).
 
 ### Restrições da API
 
-- **Rate limit global de 1 req/s** (429): o cliente HTTP serializa as chamadas e guarda no Redis o que muda pouco (estabelecimento, produtos, acordos, formas de pagamento).
-- **Sem idempotência:** antes de repetir uma criação de venda após timeout, consultar as vendas do cliente no canal WhatsApp.
+- **Rate limit global de 1 req/s** (429, confirmado na spec pública): o cliente HTTP serializa as chamadas e guarda no Redis o que muda pouco (estabelecimento, produtos, acordos, formas de pagamento).
+- **Sem mecanismo de idempotência documentado:** a spec pública não descreve chave de idempotência. Antes de repetir uma criação de venda após timeout, o bot consulta as vendas recentes do cliente (`findRecentSale`, até 5 páginas de 100, ignorando vendas sem data válida).
 - **Schemas sem campos obrigatórios declarados:** os schemas Zod de resposta são tolerantes (campos opcionais, extras ignorados); os obrigatórios reais só aparecem nos 422.
 - **Erros específicos:** 402 (chave bloqueada por falta de pagamento), 409 por lock (pode repetir) ou por duplicidade (traz o ID existente, útil no cadastro de cliente).
 
 ## Confiabilidade
 
-- **Idempotência:** a API RevGás não aceita chave de idempotência. A garantia é local: trava por conversa no Redis na confirmação, mais checagem de venda do mesmo cliente no canal WhatsApp antes de qualquer nova tentativa.
-- **Retry:** backoff em 5xx, 429, 409 por lock e timeout. A criação de venda nunca é repetida às cegas: primeiro confere se a venda já existe.
-- **Persistência:** ID da venda salvo no Postgres e enviado ao cliente; falha → alerta no log.
+- **Idempotência:** não há mecanismo documentado na API RevGás, então a garantia é local: deduplicação da mensagem pelo id (24 h), trava por telefone no Redis, checkpoint `creatingSale` no estado e `findRecentSale` antes de repetir ou cancelar. Se a trava não é obtida em 120 s, o bot não processa sem ela: pede que o cliente reenvie a mensagem.
+- **Retry:** leituras (GET) têm retry com backoff. O POST de venda nunca é repetido às cegas (consistente com a spec, que não oferece idempotência): primeiro confere se a venda já existe.
+- **Redis:** erro em estado do pedido, bloqueio de CPF ou estado do handoff não é engolido; o bot responde "instabilidade". O Redis usa `noeviction` (nunca apaga chaves por falta de memória) e é a dependência crítica do `/health` (503 sem ele; Postgres fora só marca como degradado).
+- **Venda criada:** a confirmação vai ao cliente mesmo que o registro posterior no Redis falhe. O ID não é salvo no Postgres (RN13, melhoria futura).
 - **Logs:** toda chamada à API RevGás, com CPF e telefone mascarados.
 
 ## Dados
 
 | Onde | O quê |
 | --- | --- |
-| Redis (TTL) | Estado da conversa e carrinho em andamento |
-| Postgres | Histórico de conversas, vendas criadas, métricas do painel |
+| Redis (TTL) | Estado da conversa e carrinho (só o prefixo de 3 dígitos do CPF para cliente conhecido), trava por telefone, dedup, bloqueio de CPF, estado do handoff, contadores de IA |
+| Postgres | Base de conhecimento (trechos e vetores) e tabelas da auth (standby). Sem vendas, histórico nem métricas |
+| Chatwoot | Espelho das conversas (fora do nosso banco; ver [SECURITY.md](../security/SECURITY.md#retenção-e-acesso-no-chatwoot)) |
 
 ## Restrições do canal (WhatsApp)
 

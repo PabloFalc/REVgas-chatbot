@@ -1,5 +1,7 @@
 # Design — Integração com a API RevGás (`lib/revgas`)
 
+> **Histórico.** Spec ou plano de implementação, pode estar desatualizado. Fonte atual: [requisitos.md](../../project/requisitos.md) e [funcionalidades.md](../../project/funcionalidades.md).
+
 > Atualização (2026-10-19): código movido para `src/integrations/revgas`, organizado por módulos (`shared/`, `customers/`, `sales/`…), contrato agrupado (`revgas.sales.create`).
 
 Data: 2026-10-19 · Status: rascunho para aprovação

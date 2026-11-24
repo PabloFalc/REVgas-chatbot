@@ -195,7 +195,7 @@ const handleConfirmAddress: HandleFn = async (state, input, tools) => {
         cpf: customer.cpf ?? '',
         address,
       });
-      customer = { ...customer, id: created.id, tagId: created.tagId };
+      customer = { id: created.id, name: customer.name, tagId: created.tagId };
     } catch (error) {
       const cause = error instanceof ToolError ? error.cause : error;
       if (cause instanceof CpfTakenError) {

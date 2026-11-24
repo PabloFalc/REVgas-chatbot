@@ -37,13 +37,13 @@ export class HealthService {
 
     let globalStatus: 'ok' | 'unavailable' | 'degraded' = 'ok';
 
-    const dbStatus = checks.database?.status ?? 'error';
+    const cacheStatus = checks.cache?.status ?? 'error';
 
-    if (dbStatus !== 'ok') {
+    if (cacheStatus !== 'ok') {
       globalStatus = 'unavailable';
     } else {
       const hasSecondaryFailures = Object.entries(checks).some(
-        ([name, result]) => name !== 'database' && result.status !== 'ok',
+        ([name, result]) => name !== 'cache' && result.status !== 'ok',
       );
 
       if (hasSecondaryFailures) {

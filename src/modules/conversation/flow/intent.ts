@@ -8,8 +8,11 @@ import type { FlowRoute } from '../contracts/flow-route';
 import type { FlowTools, OrderState, StepResult } from './flow.types';
 import { handoffButton, offer, orderStartButton } from './handoff';
 import { msg } from './messages';
+import { orderStatus } from './order-status';
 import { repeatQuestion } from './repeat-question';
 import { BUTTONS_BODY_LIMIT, buttons, text } from './replies';
+
+export const OFFENSE_AFTER = 2;
 
 const ITEM_LIMIT = 30;
 const CODE_TOPICS = ['Horário de atendimento', 'Formas de pagamento', 'Preços dos produtos'];
@@ -102,6 +105,7 @@ export function intentRoute(result: Interpretation): FlowRoute {
     case 'off_topic':
     case 'offense':
     case 'order':
+    case 'order_status':
       return result.intent;
     default:
       return 'not_understood';
@@ -146,7 +150,9 @@ async function answerFor(
     case 'off_topic':
       return plain(msg.offTopicRefusal);
     case 'offense':
-      return (await tools.registerOffense()) >= 2 ? offering(msg.offense) : plain(msg.offense);
+      return (await tools.registerOffense()) >= OFFENSE_AFTER
+        ? offering(msg.offense)
+        : plain(msg.offense);
     case 'order':
       return notSold(state, result, tools);
     default:
@@ -160,6 +166,7 @@ export async function routeIntent(
   raw: string,
   tools: FlowTools,
 ): Promise<StepResult | null> {
+  if (result.intent === 'order_status') return orderStatus(state, tools);
   const answer = await answerFor(state, result, raw, tools);
   if (!answer) return null;
   if (state) {

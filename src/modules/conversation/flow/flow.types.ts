@@ -27,10 +27,12 @@ import type {
   ServiceHoursInfo,
 } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
-import type { SaleOrder } from 'src/modules/order/contracts/order.types';
+import type { MetricEvent } from 'src/modules/metrics/contracts/metrics.types';
+import type { OrderStatus, SaleOrder } from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
 export const MAX_CPF_ATTEMPTS = 3;
+export const MAX_QUANTITY = 10;
 
 export type Step =
   | 'askName'
@@ -65,8 +67,16 @@ export interface RepeatOffer {
 }
 
 export interface OrderState {
+  cycleId?: string;
   step: Step;
-  customer: { id?: number; name?: string; cpf?: string; tagId?: number | null };
+  pendingOrderStatus?: { resumeStep: Step | null; customer: OrderState['customer'] };
+  customer: {
+    id?: number;
+    name?: string;
+    cpf?: string;
+    cpfPrefix?: string;
+    tagId?: number | null;
+  };
   addresses?: Address[];
   boughtProductIds?: number[];
   lastOrder?: LastOrder;
@@ -109,6 +119,7 @@ export type HandleFn = (
 ) => Promise<StepResult>;
 
 export interface FlowTools {
+  track(event: MetricEvent): void;
   phone: string;
   findCustomer(phone: string): Promise<Customer | null>;
   createCustomer(input: NewCustomer): Promise<Customer>;
@@ -127,7 +138,7 @@ export interface FlowTools {
   answerQuestion(text: string): Promise<KnowledgeAnswer>;
   knowledgeTopics(): Promise<string[]>;
   listProducts(customer: PriceCustomer): Promise<Product[]>;
-  basePrices(): Promise<BasePrice[]>;
+  basePrices(customer?: PriceCustomer): Promise<BasePrice[]>;
   listPaymentOptions(): Promise<PaymentOption[]>;
   quote(
     customer: PriceCustomer,
@@ -135,12 +146,14 @@ export interface FlowTools {
     paymentType: string,
     quantity: number,
   ): Promise<Quote | null>;
+  latestOrderStatus(customerId: number, now: Date): Promise<OrderStatus | null>;
   createSale(order: SaleOrder): Promise<number>;
   findRecentSale(order: SaleOrder, since: Date): Promise<number | null>;
   checkpoint(state: OrderState): Promise<void>;
   requestHandoff(request: HandoffRequest): Promise<HandoffOutcome>;
   serviceHours(): Promise<ServiceHoursInfo>;
   storePhone?: string;
+  demo: boolean;
   now(): Date;
 }
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { WhatsappError } from 'src/core/erros/whatsapp/whatsapp.errors';
@@ -9,13 +10,17 @@ import type {
 import type { DeskInbound } from 'src/modules/handoff/contracts/handoff.types';
 import { HandoffService } from 'src/modules/handoff/handoff.service';
 import { maskPhone } from 'src/utils/mask';
+import { BotEventsRepository } from '../metrics/bot-events.repository';
+import type { MetricEvent } from '../metrics/contracts/metrics.types';
 import type { IncomingContent, IncomingMessage, Reply } from './contracts/conversation.types';
-import { ConversationRepository } from './conversation.repository';
+import { ConversationRepository, type LockOutcome } from './conversation.repository';
 import { WINDOW_CLOSED_CODE } from './desk-events.service';
 import { detectEmergency } from './flow/emergency';
 import { runFlow } from './flow/flow';
 import { CPF_STEPS, type OrderState, type StepResult, type ToolError } from './flow/flow.types';
+import { msg } from './flow/messages';
 import { REMINDER_AFTER_MS } from './flow/reminder';
+import { text } from './flow/replies';
 import { FlowToolsService } from './flow-tools';
 import { MessagingGateway } from './messaging.gateway';
 import { replyText } from './reply-text';
@@ -41,6 +46,13 @@ function toDeskInbound(content: IncomingContent): DeskInbound {
   return { type: 'unsupported', originalType: content.originalType };
 }
 
+const DIGITS_ONLY = /^\d[\d\s.-]*$/;
+
+function isSensitiveTurn(inbound: DeskInbound, before: OrderState | null): boolean {
+  if (before !== null) return CPF_STEPS.includes(before.step);
+  return inbound.type === 'text' && DIGITS_ONLY.test(inbound.text.trim());
+}
+
 function errorInfo(error: unknown) {
   if (error instanceof WhatsappError) {
     return { kind: error.kind, status: error.status, code: error.code };
@@ -56,6 +68,7 @@ export class ConversationService {
     private readonly flowTools: FlowToolsService,
     private readonly handoff: HandoffService,
     private readonly logger: PinoLogger,
+    private readonly events: BotEventsRepository,
   ) {
     this.logger.setContext(ConversationService.name);
   }
@@ -78,6 +91,7 @@ export class ConversationService {
   }
 
   private async onMessage(event: InboundMessageEvent): Promise<void> {
+    const startedAt = Date.now();
     const log = {
       component: 'conversation',
       messageId: event.id,
@@ -99,19 +113,61 @@ export class ConversationService {
     }
 
     const incoming = toIncoming(event);
-    await this.conversations.withPhoneLock(event.from, async () => {
-      const inbound = toDeskInbound(incoming.content);
-      if ((await this.handoff.routeFor(event.from)) === 'agent') {
-        await this.forward(event.from, inbound, log);
-        if (inbound.type === 'text' && detectEmergency(inbound.text)) {
-          await this.flagEmergency(event.from, log);
+    let started = false;
+    let outcome: LockOutcome<void>;
+    try {
+      outcome = await this.conversations.withPhoneLock(event.from, async () => {
+        started = true;
+        const inbound = toDeskInbound(incoming.content);
+        const context = await this.loadContext(event.from, log);
+        if (context === null) {
+          await this.sendAll(event.from, [text(msg.unavailable)], log);
+          return;
         }
-        return;
-      }
-      const { replies, before, result } = await this.advance(incoming, log);
-      await this.sendAll(event.from, replies, log);
-      await this.mirror(incoming, inbound, replies, before, result, log);
-    });
+        if (context.route === 'agent') {
+          await this.forward(event.from, inbound, log);
+          if (inbound.type === 'text' && detectEmergency(inbound.text)) {
+            this.track({ name: 'emergency', reason: 'agent_route' });
+            await this.flagEmergency(event.from, log);
+          }
+          return;
+        }
+        const { before } = context;
+        const { replies, result, cycleId } = await this.advance(incoming, before, log);
+        await this.sendAll(event.from, replies, log);
+        this.track({
+          name: 'turn',
+          cycleId,
+          prevStep: before?.step,
+          step: result.state?.step,
+          durationMs: Date.now() - startedAt,
+        });
+        await this.mirror(incoming, inbound, replies, before, result, log);
+      });
+    } catch (error) {
+      if (started) throw error;
+      this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao obter o lock do telefone');
+      await this.sendAll(event.from, [text(msg.unavailable)], log);
+      return;
+    }
+    if (!outcome.ran) {
+      this.logger.warn(log, 'Lock do telefone não liberou a tempo; mensagem não processada');
+      await this.sendAll(event.from, [text(msg.busy)], log);
+    }
+  }
+
+  private async loadContext(
+    phone: string,
+    log: object,
+  ): Promise<{ route: 'bot' | 'agent'; before: OrderState | null } | null> {
+    try {
+      const route = await this.handoff.routeFor(phone);
+      const before = route === 'bot' ? await this.conversations.loadOrder(phone) : null;
+      return { route, before };
+    } catch (error) {
+      this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao ler o estado da conversa');
+      return null;
+    }
   }
 
   private async forward(phone: string, inbound: DeskInbound, log: object): Promise<void> {
@@ -145,7 +201,7 @@ export class ConversationService {
         phone: incoming.from,
         name: incoming.name,
         inbound,
-        sensitive: before !== null && CPF_STEPS.includes(before.step),
+        sensitive: isSensitiveTurn(inbound, before),
         botMessages: replies.map(replyText),
         newCycle: before === null,
         ended: result.state === null,
@@ -172,13 +228,16 @@ export class ConversationService {
 
   private async advance(
     incoming: IncomingMessage,
+    before: OrderState | null,
     log: object,
-  ): Promise<{ replies: Reply[]; before: OrderState | null; result: StepResult }> {
+  ): Promise<{ replies: Reply[]; result: StepResult; cycleId: string }> {
     const phone = incoming.from;
-    const tools = this.flowTools.forPhone(phone, state =>
-      this.conversations.saveOrder(phone, state),
+    const cycleId = before?.cycleId ?? randomUUID();
+    const tools = this.flowTools.forPhone(
+      phone,
+      state => this.conversations.saveOrder(phone, { ...state, cycleId }),
+      cycleId,
     );
-    const before = await this.conversations.loadOrder(phone);
     const result = await runFlow(
       before,
       { phone, content: incoming.content },
@@ -206,17 +265,10 @@ export class ConversationService {
       );
     }
 
-    if (result.state === null) {
-      await this.conversations.clearOrder(phone);
-      await this.conversations.cancelReminder(phone);
-    } else {
-      const now = new Date();
-      await this.conversations.saveOrder(phone, {
-        ...result.state,
-        lastInboundAt: now.toISOString(),
-      });
-      await this.conversations.scheduleReminder(phone, new Date(now.getTime() + REMINDER_AFTER_MS));
-    }
+    if (result.state) result.state = { ...result.state, cycleId };
+    const now = new Date();
+    const saved = await this.persist(phone, result.state, now, log);
+    await this.updateReminder(phone, result.state, now, log);
 
     this.logger.info(
       {
@@ -228,7 +280,56 @@ export class ConversationService {
       },
       'Fluxo de pedido avançou',
     );
-    return { replies: result.replies, before, result };
+    if (!saved && result.saleId === undefined) {
+      return { replies: [text(msg.unavailable)], result, cycleId };
+    }
+    return { replies: result.replies, result, cycleId };
+  }
+
+  private async persist(
+    phone: string,
+    state: OrderState | null,
+    now: Date,
+    log: object,
+  ): Promise<boolean> {
+    try {
+      if (state === null) {
+        await this.conversations.clearOrder(phone);
+      } else {
+        await this.conversations.saveOrder(phone, { ...state, lastInboundAt: now.toISOString() });
+      }
+      return true;
+    } catch (error) {
+      this.logger.error(
+        { ...log, error: errorInfo(error) },
+        'Falha ao gravar o pedido depois do fluxo',
+      );
+      return false;
+    }
+  }
+
+  private async updateReminder(
+    phone: string,
+    state: OrderState | null,
+    now: Date,
+    log: object,
+  ): Promise<void> {
+    try {
+      if (state === null) {
+        await this.conversations.cancelReminder(phone);
+      } else {
+        await this.conversations.scheduleReminder(
+          phone,
+          new Date(now.getTime() + REMINDER_AFTER_MS),
+        );
+      }
+    } catch (error) {
+      this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao atualizar o lembrete');
+    }
+  }
+
+  private track(event: MetricEvent): void {
+    this.events.record(event);
   }
 
   private async onStatus(event: StatusEvent): Promise<void> {

@@ -2,6 +2,7 @@ import type { Interpretation, NameReading } from 'src/modules/assistant/contract
 import type { BasePrice } from 'src/modules/catalog/contracts/catalog.types';
 import type { HandoffOutcome, ServiceHoursInfo } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
+import type { MetricEvent } from 'src/modules/metrics/contracts/metrics.types';
 import type { FlowTools } from '../flow.types';
 
 export const FAKE_PHONE = '5586999990000';
@@ -43,6 +44,9 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
 
   const base = {
     phone: FAKE_PHONE,
+    track: (event: MetricEvent) => {
+      calls.push({ name: 'track', args: [event] });
+    },
     findCustomer: async (phone: string) => {
       calls.push({ name: 'findCustomer', args: [phone] });
       return phone === FAKE_PHONE ? customer : null;
@@ -81,6 +85,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
       const quantity = args[3] as number;
       return { unitPrice: 110, total: 110 * quantity };
     },
+    latestOrderStatus: record('latestOrderStatus', null),
     createSale: record('createSale', 4521),
     findRecentSale: record('findRecentSale', null as number | null),
     checkpoint: record('checkpoint', undefined),
@@ -95,6 +100,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
       windows: [],
     } as ServiceHoursInfo),
     storePhone: '86999990000',
+    demo: false,
     now: () => FAKE_NOW,
   } satisfies FlowTools;
 

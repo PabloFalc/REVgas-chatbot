@@ -1,8 +1,10 @@
 import type { Address } from 'src/modules/address/contracts/address.types';
 import type { BasePrice, Product } from 'src/modules/catalog/contracts/catalog.types';
+import type { OrderStatus } from 'src/modules/order/contracts/order.types';
 import { formatMoney } from 'src/utils/money';
+import { parseBrasiliaTimestamp } from 'src/utils/parse-brasilia-timestamp';
 import type { Opening, ServiceWindow } from 'src/utils/service-hours';
-import type { OrderState, RepeatOffer } from './flow.types';
+import { MAX_QUANTITY, type OrderState, type RepeatOffer } from './flow.types';
 
 function storeContact(phone?: string): string {
   return phone ? `Fale com a revenda: ${phone}.` : 'Fale direto com a revenda.';
@@ -84,12 +86,56 @@ function priceLine({ product, minPrice, varies }: BasePrice): string {
   return `- ${product.name}: ${varies ? `a partir de ${price}` : price}`;
 }
 
+const ORDER_STATUS_LABELS = new Map([
+  ['OPEN', 'recebido'],
+  ['ACTIVE', 'em andamento'],
+  ['CONFIRM', 'confirmado'],
+  ['CHECK', 'em conferência'],
+  ['WARNING', 'com pendência, um atendente vai verificar'],
+]);
+
+const DELIVERY_DATE = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  day: '2-digit',
+  month: '2-digit',
+});
+const DELIVERY_TIME = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function orderStatus(sale: OrderStatus): string {
+  const label = ORDER_STATUS_LABELS.get(sale.status) ?? 'em andamento';
+  const lines = [`Pedido nº ${sale.saleId}: ${label}.`];
+  if (sale.delivererName) lines.push(`Entregador: ${sale.delivererName}.`);
+  const delivered = parseBrasiliaTimestamp(sale.deliveredAt);
+  if (!Number.isNaN(delivered)) {
+    lines.push(
+      `Entrega registrada em: ${DELIVERY_DATE.format(delivered)} às ${DELIVERY_TIME.format(delivered)}.`,
+    );
+  }
+  return lines.join('\n');
+}
+
+const DEMO_NOTICE = 'Este é um atendimento de demonstração: os pedidos não são entregues.';
+
+function withDemoNotice(greeting: string): string {
+  const [first, ...rest] = greeting.split('\n');
+  return [first, DEMO_NOTICE, ...rest].join('\n');
+}
+
 export const msg = {
+  orderStatus,
+  demoOrderStatus: (sale: OrderStatus) => `Pedido de demonstração.\n${orderStatus(sale)}`,
+  demoGreeting: withDemoNotice,
+  noOrderForPhone: 'Não encontrei pedido para este número.',
+  noRecentOrderForPhone: 'Não encontrei pedido recente para este número.',
   welcomeNew:
     'Olá! Ainda não te conhecemos. Para fazer seu pedido, preciso de alguns dados.\nQual é o seu nome completo?',
   welcomeBack: (name: string) => `Olá, ${name}! Vamos fazer seu pedido.`,
   offerRepeat: (offer: RepeatOffer) =>
-    `Quer repetir seu último pedido?\n${offer.quantity}× ${offer.product.name} · ${offer.payment.label}\n${addressLabel(offer.address)}`,
+    `Quer repetir seu último pedido?\n${offer.quantity}× ${offer.product.name} · ${offer.payment.label} · Total ${formatMoney(offer.quote.total)}\n${addressLabel(offer.address)}`,
   repeatOrder: 'Repetir',
   newOrder: 'Novo pedido',
   askName: 'Qual é o seu nome completo?',
@@ -126,6 +172,9 @@ export const msg = {
   otherQuantity: 'Outra',
   askQuantity: 'Mande a quantidade (um número inteiro, 1 ou mais).',
   invalidQuantity: 'Não entendi a quantidade. Mande um número inteiro, 1 ou mais.',
+  stockLimit: (stock: number, product: string) =>
+    `Temos só ${stock} ${stock === 1 ? 'unidade' : 'unidades'} de ${product} agora.`,
+  quantityAboveMax: `Pedidos acima de ${MAX_QUANTITY} unidades são atendidos por um atendente.`,
   choosePayment: 'Como você vai pagar?',
   viewPayments: 'Ver formas',
   noPriceForPayment: 'Não temos preço para essa forma de pagamento. Escolha outra.',
@@ -134,7 +183,7 @@ export const msg = {
   needsChange: 'Sim',
   askChangeAmount: 'Troco para quanto?',
   invalidChange: (total: number) =>
-    `O valor precisa ser maior que o total de ${formatMoney(total)}. Troco para quanto?`,
+    `Troco para quanto? Manda um valor só, maior que o total de ${formatMoney(total)}.`,
   summary: (state: OrderState) =>
     [
       'Confira seu pedido:',
@@ -149,8 +198,12 @@ export const msg = {
   fixProduct: 'Produto',
   fixAddress: 'Endereço',
   fixPayment: 'Pagamento',
-  saleCreated: (id: number) => `Pedido nº ${id} confirmado! Já estamos separando seu gás.`,
-  saleFailed: 'Não consegui registrar seu pedido agora.',
+  saleCreated: (id: number, total: number) =>
+    `Pedido nº ${id} confirmado! Total: ${formatMoney(total)}. Já estamos separando seu gás.`,
+  demoSaleCreated: (id: number, total: number) =>
+    `Pedido de demonstração nº ${id} registrado. Total: ${formatMoney(total)}. Nenhum gás será entregue.`,
+  saleFailed:
+    'Não consegui registrar seu pedido agora. Nada foi cobrado. Pode tentar de novo ou falar com um atendente.',
   saleRejected: (phone?: string) => `Não foi possível registrar seu pedido. ${storeContact(phone)}`,
   retry: 'Tentar de novo',
   saleInProgress: 'Estou registrando seu pedido, só um instante.',
@@ -199,9 +252,11 @@ export const msg = {
   notUnderstood: 'Não entendi.',
   chooseAmbiguousProduct: 'Qual desses você quer?',
   noted: (parts: string[]) => `Anotado: ${parts.join(', ')}.`,
-  textOnly: 'Por enquanto só entendo texto e os botões.',
+  textOnly:
+    'Por enquanto só entendo texto e os botões. Se preferir, toque no botão para falar com um atendente.',
   unavailable: 'Estou com instabilidade agora, tenta de novo em instantes.',
   reminder: 'Ainda está aí? Seu pedido fica guardado por mais 5 minutos.',
   addressLabel,
   addressFull,
+  busy: 'Ainda estou cuidando da sua mensagem anterior. Manda essa de novo em instantes.',
 };

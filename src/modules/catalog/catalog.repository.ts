@@ -44,7 +44,11 @@ export class CatalogRepository {
       .filter(product =>
         activeTypes.some(type => pickDeal(deals, product.id, type, customer) !== null),
       )
-      .map(product => ({ id: product.id, name: product.description }))
+      .map(product => ({
+        id: product.id,
+        name: product.description,
+        stock: ignoreStock ? undefined : (product.stock_quantity ?? 0),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 
@@ -69,15 +73,15 @@ export class CatalogRepository {
     return { unitPrice, total: Math.round(unitPrice * quantity * 100) / 100 };
   }
 
-  async basePrices(): Promise<BasePrice[]> {
+  async basePrices(customer: PriceCustomer = {}): Promise<BasePrice[]> {
     const [products, paymentOptions] = await Promise.all([
-      this.listProducts({}),
+      this.listProducts(customer),
       this.listPaymentOptions(),
     ]);
     const result: BasePrice[] = [];
     for (const product of products) {
       const quotes = await Promise.all(
-        paymentOptions.map(option => this.quote({}, product.id, option.type, 1)),
+        paymentOptions.map(option => this.quote(customer, product.id, option.type, 1)),
       );
       const prices = quotes.flatMap(item => (item ? [item.unitPrice] : []));
       if (prices.length === 0) continue;
@@ -130,10 +134,12 @@ export class CatalogRepository {
   }
 
   private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
-    const hit = await this.cache.get<T>({ prefix: CACHE_PREFIX, key });
+    const hit = await this.cache.get<T>({ prefix: CACHE_PREFIX, key }).catch(() => null);
     if (hit !== null) return hit;
     const value = await load();
-    await this.cache.set({ prefix: CACHE_PREFIX, key, value, ttl: CACHE_TTL_SECONDS });
+    await this.cache
+      .set({ prefix: CACHE_PREFIX, key, value, ttl: CACHE_TTL_SECONDS })
+      .catch(() => undefined);
     return value;
   }
 }

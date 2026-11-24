@@ -29,11 +29,19 @@ const options = [
 
 const base: OrderState = {
   step: 'choosePayment',
-  customer: { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   address,
   product: { id: 1, name: 'Botijão P13' },
   quantity: 2,
 };
+
+describe('invalidChange', () => {
+  it('pede o valor do troco antes de explicar o limite', () => {
+    expect(msg.invalidChange(220)).toBe(
+      'Troco para quanto? Manda um valor só, maior que o total de R$ 220,00.',
+    );
+  });
+});
 
 describe('choosePayment', () => {
   it('até 3 formas viram botões pay:<TYPE>', async () => {

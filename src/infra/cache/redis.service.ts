@@ -10,6 +10,14 @@ const DELETE_IF_EQUALS =
 const CLAIM_IF_SCORE_EQUALS =
   "if redis.call('zscore', KEYS[1], ARGV[1]) == ARGV[2] then return redis.call('zrem', KEYS[1], ARGV[1]) else return 0 end";
 
+const INCREMENT_WITH_TTL =
+  "local count = redis.call('incr', KEYS[1]); if count == 1 or redis.call('ttl', KEYS[1]) == -1 then redis.call('expire', KEYS[1], ARGV[1]) end; return count";
+
+function errorInfo(error: unknown) {
+  if (error instanceof Error) return { name: error.name, message: error.message };
+  return { name: typeof error };
+}
+
 @Injectable()
 export class RedisService implements ICacheClient, OnApplicationShutdown {
   constructor(
@@ -21,28 +29,19 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
 
   async get<T>(params: CacheGetParams): Promise<T | null> {
     const { key, prefix } = params;
-    try {
-      const result = await this.redis.get(this._makePrefix(key, prefix));
-      if (!result) return null;
-      return JSON.parse(result) as T;
-    } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache get error');
-      return null;
-    }
+    const result = await this.redis.get(this._makePrefix(key, prefix));
+    if (!result) return null;
+    return JSON.parse(result) as T;
   }
 
   async set(params: CacheSetParams): Promise<void> {
     const { key, value, ttl, prefix } = params;
-    try {
-      const serialized = JSON.stringify(value);
-      const keyWithPrefix = this._makePrefix(key, prefix);
-      if (ttl) {
-        await this.redis.setex(keyWithPrefix, ttl, serialized);
-      } else {
-        await this.redis.set(keyWithPrefix, serialized);
-      }
-    } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache set error');
+    const serialized = JSON.stringify(value);
+    const keyWithPrefix = this._makePrefix(key, prefix);
+    if (ttl) {
+      await this.redis.setex(keyWithPrefix, ttl, serialized);
+    } else {
+      await this.redis.set(keyWithPrefix, serialized);
     }
   }
 
@@ -58,21 +57,12 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
 
   async exists(params: CacheGetParams): Promise<boolean> {
     const { key, prefix } = params;
-    try {
-      return (await this.redis.exists(this._makePrefix(key, prefix))) === 1;
-    } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache exists error');
-      return false;
-    }
+    return (await this.redis.exists(this._makePrefix(key, prefix))) === 1;
   }
 
   async delete(params: CacheGetParams): Promise<void> {
     const { key, prefix } = params;
-    try {
-      await this.redis.del(this._makePrefix(key, prefix));
-    } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache delete error');
-    }
+    await this.redis.del(this._makePrefix(key, prefix));
   }
 
   async deleteIfEquals(params: CacheGetParams & { value: unknown }): Promise<boolean> {
@@ -86,7 +76,10 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
       );
       return result === 1;
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error, prefix }, 'Cache deleteIfEquals error');
+      this.logger.error(
+        { component: 'cache', error: errorInfo(error), prefix },
+        'Cache deleteIfEquals error',
+      );
       return false;
     }
   }
@@ -98,12 +91,12 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
 
   async increment(params: CacheGetParams & { ttl: number }): Promise<number> {
     const { key, prefix, ttl } = params;
-    const keyWithPrefix = this._makePrefix(key, prefix);
-    const count = await this.redis.incr(keyWithPrefix);
-    if (count === 1) {
-      await this.redis.expire(keyWithPrefix, ttl);
-    }
-    return count;
+    return (await this.redis.eval(
+      INCREMENT_WITH_TTL,
+      1,
+      this._makePrefix(key, prefix),
+      ttl,
+    )) as number;
   }
 
   async scheduleAdd(params: { set: string; member: string; at: number }): Promise<void> {
@@ -159,7 +152,7 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
         cursor = next;
       } while (cursor !== '0');
     } catch (error) {
-      this.logger.error({ component: 'cache', err: error }, 'Cache clear error');
+      this.logger.error({ component: 'cache', error: errorInfo(error) }, 'Cache clear error');
     }
   }
 

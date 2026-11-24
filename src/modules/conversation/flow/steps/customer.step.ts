@@ -20,12 +20,14 @@ import {
 import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
+import { answerOrderStatus } from '../order-status';
 import { text } from '../replies';
 import { offerOrNext } from './repeat.step';
 
 const MAX_NAME_LENGTH = 100;
 const MAX_NAME_TEXT = 200;
 const CPF_LIKE_DIGITS = 9;
+const CPF_PREFIX_LENGTH = 3;
 
 function hasCpfLikeDigits(raw: string): boolean {
   return removeLongDigitRuns(raw, CPF_LIKE_DIGITS) !== raw;
@@ -73,12 +75,19 @@ async function withHistory(
   return history.lastOrder ? { ...loaded, lastOrder: history.lastOrder } : loaded;
 }
 
+function greeting(message: string, tools: FlowTools): string {
+  return tools.demo ? msg.demoGreeting(message) : message;
+}
+
 export async function welcomeKnown(state: OrderState, tools: FlowTools): Promise<StepResult> {
   const { id, name } = state.customer;
   if (id === undefined || name === undefined) return nextStep(state, tools);
   const loaded = await withHistory(state, id, tools);
   const next = await offerOrNext(await keepOfferedProduct(loaded, tools), tools);
-  return { state: next.state, replies: [text(msg.welcomeBack(name)), ...next.replies] };
+  return {
+    state: next.state,
+    replies: [text(greeting(msg.welcomeBack(name), tools)), ...next.replies],
+  };
 }
 
 function contactStore(tools: FlowTools): StepResult {
@@ -94,7 +103,7 @@ export async function start(
   if (!customer) {
     return {
       state: { step: 'askName', customer: {}, ...seed },
-      replies: [text(msg.welcomeNew)],
+      replies: [text(greeting(msg.welcomeNew, tools))],
     };
   }
 
@@ -103,7 +112,12 @@ export async function start(
 
   const state: OrderState = {
     step: 'askCpfPrefix',
-    customer: { id: customer.id, name: customer.name, cpf: customer.cpf, tagId: customer.tagId },
+    customer: {
+      id: customer.id,
+      name: customer.name,
+      cpfPrefix: customer.cpf.slice(0, CPF_PREFIX_LENGTH),
+      tagId: customer.tagId,
+    },
     ...seed,
   };
   if (await tools.isVerified(input.phone, customer.id)) return welcomeKnown(state, tools);
@@ -149,7 +163,6 @@ const handleAskCpf: HandleFn = async (state, input, tools) => {
   return nextStep({ ...state, customer: { ...state.customer, cpf: onlyDigits(raw) } }, tools);
 };
 
-const CPF_PREFIX_LENGTH = 3;
 const STANDALONE_PREFIX = /\b\d{3}\b/g;
 const NUMERIC_ONLY = /^[\d\s.-]+$/;
 
@@ -160,8 +173,8 @@ function prefixAttempt(raw: string | null): string | null {
 }
 
 const handleAskCpfPrefix: HandleFn = async (state, input, tools) => {
-  const { id, cpf } = state.customer;
-  if (id === undefined || !cpf) return contactStore(tools);
+  const { id, cpfPrefix } = state.customer;
+  if (id === undefined || !cpfPrefix) return contactStore(tools);
   const raw = textOf(input);
   const digits = prefixAttempt(raw);
   if (digits === null) {
@@ -172,8 +185,11 @@ const handleAskCpfPrefix: HandleFn = async (state, input, tools) => {
     if (!rest) return { state, replies: [text(msg.cpfPrefixFormat)] };
     return freeTextOr(state, rest, tools, msg.cpfPrefixFormat);
   }
-  if (digits === cpf.slice(0, CPF_PREFIX_LENGTH)) {
+  if (digits === cpfPrefix) {
     await tools.markVerified(input.phone, id);
+    if (state.pendingOrderStatus) {
+      return answerOrderStatus(state, id, tools);
+    }
     return welcomeKnown(state, tools);
   }
   const attempts = await tools.registerCpfMismatch(input.phone);

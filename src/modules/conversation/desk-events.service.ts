@@ -49,7 +49,7 @@ export class DeskEventsService {
       return;
     }
     if (event.kind === 'conversationResolved') {
-      await this.conversations.withPhoneLock(phone, () =>
+      await this.underLock(phone, event.kind, () =>
         this.handoff.endFromDesk(phone, event.conversationId),
       );
       return;
@@ -57,14 +57,30 @@ export class DeskEventsService {
     if (!(await this.handoff.claimDeskMessage(event.messageId))) {
       return;
     }
-    await this.conversations.withPhoneLock(phone, () => this.relayAgentMessage(phone, event));
+    const ran = await this.underLock(phone, event.kind, () => this.relayAgentMessage(phone, event));
+    if (!ran) {
+      await this.handoff.releaseDeskMessage(event.messageId);
+    }
+  }
+
+  private async underLock(
+    phone: string,
+    kind: DeskEvent['kind'],
+    work: () => Promise<void>,
+  ): Promise<boolean> {
+    const outcome = await this.conversations.withPhoneLock(phone, work);
+    if (outcome.ran) return true;
+    this.logger.warn(
+      { component: 'desk-events', kind, phone: maskPhone(phone) },
+      'Lock do telefone não liberou a tempo; evento não processado',
+    );
+    return false;
   }
 
   private async relayAgentMessage(phone: string, event: AgentMessage): Promise<void> {
     const { becameActive } = await this.handoff.markAgentMessage(phone, event.conversationId);
     if (becameActive) {
-      await this.conversations.clearOrder(phone);
-      await this.conversations.cancelReminder(phone);
+      await this.dropOrder(phone);
     }
     const text = truncate(
       `*${event.agentName} (atendente):* ${event.content}`,
@@ -78,6 +94,22 @@ export class DeskEventsService {
         return;
       }
       throw error;
+    }
+  }
+
+  private async dropOrder(phone: string): Promise<void> {
+    try {
+      await this.conversations.clearOrder(phone);
+      await this.conversations.cancelReminder(phone);
+    } catch (error) {
+      this.logger.warn(
+        {
+          component: 'desk-events',
+          phone: maskPhone(phone),
+          error: error instanceof Error ? error.name : 'unknown',
+        },
+        'Falha ao apagar o pedido ao assumir o atendimento',
+      );
     }
   }
 }

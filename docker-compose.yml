@@ -1,3 +1,5 @@
+name: revgas-chatbot
+
 services:
   postgres:
     image: pgvector/pgvector:pg17
@@ -7,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docker}
       POSTGRES_DB: ${POSTGRES_DB:-revgas}
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_pgvector_data:/var/lib/postgresql/data
     healthcheck:
@@ -25,10 +27,10 @@ services:
     image: redis:7-alpine
     container_name: revgas-redis
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
@@ -104,7 +106,42 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  metabase-postgres:
+    image: postgres:17-alpine
+    profiles: ['metabase']
+    env_file: docker/metabase.env
+    environment:
+      POSTGRES_USER: metabase
+      POSTGRES_DB: metabase
+    volumes:
+      - metabase_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U metabase -d metabase']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  metabase:
+    image: metabase/metabase:v0.65.3.7
+    profiles: ['metabase']
+    env_file: docker/metabase.env
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: metabase-postgres
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_ANON_TRACKING_ENABLED: 'false'
+    ports:
+      - '127.0.0.1:3001:3000'
+    depends_on:
+      metabase-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
+  metabase_pg_data:
   postgres_pgvector_data:
   redis_data:
   chatwoot_pg_data:
