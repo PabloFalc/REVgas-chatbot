@@ -22,7 +22,7 @@ Projeto de Extensão 2026.2 (ICEV) para a **Flow**. Escopo, requisitos e fluxo e
 > Limite conhecido: a chave RevGás disponível é só de leitura, então criar venda e cadastrar
 > cliente só foram exercitados contra o mock (`REVGAS_MODE=fake`).
 
-Verificação atual: 1745 testes unitários (128 arquivos) e 60 e2e (8 arquivos). Teste de carga
+Verificação atual: 1745 testes unitários (128 arquivos) e 43 e2e (9 arquivos). Teste de carga
 leve: 200 webhooks assinados, 10 concorrentes, p50 7 ms, p95 10 ms, 0 erros.
 
 ---
