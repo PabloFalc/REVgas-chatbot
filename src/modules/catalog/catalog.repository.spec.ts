@@ -313,4 +313,45 @@ describe('CatalogRepository', () => {
       expect(productsList).toHaveBeenCalledOnce();
     });
   });
+
+  describe('refresh', () => {
+    it('reloads every catalog key from RevGás even when the cache is warm', async () => {
+      const { repository, cache, productsList, dealsListAll } = build({
+        products: [product(1, 'P13')],
+        deals: [deal(1, 1, 'PIX', 100)],
+      });
+      await repository.listProducts({});
+      vi.mocked(cache.set).mockClear();
+
+      await expect(repository.refresh()).resolves.toEqual([]);
+
+      expect(productsList).toHaveBeenCalledTimes(2);
+      expect(dealsListAll).toHaveBeenCalledTimes(2);
+      const keys = vi
+        .mocked(cache.set)
+        .mock.calls.map(([params]) => `${params.prefix}:${params.key}`);
+      expect(keys.sort()).toEqual([
+        'catalog:deals',
+        'catalog:establishment',
+        'catalog:payment-types',
+        'catalog:products',
+      ]);
+    });
+
+    it('returns the keys that failed and still stores the others', async () => {
+      const { repository, cache, dealsListAll } = build({ products: [product(1, 'P13')] });
+      dealsListAll.mockRejectedValue(new Error('timeout'));
+
+      await expect(repository.refresh()).resolves.toEqual(['deals']);
+
+      const keys = vi
+        .mocked(cache.set)
+        .mock.calls.map(([params]) => `${params.prefix}:${params.key}`);
+      expect(keys.sort()).toEqual([
+        'catalog:establishment',
+        'catalog:payment-types',
+        'catalog:products',
+      ]);
+    });
+  });
 });

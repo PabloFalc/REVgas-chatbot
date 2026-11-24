@@ -17,9 +17,18 @@ import { paymentLabel } from './payment-labels';
 import { pickDeal } from './price';
 
 const CACHE_PREFIX = 'catalog';
-const CACHE_TTL_SECONDS = 600;
+export const CACHE_TTL_SECONDS = 600;
 const PRODUCTS_PAGE_SIZE = 100;
 const ACTIVE_STATUS = 'ACTIVE';
+
+interface CatalogData {
+  products: RevgasProduct[];
+  'payment-types': RevgasPaymentType[];
+  deals: RevgasDeal[];
+  establishment: RevgasEstablishment | null;
+}
+
+export type CatalogKey = keyof CatalogData;
 
 @Injectable()
 export class CatalogRepository {
@@ -100,8 +109,16 @@ export class CatalogRepository {
       .map(item => item.payment_type);
   }
 
-  private products(): Promise<RevgasProduct[]> {
-    return this.cached('products', async () => {
+  async refresh(): Promise<CatalogKey[]> {
+    const keys = Object.keys(this.loaders) as CatalogKey[];
+    const results = await Promise.allSettled(
+      keys.map(async key => this.store(key, await this.loaders[key]())),
+    );
+    return keys.filter((_, index) => results[index].status === 'rejected');
+  }
+
+  private readonly loaders: { [K in CatalogKey]: () => Promise<CatalogData[K]> } = {
+    products: async () => {
       const all: RevgasProduct[] = [];
       for (let page = 1; ; page++) {
         const result = await this.revgas.products.list({
@@ -112,34 +129,47 @@ export class CatalogRepository {
         all.push(...result.data);
         if (!result.pagination.has_next) return all;
       }
-    });
-  }
-
-  private paymentTypes(): Promise<RevgasPaymentType[]> {
-    return this.cached('payment-types', () => this.revgas.paymentTypes.list());
-  }
-
-  private deals(): Promise<RevgasDeal[]> {
-    return this.cached('deals', () => this.revgas.deals.listAll());
-  }
-
-  private establishment(): Promise<RevgasEstablishment | null> {
-    return this.cached('establishment', async () => {
+    },
+    'payment-types': () => this.revgas.paymentTypes.list(),
+    deals: () => this.revgas.deals.listAll(),
+    establishment: async () => {
       const page = await this.revgas.establishments.list();
       const wanted = env.REVGAS_ESTABLISHMENT_ID;
       const found =
         wanted === undefined ? page.data[0] : page.data.find(item => item.id === wanted);
       return found ?? null;
-    });
+    },
+  };
+
+  private products(): Promise<RevgasProduct[]> {
+    return this.cached('products');
   }
 
-  private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
-    const hit = await this.cache.get<T>({ prefix: CACHE_PREFIX, key }).catch(() => null);
+  private paymentTypes(): Promise<RevgasPaymentType[]> {
+    return this.cached('payment-types');
+  }
+
+  private deals(): Promise<RevgasDeal[]> {
+    return this.cached('deals');
+  }
+
+  private establishment(): Promise<RevgasEstablishment | null> {
+    return this.cached('establishment');
+  }
+
+  private async cached<K extends CatalogKey>(key: K): Promise<CatalogData[K]> {
+    const hit = await this.cache
+      .get<CatalogData[K]>({ prefix: CACHE_PREFIX, key })
+      .catch(() => null);
     if (hit !== null) return hit;
-    const value = await load();
+    const value = await this.loaders[key]();
+    await this.store(key, value);
+    return value;
+  }
+
+  private async store<K extends CatalogKey>(key: K, value: CatalogData[K]): Promise<void> {
     await this.cache
       .set({ prefix: CACHE_PREFIX, key, value, ttl: CACHE_TTL_SECONDS })
       .catch(() => undefined);
-    return value;
   }
 }

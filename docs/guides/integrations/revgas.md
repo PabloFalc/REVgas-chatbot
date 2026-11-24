@@ -125,6 +125,16 @@ retry. Quem chama deve:
 2. Conferir com `sales.list` (filtrando por `customer_id`, `from`/`to`) se a venda foi criada.
 3. Só então reenviar (se não existir) ou seguir com a venda encontrada.
 
+## Cache do catálogo
+
+O `CatalogRepository` (`src/modules/catalog`) guarda produtos, formas de pagamento, negociações e
+estabelecimento no Redis (`catalog:*`, TTL de 600 s). Só `deals.listAll()` pagina mais de 10 páginas
+(cerca de 1 s cada), então carregar na hora de responder atrasaria o cliente. O `CatalogRefresher`
+recarrega tudo no boot e a cada 300 s (metade do TTL), em segundo plano: com o bot no ar o cache não
+vence. Falha parcial gera log `warn` (`Catálogo atualizado em parte`, com as chaves que falharam) e
+mantém o valor anterior até o TTL. Se o cache sumir (Redis reiniciado ou `allkeys-lru`), a próxima
+leitura carrega na hora, como antes. Não roda com `NODE_ENV=test`.
+
 ## Check manual contra a API real
 
 ```
