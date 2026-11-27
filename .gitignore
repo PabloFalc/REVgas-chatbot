@@ -61,3 +61,4 @@ docs/project/private/
 docker/chatwoot.env
 
 docker/metabase.env
+docker/metabase.provision.env

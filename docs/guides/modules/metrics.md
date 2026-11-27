@@ -51,17 +51,47 @@ Se o host não tem `psql`, rode o mesmo script dentro do container `revgas-pg`. 
 docker exec -i revgas-pg psql -U docker -d revgas -v DBNAME=revgas -v pass='senha-local-de-consulta' -f - < docker/metabase/metrics-reader.sql
 ```
 
-4. Rode `pnpm metabase:up` e abra http://localhost:3001. Crie a conta administrativa local. Adicione uma conexão PostgreSQL com host `postgres`, porta `5432`, banco `revgas`, usuário `metrics_reader` e a senha de consulta. Ajuste o nome do banco se seu ambiente usar outro.
-5. Em Admin > Configurações > Geral, defina o fuso horário dos relatórios como `America/Sao_Paulo`. A conexão com o banco não tem campo de fuso horário, então essa configuração é global do Metabase.
-6. Rode `pnpm metabase:stop` ao terminar. Os volumes preservam a configuração. Não remova containers ou volumes existentes.
+4. Rode `pnpm metabase:up` e espere a interface responder em http://localhost:3001.
+5. Copie `docker/metabase.provision.env.example` para `docker/metabase.provision.env` e preencha e-mail e senha da conta administrativa (a primeira execução cria essa conta) e a senha do `metrics_reader` criada no passo 3. Esse arquivo também fica fora do Git. Ele é separado de `docker/metabase.env` de propósito: o compose injeta `docker/metabase.env` nos containers, e as credenciais do provisionamento não devem ir parar no ambiente do Metabase.
+6. Rode `pnpm metabase:provision`. O comando espera o `/api/health` por até 3 minutos e deixa a instância assim: administrador criado se ainda não existir, fuso dos relatórios `America/Sao_Paulo`, telemetria anônima desligada, conexão PostgreSQL "RevGás (leitura)" com o usuário `metrics_reader`, coleções Gestor e Supervisor e as quatro perguntas P0 com as variáveis `dias` e `incluir_simulados`. O SQL de cada pergunta é lido de `docs/guides/metrics/sql/` na hora da execução.
+7. Rode `pnpm metabase:stop` ao terminar. Os volumes preservam a configuração. Não remova containers ou volumes existentes.
+
+O comando pode ser repetido. Cada linha da saída diz se o item foi criado, atualizado ou ficou sem mudança, e uma segunda execução seguida deve terminar com zero criados e zero atualizados. O que alguém editar pela interface nas perguntas (SQL, variáveis, coleção, conexão) volta ao definido no repositório na próxima execução; o tipo de gráfico e o restante da visualização não são tocados.
+
+A API do Metabase não devolve a senha da conexão, então o comando não consegue saber se ela mudou. Depois de trocar a senha do `metrics_reader`, atualize `METABASE_READER_PASSWORD` e rode `pnpm metabase:provision --atualizar-senha`.
+
+Variáveis lidas pelo comando (do ambiente do processo ou de `docker/metabase.provision.env`; o ambiente vence o arquivo):
+
+| Variável | Uso |
+| --- | --- |
+| `METABASE_URL` | Endereço do Metabase. Padrão `http://127.0.0.1:3001` |
+| `METABASE_ADMIN_EMAIL`, `METABASE_ADMIN_PASSWORD` | Conta administrativa. Criada se a instância ainda não tem usuário; usadas para entrar nas execuções seguintes. Dispensáveis se `METABASE_API_KEY` estiver definida e a instância já tiver administrador |
+| `METABASE_API_KEY` | Chave de API do Metabase (grupo Administrators). Opcional; quando existe, vale no lugar de e-mail e senha |
+| `METABASE_READER_HOST`, `METABASE_READER_PORT`, `METABASE_READER_NAME` | Postgres do bot visto de dentro do container do Metabase. Padrões `postgres`, `5432`, `revgas` |
+| `METABASE_READER_USER` | Padrão `metrics_reader` |
+| `METABASE_READER_PASSWORD` | Obrigatória. Senha do `metrics_reader` |
+
+Se faltar variável obrigatória ou o Metabase não responder, o comando termina com código 1 e uma mensagem que cita o nome da variável ou o endereço, sem imprimir valores secretos.
 
 A imagem OSS fica fixa em `metabase/metabase:v0.65.3.7`, a versão estável mais recente da série principal publicada até 09/11/2026. O [Docker Hub](https://hub.docker.com/r/metabase/metabase/tags?name=v0.65.3.7) informa publicação em 09/11/2026 às 21:26 UTC; `v0.65.4` foi publicada em 10/11. O perfil mantém o banco de configuração separado e desliga telemetria anônima. A interface só escuta em `127.0.0.1:3001`.
 
 O usuário `metrics_reader` tem CONNECT, USAGE no schema, SELECT em `bot_events` e SELECT só nas colunas analíticas de `sale_attempts` (`customer_id` e `erp_sale_id` ficam de fora), limite de dez conexões e timeout de 10 segundos. Não use a credencial administrativa do bot no Metabase. Permissões públicas herdadas do PostgreSQL também devem ser consideradas ao instalar em outro ambiente. Se o usuário já existe, rode apenas a última linha do script (o `GRANT` de `sale_attempts`) em vez do arquivo inteiro.
 
+## Deploy
+
+Sequência para um servidor com o Metabase do compose. Os comandos rodam a partir de um checkout do repositório, porque o provisionamento lê os SQLs de `docs/guides/metrics/sql/`.
+
+1. Defina `docker/metabase.env` (senhas do banco de configuração do Metabase) e `docker/metabase.provision.env` (ou exporte as variáveis `METABASE_*` do pipeline) com os valores do servidor.
+2. Aplique as migrações no Postgres do bot e crie o papel de leitura com `docker/metabase/metrics-reader.sql`, como no passo 3 acima. Em instalação já existente, o papel já existe: só falta aplicar a última linha do script (o `GRANT` de colunas em `sale_attempts`).
+3. Suba o Metabase com `pnpm metabase:up`.
+4. Rode `pnpm metabase:provision`. Em deploys seguintes basta repetir esse passo; ele só altera o que divergir.
+5. Confira na saída a linha final (`Concluído: ...`) e abra uma das perguntas na interface.
+
+Em servidor, `METABASE_URL` deve apontar para o endereço que o processo de deploy enxerga, e `METABASE_READER_HOST` para o endereço do Postgres do bot visto de dentro do container do Metabase.
+
 ## Cards SQL
 
-As consultas estão em [`../metrics/sql/`](../metrics/sql/). Use o mesmo fuso horário da operação nas conexões e nos cards. Os quatro cards P0 (`gestor-*` e `supervisor-espera`) seguem as regras da subseção abaixo.
+As consultas estão em [`../metrics/sql/`](../metrics/sql/). Use o mesmo fuso horário da operação nas conexões e nos cards. Os quatro cards P0 (`gestor-*` e `supervisor-espera`) seguem as regras da subseção abaixo e são criados por `pnpm metabase:provision`.
 
 | Arquivo | Card |
 | --- | --- |
@@ -80,7 +110,7 @@ As consultas estão em [`../metrics/sql/`](../metrics/sql/). Use o mesmo fuso ho
 
 ### Cards P0 do painel
 
-Os quatro cards vão em duas coleções: Gestor (`gestor-vendas`, `gestor-conversao`, `gestor-abandono`) e Supervisor (`supervisor-espera`). Cada um usa duas variáveis, com os mesmos nomes nos quatro:
+Os quatro cards vão em duas coleções, criadas pelo provisionamento: Gestor (`gestor-vendas`, `gestor-conversao`, `gestor-abandono`) e Supervisor (`supervisor-espera`). Cada um usa duas variáveis, com os mesmos nomes nos quatro:
 
 - `dias`: numérica, obrigatória, padrão 30. O próprio SQL recusa valores fora de 1 a 365 com erro do Postgres (`dias deve estar entre 1 e 365, recebido N`), sem ajustar o valor. O Metabase não impede 0 ou 10000 na variável, então a trava fica no SQL.
 - `incluir_simulados`: texto, obrigatória, padrão `nao`, com lista de valores `nao` e `sim`. Com `nao` as linhas simuladas ficam de fora. Com `sim` entram também as simuladas, nas duas tabelas. Qualquer outro valor se comporta como `nao`.

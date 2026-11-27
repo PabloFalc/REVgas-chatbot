@@ -21,6 +21,7 @@
     "chatwoot:up": "docker compose --profile chatwoot up -d chatwoot-rails chatwoot-sidekiq",
     "chatwoot:stop": "docker compose --profile chatwoot stop chatwoot-rails chatwoot-sidekiq chatwoot-postgres chatwoot-redis",
     "metabase:up": "docker compose --profile metabase up -d metabase",
+    "metabase:provision": "node --env-file-if-exists=docker/metabase.provision.env docker/metabase/provision.mjs",
     "metabase:stop": "docker compose --profile metabase stop metabase metabase-postgres",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
