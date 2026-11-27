@@ -6,7 +6,7 @@ on:
   push:
     branches: [develop, integracao]
   pull_request:
-    branches: [integracao, develop, staging, main]
+    branches: [integracao, develop, refactor, staging, main]
 
 concurrency:
   group: pr-${{ github.workflow }}-${{ github.ref }}

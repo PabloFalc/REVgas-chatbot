@@ -37,7 +37,7 @@ function setup(whatsapp = new FakeWhatsappClient()) {
       return true;
     }),
     loadOrder: vi.fn(async () => null as OrderState | null),
-    saveOrder: vi.fn(async () => undefined),
+    saveOrder: vi.fn(async (_phone: string, _state: OrderState) => undefined),
     clearOrder: vi.fn(async () => undefined),
     scheduleReminder: vi.fn(async () => undefined),
     cancelReminder: vi.fn(async () => undefined),

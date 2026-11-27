@@ -251,7 +251,7 @@ describe('status do pedido', () => {
         findCustomer: async () => ({
           id: 1,
           name: 'Maria',
-          cpf: 'blocked' in condition ? '12345678909' : undefined,
+          cpf: 'blocked' in condition ? '12345678909' : null,
           tagId: null,
         }),
         isBlocked: async () => 'blocked' in condition,
