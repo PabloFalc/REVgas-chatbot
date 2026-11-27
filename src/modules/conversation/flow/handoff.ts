@@ -10,6 +10,7 @@ import { msg, paymentLine } from './messages';
 import { buttons, text } from './replies';
 
 export const HANDOFF_CHOICE = 'handoff:request';
+export const CANCELLATION_CHOICE = 'handoff:cancellation';
 
 const AGENT_WORDS = ['atendente', 'falar com alguem', 'humano'];
 
@@ -52,6 +53,10 @@ export function handoffButton(): ReplyOption {
   return { id: HANDOFF_CHOICE, title: msg.talkToAgent };
 }
 
+export function cancellationButton(): ReplyOption {
+  return { id: CANCELLATION_CHOICE, title: msg.talkToAgent };
+}
+
 export function offer(body: string): Reply {
   return buttons(body, [handoffButton()]);
 }
@@ -62,14 +67,14 @@ export function handoffSummary(state: OrderState | null): HandoffOrderSummary | 
   if (state.step === 'askCpfPrefix' || state.step === 'confirmCpf') {
     return { stepLabel, identityConfirmed: false, newCustomer: false };
   }
-  const { customer, product, quantity, address, payment, quote } = state;
+  const { customer, product, quantity, requestedQuantity, address, payment, quote } = state;
   return {
     stepLabel,
     identityConfirmed: true,
     newCustomer: customer.id === undefined,
     customerName: customer.name,
     product: product?.name,
-    quantity,
+    quantity: quantity ?? requestedQuantity,
     address: address ? msg.addressFull(address) : undefined,
     payment: payment ? paymentLine(state) : undefined,
     total: quote?.total,
@@ -87,6 +92,11 @@ function queueReply(outcome: HandoffOutcome): Reply {
   return text(msg.handoffAlreadyQueued);
 }
 
+export function handoffReply(outcome: HandoffOutcome, tools: FlowTools): Reply {
+  if (outcome.status === 'unavailable') return text(msg.talkToStore(tools.storePhone));
+  return queueReply(outcome);
+}
+
 export async function handoff(
   state: OrderState | null,
   phone: string,
@@ -94,10 +104,7 @@ export async function handoff(
   tools: FlowTools,
 ): Promise<StepResult> {
   const outcome = await tools.requestHandoff({ phone, reason, summary: handoffSummary(state) });
-  if (outcome.status === 'unavailable') {
-    return { state, replies: [text(msg.talkToStore(tools.storePhone))] };
-  }
-  return { state, replies: [queueReply(outcome)] };
+  return { state, replies: [handoffReply(outcome, tools)] };
 }
 
 export async function identityHandoff(

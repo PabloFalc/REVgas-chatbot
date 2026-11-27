@@ -4,6 +4,7 @@ import {
 } from 'src/core/erros/revgas/revgas.errors';
 import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
 import type { HandoffRequest } from 'src/modules/handoff/contracts/handoff.types';
+import { handoffNote } from 'src/modules/handoff/contracts/handoff-note';
 import {
   SaleAlreadyRegisteredError,
   type SaleAttemptStatus,
@@ -93,7 +94,22 @@ describe('summary', () => {
     const reply = result?.replies[0];
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
     expect(reply.body).toBe(msg.summary(base));
-    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:1', 'summary:fix']);
+    expect(reply.buttons.map(b => b.id)).toEqual([
+      'summary:confirm:1',
+      'summary:fix',
+      'summary:cancel',
+    ]);
+  });
+
+  it('inclui botão de cancelar no resumo', async () => {
+    const shown = await asks.summary?.(base, createFakeTools());
+    const reply = shown?.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(reply.buttons).toContainEqual({ id: 'summary:cancel', title: msg.cancelOrder });
+    const tools = createFakeTools();
+    const result = await handlers.summary?.(base, pick('summary:cancel'), tools);
+    expect(result).toEqual({ state: null, replies: [text(msg.draftDiscarded)] });
+    expect(tools.calls).toEqual([{ name: 'track', args: [{ name: 'order_cancelled' }] }]);
   });
 
   it('primeiro resumo de um estado sem revisão começa na revisão 1', async () => {
@@ -102,7 +118,11 @@ describe('summary', () => {
     const reply = result?.replies[0];
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
     expect(result?.state?.revision).toBe(1);
-    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:1', 'summary:fix']);
+    expect(reply.buttons.map(b => b.id)).toEqual([
+      'summary:confirm:1',
+      'summary:fix',
+      'summary:cancel',
+    ]);
   });
 
   it('reexibir o resumo sem mudança mantém a revisão', async () => {
@@ -110,7 +130,11 @@ describe('summary', () => {
     const reply = result?.replies[0];
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
     expect(result?.state?.revision).toBe(4);
-    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:4', 'summary:fix']);
+    expect(reply.buttons.map(b => b.id)).toEqual([
+      'summary:confirm:4',
+      'summary:fix',
+      'summary:cancel',
+    ]);
   });
 
   it('ignora confirmação com revisão anterior', async () => {
@@ -139,7 +163,11 @@ describe('summary', () => {
     expect(result?.replies[0]).toEqual(text(msg.staleConfirmation));
     const reply = result?.replies[1];
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
-    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:2', 'summary:fix']);
+    expect(reply.buttons.map(b => b.id)).toEqual([
+      'summary:confirm:2',
+      'summary:fix',
+      'summary:cancel',
+    ]);
   });
 
   it('não cria venda quando recebe confirmação antiga', async () => {
@@ -231,7 +259,11 @@ describe('summary', () => {
       expect(result?.replies).toHaveLength(2);
       const reply = result?.replies[1];
       if (reply?.type !== 'buttons') throw new Error('expected buttons');
-      expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:2', 'summary:fix']);
+      expect(reply.buttons.map(b => b.id)).toEqual([
+        'summary:confirm:2',
+        'summary:fix',
+        'summary:cancel',
+      ]);
       expect(tracked(tools)).toEqual([{ name: 'summary_changed', fields: ['quantity'] }]);
     });
 
@@ -338,7 +370,11 @@ describe('summary', () => {
       const reply = result?.replies[1];
       if (reply?.type !== 'buttons') throw new Error('expected buttons');
       expect(reply.body).toBe(msg.summary({ ...base, quote: changed }));
-      expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:2', 'summary:fix']);
+      expect(reply.buttons.map(b => b.id)).toEqual([
+        'summary:confirm:2',
+        'summary:fix',
+        'summary:cancel',
+      ]);
     });
 
     it('preço diferente em dinheiro descarta o troco e pergunta de novo', async () => {
@@ -516,15 +552,41 @@ describe('summary', () => {
     expect(attempts).toBe(2);
   });
 
-  it('venda rejeitada pelo ERP encerra o pedido sem tentar de novo', async () => {
+  it('encaminha rejeição do ERP com motivo próprio', async () => {
     const tools = createFakeTools({
       createSale: async () => {
         throw new ToolError(new SaleRejectedError('invalid'));
       },
     });
     const result = await handlers.summary?.(base, pick(CONFIRM), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.saleRejected(tools.storePhone))] });
-    expect(result?.replies.some(reply => reply.type === 'buttons')).toBe(false);
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleRejected), text(msg.handoffQueued)],
+    });
+    expect(result?.saleId).toBeUndefined();
+    expectNoRetryButton(result?.replies ?? []);
+    const [request, ...others] = handoffRequests(tools.calls);
+    expect(others).toEqual([]);
+    expect(request).toMatchObject({ phone: FAKE_PHONE, reason: 'sale_rejected' });
+    const note = handoffNote(request.reason, request.summary);
+    expect(note).toContain('nenhuma venda registrada');
+    expect(note).not.toContain('Pedido nº');
+
+    const offline = createFakeTools({
+      saleAttemptStatus: async () => 'rejected',
+      requestHandoff: async () => ({ status: 'unavailable', open: true, nextOpening: null }),
+    });
+    const creating: OrderState = {
+      ...base,
+      step: 'creatingSale',
+      saleAttemptAt: FAKE_NOW.toISOString(),
+    };
+    const later = await handlers.creatingSale?.(creating, pick('x:y'), offline);
+    expect(later).toEqual({
+      state: null,
+      replies: [text(msg.saleRejected), text(msg.talkToStore(offline.storePhone))],
+    });
+    expect(callNames(offline.calls)).not.toContain('createSale');
   });
 
   it('erro que não é de ferramenta não é escondido', async () => {

@@ -19,7 +19,7 @@ import {
   ToolError,
 } from '../flow.types';
 import { freeText } from '../free-text';
-import { handoffButton, handoffSummary } from '../handoff';
+import { handoff, handoffButton, handoffSummary } from '../handoff';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -68,6 +68,7 @@ const summary: AskFn = async state => {
       buttons(msg.summary(state), [
         { id: `summary:confirm:${revision}`, title: msg.confirm },
         { id: 'summary:fix', title: msg.fix },
+        { id: 'summary:cancel', title: msg.cancelOrder },
       ]),
     ],
   };
@@ -116,6 +117,16 @@ async function saleUncertain(state: OrderState, tools: FlowTools): Promise<StepR
   return { state: creating, replies };
 }
 
+async function saleRejected(state: OrderState, tools: FlowTools): Promise<StepResult> {
+  const result = await handoff(state, tools.phone, 'sale_rejected', tools);
+  return { state: null, replies: [text(msg.saleRejected), ...result.replies] };
+}
+
+export function discardDraft(tools: FlowTools): StepResult {
+  tools.track({ name: 'order_cancelled' });
+  return { state: null, replies: [text(msg.draftDiscarded)] };
+}
+
 async function readAttempt(tools: FlowTools): Promise<SaleAttemptStatus | null | 'unreadable'> {
   try {
     return await tools.saleAttemptStatus();
@@ -139,9 +150,7 @@ async function fromAttempt(
     return { state: { ...state, step: 'creatingSale' }, replies: [text(msg.saleInProgress)] };
   }
   if (status === 'registered') return submitSale(state, tools);
-  if (status === 'rejected') {
-    return { state: null, replies: [text(msg.saleRejected(tools.storePhone))] };
-  }
+  if (status === 'rejected') return saleRejected(state, tools);
   if (status === 'failed' || status === null) return saleFailed(state, tools);
   return saleUncertain(state, tools);
 }
@@ -165,9 +174,7 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
   } catch (error) {
     if (!(error instanceof ToolError)) throw error;
     const cause = error.cause;
-    if (cause instanceof SaleRejectedError) {
-      return { state: null, replies: [text(msg.saleRejected(tools.storePhone))] };
-    }
+    if (cause instanceof SaleRejectedError) return saleRejected(attempt, tools);
     if (cause instanceof SaleAttemptStoreError) {
       return { state: { ...state, step: 'summary' }, replies: [text(msg.saleStoreUnavailable)] };
     }
@@ -215,6 +222,7 @@ const handleSummary: HandleFn = async (state, input, tools) => {
     return { ...current, replies: [text(msg.staleConfirmation), ...current.replies] };
   }
   if (choice === 'fix') return chooseCorrection(state, tools);
+  if (choice === 'cancel') return discardDraft(tools);
   const raw = textOf(input);
   if (raw !== null) return freeText(state, raw, tools);
   return summary(state, tools);

@@ -34,7 +34,8 @@ describe('runFlow', () => {
       { ...hello, content: { type: 'text', text: 'cancelar' } },
       createFakeTools(),
     );
-    expect(result).toEqual({ state: null, replies: [text(msg.cancelNeedsAgent)] });
+    expect(result?.state).toBeNull();
+    expect(result?.replies[0]).toMatchObject({ type: 'buttons', body: msg.cancelNeedsAgent });
   });
 
   it('erro numa ferramenta sem pedido em andamento devolve indisponível', async () => {

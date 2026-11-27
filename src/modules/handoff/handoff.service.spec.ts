@@ -270,6 +270,24 @@ describe('HandoffService', () => {
       });
     });
 
+    it('preserva quantidade acima do limite na nota do atendente', async () => {
+      const { service, client } = setup();
+      await service.requestHandoff({
+        phone: PHONE,
+        reason: 'quantity_limit',
+        summary: {
+          stepLabel: 'Escolha da quantidade',
+          identityConfirmed: true,
+          newCustomer: false,
+          product: 'Botijão P13',
+          quantity: 15,
+        },
+      });
+      const note = allMessages(client).find(message => message.private)?.content;
+      expect(note).toContain('Motivo: Quantidade acima do limite do bot');
+      expect(note).toContain('Produto: 15× Botijão P13');
+    });
+
     it('falha do Chatwoot devolve unavailable e não salva estado', async () => {
       const { service, client, states, logger } = setup();
       client.failNext();

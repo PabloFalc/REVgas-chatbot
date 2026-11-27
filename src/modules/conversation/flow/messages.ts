@@ -195,6 +195,7 @@ export const msg = {
     ].join('\n'),
   confirm: 'Confirmar',
   fix: 'Corrigir',
+  cancelOrder: 'Cancelar pedido',
   staleConfirmation: 'O pedido mudou desde esse botão. Confira o resumo atualizado para confirmar.',
   summaryUpdated: 'Atualizei o pedido. Confira o novo resumo antes de confirmar.',
   chooseCorrection: 'O que você quer corrigir?',
@@ -207,7 +208,7 @@ export const msg = {
     `Pedido de demonstração nº ${id} registrado. Total: ${formatMoney(total)}. Nenhum gás será entregue.`,
   saleFailed:
     'Não consegui registrar seu pedido agora. Nada foi cobrado. Pode tentar de novo ou falar com um atendente.',
-  saleRejected: (phone?: string) => `Não foi possível registrar seu pedido. ${storeContact(phone)}`,
+  saleRejected: 'Não foi possível registrar seu pedido.',
   saleStoreUnavailable:
     'Estou com instabilidade para registrar pedidos agora. Seu pedido não foi enviado. Tente confirmar de novo em alguns minutos.',
   saleUncertain:
@@ -220,6 +221,8 @@ export const msg = {
     'Pronto, descartei este pedido. Nada foi enviado à revenda. É só mandar mensagem quando quiser pedir.',
   cancelNeedsAgent:
     'Não tenho pedido em andamento aqui. Se você quer cancelar um pedido já feito, um atendente resolve isso.',
+  cancellationForwarded:
+    'Vou encaminhar seu pedido de cancelamento para um atendente. Não cancelei a venda automaticamente.',
   talkToStore: (phone?: string) => storeContact(phone),
   talkToAgent: 'Falar com atendente',
   orderStart: 'Fazer pedido',

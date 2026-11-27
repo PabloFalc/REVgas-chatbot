@@ -5,8 +5,12 @@ import { detectEmergency } from './emergency';
 import type { FlowInput, FlowTools, OrderState, StepResult } from './flow.types';
 import {
   asksForAgent,
+  CANCELLATION_CHOICE,
+  cancellationButton,
   HANDOFF_CHOICE,
   handoff,
+  handoffReply,
+  handoffSummary,
   ORDER_START_CHOICE,
   offer,
   requestReasonFor,
@@ -16,9 +20,9 @@ import { routeIntent } from './intent';
 import { msg } from './messages';
 import { isOrderStatusQuestion, orderStatus } from './order-status';
 import { repeatQuestion } from './repeat-question';
-import { text as textReply } from './replies';
+import { buttons, text as textReply } from './replies';
 import { asks, start } from './steps';
-import { cancelAfterFailedSale, checkSaleAttempt } from './steps/summary.step';
+import { cancelAfterFailedSale, checkSaleAttempt, discardDraft } from './steps/summary.step';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
 const DISCOUNT = ['desconto', 'promocao', 'mais barato'];
@@ -46,6 +50,17 @@ export async function globalCommand(
     return handoff(state, input.phone, requestReasonFor(state), tools);
   }
 
+  if (input.content.type === 'choice' && input.content.id === CANCELLATION_CHOICE) {
+    const outcome = await tools.requestHandoff({
+      phone: input.phone,
+      reason: 'sale_cancellation',
+      summary: handoffSummary(state),
+    });
+    const reply = handoffReply(outcome, tools);
+    if (outcome.status === 'unavailable') return { state, replies: [reply] };
+    return { state, replies: [textReply(msg.cancellationForwarded), reply] };
+  }
+
   if (input.content.type === 'choice' && input.content.id === ORDER_START_CHOICE) {
     if (!state) return start(input, tools);
     const ask = asks[state.step];
@@ -59,9 +74,10 @@ export async function globalCommand(
   if (CANCEL.includes(text)) {
     if (state?.step === 'creatingSale') return checkSaleAttempt(state, tools);
     if (state?.step === 'saleFailed') return cancelAfterFailedSale(state, tools);
-    if (!state) return { state: null, replies: [textReply(msg.cancelNeedsAgent)] };
-    tools.track({ name: 'order_cancelled' });
-    return { state: null, replies: [textReply(msg.draftDiscarded)] };
+    if (!state) {
+      return { state: null, replies: [buttons(msg.cancelNeedsAgent, [cancellationButton()])] };
+    }
+    return discardDraft(tools);
   }
 
   if (asksForAgent(raw)) {

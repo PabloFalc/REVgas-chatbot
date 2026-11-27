@@ -6,7 +6,7 @@ import {
   type Step,
   type StepResult,
 } from './flow.types';
-import { offer } from './handoff';
+import { handoffReply, handoffSummary } from './handoff';
 import { msg } from './messages';
 import { text } from './replies';
 import { asks } from './steps/registry';
@@ -37,8 +37,20 @@ async function checkQuantity(state: OrderState, tools: FlowTools): Promise<StepR
   }
   if (quantity > MAX_QUANTITY) {
     tools.track({ name: 'quantity_limit', reason: 'max' });
-    const result = await goTo(withoutQuantity(state), 'chooseQuantity', tools);
-    return { state: result.state, replies: [offer(msg.quantityAboveMax), ...result.replies] };
+    const held: OrderState = {
+      ...withoutQuantity(state),
+      step: 'chooseQuantity',
+      requestedQuantity: quantity,
+    };
+    const outcome = await tools.requestHandoff({
+      phone: tools.phone,
+      reason: 'quantity_limit',
+      summary: handoffSummary(held),
+    });
+    const replies = [text(msg.quantityAboveMax), handoffReply(outcome, tools)];
+    if (outcome.status !== 'unavailable') return { state: held, replies };
+    const result = await goTo(held, 'chooseQuantity', tools);
+    return { state: result.state, replies: [...replies, ...result.replies] };
   }
   return null;
 }

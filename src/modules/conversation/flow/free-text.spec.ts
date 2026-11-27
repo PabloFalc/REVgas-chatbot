@@ -338,6 +338,7 @@ describe('freeText', () => {
       expect(proposal.buttons.map(button => button.id)).toEqual([
         'summary:confirm:2',
         'summary:fix',
+        'summary:cancel',
       ]);
     });
   });
@@ -415,7 +416,8 @@ describe('freeText', () => {
     const out = await freeText(paying, 'quero 11', tools(result({ quantity: MAX_QUANTITY + 1 })));
     expect(out.state?.step).toBe('chooseQuantity');
     expect(out.state?.quantity).toBeUndefined();
-    expect(out.replies).toContainEqual(offer(msg.quantityAboveMax));
+    expect(out.state?.requestedQuantity).toBe(MAX_QUANTITY + 1);
+    expect(out.replies).toContainEqual(text(msg.quantityAboveMax));
   });
 
   it('nas etapas de CPF os dígitos não chegam à IA', async () => {

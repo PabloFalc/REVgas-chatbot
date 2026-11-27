@@ -52,6 +52,24 @@ describe('handoff', () => {
     expect(result).toEqual({ state, replies: [text(msg.talkToStore('86999990000'))] });
   });
 
+  it('em modo sem Chatwoot não afirma que abriu atendimento', async () => {
+    const draft: OrderState = {
+      step: 'chooseQuantity',
+      customer: { id: 1 },
+      product: { id: 1, name: 'Botijão P13' },
+      requestedQuantity: 15,
+    };
+    for (const reason of ['sale_rejected', 'quantity_limit', 'sale_cancellation'] as const) {
+      const tools = toolsReturning({ status: 'unavailable', open: true, nextOpening: null });
+      const result = await handoff(draft, FAKE_PHONE, reason, tools);
+      expect(result).toEqual({ state: draft, replies: [text(msg.talkToStore(tools.storePhone))] });
+      const said = JSON.stringify(result.replies);
+      expect(said).not.toContain(msg.handoffQueued);
+      expect(said).not.toContain(msg.handoffAlreadyQueued);
+    }
+    expect(handoffSummary(draft)?.quantity).toBe(15);
+  });
+
   it('na fila e fechado informa quando abre', async () => {
     const nextOpening = { weekday: 1, time: '08:00', inDays: 2 };
     const tools = toolsReturning({ status: 'queued', open: false, nextOpening });
