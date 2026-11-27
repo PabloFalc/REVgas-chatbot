@@ -154,6 +154,38 @@ describe('OpenAiCompatibleLlmClient', () => {
     );
   });
 
+  it('registra duração e tokens sem conteúdo da mensagem', async () => {
+    const withoutUsage = { ...completion('Abrimos às 7h'), usage: undefined };
+    const { client, logger } = setup([
+      { body: completion('Abrimos às 7h') },
+      { body: withoutUsage },
+    ]);
+
+    await client.generateText(textRequest);
+    const semUsage = await client.generateText(textRequest);
+
+    const [[comUsageLog], [semUsageLog]] = logger.info.mock.calls;
+    expect(comUsageLog).toEqual({
+      component: 'llm',
+      operation: 'faq',
+      model: 'gemini-test',
+      status: 200,
+      durationMs: expect.any(Number),
+      inputTokens: 12,
+      outputTokens: 5,
+    });
+    expect(semUsageLog.durationMs).toEqual(expect.any(Number));
+    expect(semUsageLog.inputTokens).toBeUndefined();
+    expect(semUsageLog.outputTokens).toBeUndefined();
+    expect(semUsage.usage.inputTokens).toBeUndefined();
+    expect(semUsage.usage.outputTokens).toBeUndefined();
+
+    const logged = JSON.stringify(logger.info.mock.calls);
+    expect(logged).not.toContain('Rua das Flores 123');
+    expect(logged).not.toContain('Responda curto');
+    expect(logged).not.toContain('Abrimos às 7h');
+  });
+
   it.each([
     [401, LlmUnauthorizedError],
     [429, LlmRateLimitedError],
