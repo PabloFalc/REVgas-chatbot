@@ -50,6 +50,7 @@ function setup() {
     readName: vi.fn(async () => ({ name: 'Ana Souza', isPersonName: true })),
   };
   const conversations = {
+    verifiedCustomer: vi.fn(async () => 1),
     isVerified: vi.fn(async () => true),
     markVerified: vi.fn(async () => undefined),
     registerCpfMismatch: vi.fn(async () => 2),
@@ -141,11 +142,13 @@ describe('FlowToolsService.forPhone', () => {
     const tools = service.forPhone(PHONE, async () => undefined);
     const phone = '5586999991234';
 
+    await expect(tools.verifiedCustomer(phone)).resolves.toBe(1);
     await expect(tools.isVerified(phone, 1)).resolves.toBe(true);
     await tools.markVerified(phone, 1);
     await expect(tools.registerCpfMismatch(phone)).resolves.toBe(2);
     await expect(tools.isBlocked(phone)).resolves.toBe(false);
 
+    expect(conversations.verifiedCustomer).toHaveBeenCalledWith(phone);
     expect(conversations.isVerified).toHaveBeenCalledWith(phone, 1);
     expect(conversations.markVerified).toHaveBeenCalledWith(phone, 1);
     expect(conversations.registerCpfMismatch).toHaveBeenCalledWith(phone);

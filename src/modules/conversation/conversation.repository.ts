@@ -8,7 +8,7 @@ import { MAX_CPF_ATTEMPTS, type OrderState } from './flow/flow.types';
 export const INBOUND_PREFIX = 'whatsapp:inbound';
 export const ORDER_PREFIX = 'conversation:order';
 export const LOCK_PREFIX = 'conversation:lock';
-export const VERIFIED_PREFIX = 'conversation:verified';
+export const IDENTITY_PREFIX = 'conversation:identity';
 export const CPF_ATTEMPTS_PREFIX = 'conversation:cpf-attempts';
 export const BLOCKED_PREFIX = 'conversation:cpf-blocked';
 export const MISUNDERSTOOD_PREFIX = 'conversation:misunderstood';
@@ -16,7 +16,7 @@ export const OFFENSE_PREFIX = 'conversation:offense';
 export const REMINDER_SET = 'conversation:reminders';
 export { MAX_CPF_ATTEMPTS };
 
-const VERIFIED_TTL_SECONDS = 1_296_000;
+const IDENTITY_TTL_SECONDS = 604_800;
 const CPF_WINDOW_SECONDS = 3_600;
 const BLOCK_TTL_SECONDS = 3_600;
 const MISUNDERSTOOD_TTL_SECONDS = 900;
@@ -89,16 +89,20 @@ export class ConversationRepository {
     await this.cache.setKeepTtl({ prefix: ORDER_PREFIX, key: phone, value: state });
   }
 
-  isVerified(phone: string, customerId: number): Promise<boolean> {
-    return this.cache.exists({ prefix: VERIFIED_PREFIX, key: `${phone}:${customerId}` });
+  verifiedCustomer(phone: string): Promise<number | null> {
+    return this.cache.get<number>({ prefix: IDENTITY_PREFIX, key: phone });
+  }
+
+  async isVerified(phone: string, customerId: number): Promise<boolean> {
+    return (await this.verifiedCustomer(phone)) === customerId;
   }
 
   async markVerified(phone: string, customerId: number): Promise<void> {
     await this.cache.set({
-      prefix: VERIFIED_PREFIX,
-      key: `${phone}:${customerId}`,
-      value: 1,
-      ttl: VERIFIED_TTL_SECONDS,
+      prefix: IDENTITY_PREFIX,
+      key: phone,
+      value: customerId,
+      ttl: IDENTITY_TTL_SECONDS,
     });
     await this.cache.delete({ prefix: CPF_ATTEMPTS_PREFIX, key: phone });
     this.logger.info(

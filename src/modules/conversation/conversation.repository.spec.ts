@@ -5,11 +5,11 @@ import {
   BLOCKED_PREFIX,
   ConversationRepository,
   CPF_ATTEMPTS_PREFIX,
+  IDENTITY_PREFIX,
   INBOUND_PREFIX,
   LOCK_PREFIX,
   ORDER_PREFIX,
   REMINDER_SET,
-  VERIFIED_PREFIX,
 } from './conversation.repository';
 
 function setup(
@@ -200,13 +200,26 @@ describe('ConversationRepository (pedido em andamento)', () => {
 function setupIdentity() {
   const store = new Map<string, unknown>();
   const counters = new Map<string, number>();
+  const expiresAt = new Map<string, number>();
+  let now = 0;
   const idOf = ({ prefix, key }: { prefix?: string; key: string }) => `${prefix}:${key}`;
+  const alive = (id: string) => {
+    if ((expiresAt.get(id) ?? Number.POSITIVE_INFINITY) <= now) {
+      store.delete(id);
+      expiresAt.delete(id);
+    }
+    return store.has(id);
+  };
   const cache = {
-    set: vi.fn(async (params: { prefix?: string; key: string; value: unknown }) => {
+    get: vi.fn(async (params: { prefix?: string; key: string }) =>
+      alive(idOf(params)) ? store.get(idOf(params)) : null,
+    ),
+    set: vi.fn(async (params: { prefix?: string; key: string; value: unknown; ttl?: number }) => {
       store.set(idOf(params), params.value);
+      if (params.ttl) expiresAt.set(idOf(params), now + params.ttl);
     }),
     setKeepTtl: vi.fn(async () => undefined),
-    exists: vi.fn(async (params: { prefix?: string; key: string }) => store.has(idOf(params))),
+    exists: vi.fn(async (params: { prefix?: string; key: string }) => alive(idOf(params))),
     delete: vi.fn(async (params: { prefix?: string; key: string }) => {
       store.delete(idOf(params));
     }),
@@ -231,24 +244,57 @@ function setupIdentity() {
     cache as unknown as RedisService,
     logger as unknown as PinoLogger,
   );
-  return { repository, cache, logger, store };
+  const advance = (seconds: number) => {
+    now += seconds;
+  };
+  return { repository, cache, logger, store, advance };
 }
 
 describe('ConversationRepository (identidade)', () => {
   const phone = '5586999991234';
 
-  it('isVerified depende do par telefone+cliente', async () => {
+  it('nova verificação no mesmo telefone substitui o vínculo anterior', async () => {
     const { repository, cache } = setupIdentity();
     await repository.markVerified(phone, 1);
+    await repository.markVerified(phone, 2);
 
-    await expect(repository.isVerified(phone, 1)).resolves.toBe(true);
-    await expect(repository.isVerified(phone, 2)).resolves.toBe(false);
-    expect(cache.set).toHaveBeenCalledWith({
-      prefix: VERIFIED_PREFIX,
-      key: `${phone}:1`,
-      value: 1,
-      ttl: 1_296_000,
+    await expect(repository.verifiedCustomer(phone)).resolves.toBe(2);
+    await expect(repository.isVerified(phone, 1)).resolves.toBe(false);
+    await expect(repository.isVerified(phone, 2)).resolves.toBe(true);
+    expect(cache.set).toHaveBeenLastCalledWith({
+      prefix: IDENTITY_PREFIX,
+      key: phone,
+      value: 2,
+      ttl: 604_800,
     });
+  });
+
+  it('exige nova verificação depois de sete dias', async () => {
+    const { repository, advance } = setupIdentity();
+    await repository.markVerified(phone, 1);
+
+    advance(604_799);
+    await expect(repository.verifiedCustomer(phone)).resolves.toBe(1);
+    advance(1);
+    await expect(repository.verifiedCustomer(phone)).resolves.toBeNull();
+    await expect(repository.isVerified(phone, 1)).resolves.toBe(false);
+  });
+
+  it('vínculo não vale para outro cliente nem para outro telefone', async () => {
+    const { repository } = setupIdentity();
+    await repository.markVerified(phone, 1);
+
+    await expect(repository.isVerified(phone, 2)).resolves.toBe(false);
+    await expect(repository.verifiedCustomer('5586988887777')).resolves.toBeNull();
+    await expect(repository.isVerified('5586988887777', 1)).resolves.toBe(false);
+  });
+
+  it('chave antiga por telefone e cliente não conta como verificada', async () => {
+    const { repository, store } = setupIdentity();
+    store.set(`conversation:verified:${phone}:1`, 1);
+
+    await expect(repository.verifiedCustomer(phone)).resolves.toBeNull();
+    await expect(repository.isVerified(phone, 1)).resolves.toBe(false);
   });
 
   it('terceiro erro bloqueia por 1 hora', async () => {

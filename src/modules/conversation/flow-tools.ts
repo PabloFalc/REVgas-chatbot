@@ -94,6 +94,7 @@ export class FlowToolsService {
       findCustomer: phone => this.customers.findByPhone(phone),
       createCustomer: input => this.customers.create(input),
       customerHistory: customerId => this.customers.history(customerId),
+      verifiedCustomer: phone => this.conversations.verifiedCustomer(phone),
       isVerified: (phone, customerId) => this.conversations.isVerified(phone, customerId),
       markVerified: (phone, customerId) => this.conversations.markVerified(phone, customerId),
       registerCpfMismatch: async phone => {

@@ -130,18 +130,18 @@ Cliente que o telefone já identifica na RevGás precisa confirmar os 3 primeiro
 antes de ver endereços ou pedidos (`askCpfPrefix`, em `flow/steps/customer.step.ts`). O telefone
 pode ter mudado de dono.
 
-- **Validade:** 15 dias, guardada no Redis por telefone + id do cliente na RevGás. Dentro do prazo o `start` pula a pergunta.
+- **Validade:** 7 dias, guardada no Redis numa chave por telefone com o id do cliente na RevGás. Verificar outro cliente no mesmo telefone substitui o vínculo. Dentro do prazo o `start` pula a pergunta.
 - **Sem CPF no cadastro, ou telefone bloqueado:** mensagem fixa com o telefone da revenda e a conversa termina (estado apagado). O bot não pede nem grava CPF de cadastro existente.
 - **Erros:** 3 dígitos que não batem contam como tentativa; na 3ª o telefone fica bloqueado por 1 h e recebe o telefone da revenda. Acertar zera as tentativas.
 - **Formato:** só conta como tentativa a entrada só numérica (dígitos, espaços, pontos ou traços, como `123`, `1 2 3` ou `123.`) com exatamente 3 dígitos. Texto com letras ("2 P13", "quero 1 botijão P13") nunca conta: segue para o texto livre abaixo. Sem pedido no texto, o bot pede de novo só os 3 dígitos.
 - **Texto livre:** blocos soltos de 3 dígitos são removidos antes de o texto ir à IA, para o CPF nunca chegar ao prompt. Se não sobra texto, repete a pergunta.
-- **Cliente novo:** quem acabou de se cadastrar (digitou o CPF inteiro) já fica verificado por 15 dias; o próximo pedido não pede os 3 dígitos.
+- **Cliente novo:** quem acabou de se cadastrar (digitou o CPF inteiro) já fica verificado por 7 dias; o próximo pedido não pede os 3 dígitos.
 
 ## Status do pedido
 
 F05 é uma consulta só leitura. Frases como "cadê meu gás", "status do pedido" e "já saiu pra entrega?" acionam o fluxo sem IA; o texto livre também aceita a intenção `order_status`. "Quero um gás" segue como compra nova.
 
-O telefone precisa identificar um cliente com CPF e verificação válida por 15 dias. Sem verificação, o bot pede os 3 primeiros dígitos e consulta logo após o acerto. Telefone desconhecido recebe texto fixo e o botão "Fazer pedido", sem consultar vendas.
+O telefone precisa identificar um cliente com CPF e verificação válida por 7 dias. Sem verificação, o bot pede os 3 primeiros dígitos e consulta logo após o acerto. Telefone desconhecido recebe texto fixo e o botão "Fazer pedido", sem consultar vendas.
 
 A consulta lê até 10 vendas WhatsApp dos últimos 7 dias e mostra a não cancelada mais recente: número, status, entregador e data de entrega quando disponíveis. `OPEN` significa recebido, `ACTIVE` em andamento, `CONFIRM` confirmado, `CHECK` em conferência e `WARNING` com pendência, oferecendo atendente. Status desconhecido fica como em andamento. Não há tempo estimado. Sem venda recente, oferece "Fazer pedido"; falha da RevGás usa a mensagem de indisponibilidade.
 

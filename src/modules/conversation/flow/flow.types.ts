@@ -131,6 +131,7 @@ export interface FlowTools {
   findCustomer(phone: string): Promise<Customer | null>;
   createCustomer(input: NewCustomer): Promise<Customer>;
   customerHistory(customerId: number): Promise<CustomerHistory>;
+  verifiedCustomer(phone: string): Promise<number | null>;
   isVerified(phone: string, customerId: number): Promise<boolean>;
   markVerified(phone: string, customerId: number): Promise<void>;
   registerCpfMismatch(phone: string): Promise<number>;

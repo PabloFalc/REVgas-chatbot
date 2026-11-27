@@ -18,10 +18,10 @@ import { signPayload } from 'src/integrations/whatsapp/webhook/signature';
 import { WHATSAPP_CLIENT } from 'src/integrations/whatsapp/whatsapp.client';
 import {
   ConversationRepository,
+  IDENTITY_PREFIX,
   INBOUND_PREFIX,
   ORDER_PREFIX,
   REMINDER_SET,
-  VERIFIED_PREFIX,
 } from 'src/modules/conversation/conversation.repository';
 import supertest from 'supertest';
 import { createApp } from '../setup-e2e';
@@ -78,9 +78,11 @@ describe('Eventos do bot (e2e)', () => {
   afterAll(async () => {
     vi.restoreAllMocks();
     if (cycles.length) await db.delete(botEvents).where(inArray(botEvents.cycleId, cycles));
-    await redis.del(`${ORDER_PREFIX}:${phone}`, ...ids.map(id => `${INBOUND_PREFIX}:${id}`));
-    const verified = await redis.keys(`${VERIFIED_PREFIX}:${phone}:*`);
-    if (verified.length) await redis.del(...verified);
+    await redis.del(
+      `${ORDER_PREFIX}:${phone}`,
+      `${IDENTITY_PREFIX}:${phone}`,
+      ...ids.map(id => `${INBOUND_PREFIX}:${id}`),
+    );
     await redis.zrem(REMINDER_SET, phone);
     await app.close();
   });

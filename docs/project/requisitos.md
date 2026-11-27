@@ -16,7 +16,7 @@
 | RF06 | Coletar forma de pagamento (e troco) | Pix, cartão ou dinheiro; troco maior que o total | Slide do chatbot |
 | RF07 | Mostrar resumo com total e pedir confirmação final | Total calculado no backend com preços da API; confirmação por botão | Boa prática + guardrails |
 | RF08 | Criar a venda no ERP RevGás via API | Uma confirmação = uma venda; ID da venda retornado e enviado ao cliente (não é salvo no Postgres, ver RN13) | Foco do grupo |
-| RF09 | Consultar status do pedido | Entregue (F05), versão só leitura: número, status, entregador e data de entrega quando disponíveis, após identificação pelo telefone e verificação de CPF válida por 15 dias. Sem tempo estimado | Mockup do WhatsApp |
+| RF09 | Consultar status do pedido | Entregue (F05), versão só leitura: número, status, entregador e data de entrega quando disponíveis, após identificação pelo telefone e verificação de CPF válida por 7 dias. Sem tempo estimado | Mockup do WhatsApp |
 | RF10 | Responder dúvidas fora do menu com IA sobre a base da revenda | **Entregue** (decisão de 2026-11-10, F06 e F13). Resposta só com trechos da base; horário, pagamento e preço vêm do código; sem resposta, oferece o atendente e volta ao pedido | Tabela de técnicas |
 | RF11 | Transferir para atendente humano com resumo | **De volta ao escopo** (decisão de 2026-11-09, F07). Pedido de atendente ou falha da venda → fila no Chatwoot com nota de resumo; o atendente responde pelo mesmo WhatsApp. Sem o Chatwoot configurado: telefone da revenda | Human Handoff |
 
@@ -100,7 +100,7 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 
 - **F04, F12 e F14 entregues.** F05 é o que falta no MVP.
 - **Verificação de identidade (F14).** Cliente reconhecido pelo telefone digita os 3 primeiros dígitos do CPF antes de ver seus dados. Isso resolve o risco conhecido de 2026-10-21 (telefone que mudou de dono expondo os endereços do dono anterior).
-  - A verificação vale **15 dias**, por telefone + id do cliente na RevGás.
+  - A verificação vale **7 dias**, num vínculo único por telefone com o id do cliente na RevGás.
   - **3 erros** bloqueiam o telefone por **1 h**; entrada que não tem exatamente 3 dígitos não conta como erro.
   - Cliente cadastrado sem CPF, ou telefone bloqueado, recebe o telefone da revenda e a conversa termina. O bot não pede nem grava CPF de cadastro existente.
 - **Repetir último pedido (F04).** A oferta sai da venda não cancelada mais recente, se tiver 1 produto, 1 pagamento e endereço completo, e só se produto, pagamento e preço ainda forem válidos. Aceitar vai ao resumo (ou à pergunta de troco, se dinheiro); nunca cria a venda.
