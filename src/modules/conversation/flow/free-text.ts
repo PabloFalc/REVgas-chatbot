@@ -3,6 +3,7 @@ import type {
   InterpretContext,
 } from 'src/modules/assistant/contracts/assistant.types';
 import type { PaymentOption, Product } from 'src/modules/catalog/contracts/catalog.types';
+import type { CommercialField } from 'src/modules/metrics/contracts/metrics.types';
 import { removeCpfMentions, removeLongDigitRuns } from 'src/utils/cpf';
 import { normalizeText } from 'src/utils/text';
 import type { Reply } from '../contracts/conversation.types';
@@ -110,10 +111,11 @@ export function applyInterpretation(
   state: OrderState,
   result: Interpretation,
   catalog: Catalog,
-): { state: OrderState; notes: string[] } | null {
+): { state: OrderState; notes: string[]; changedFields: CommercialField[] } | null {
   const next: OrderState = { ...state };
   const notes: string[] = [];
   let changed = false;
+  const changedFields: CommercialField[] = [];
 
   const matched = matchProducts(result.products, catalog.products);
   const quantity =
@@ -124,6 +126,7 @@ export function applyInterpretation(
   if (matched.length > 0 && !keepsCurrent) {
     productChanged = true;
     changed = true;
+    changedFields.push('product');
     delete next.quote;
     if (quantity === undefined) delete next.quantity;
     if (matched.length === 1) {
@@ -137,6 +140,7 @@ export function applyInterpretation(
 
   if (quantity !== undefined) {
     changed = true;
+    if (quantity !== state.quantity) changedFields.push('quantity');
     next.quantity = quantity;
     delete next.quote;
   }
@@ -149,6 +153,7 @@ export function applyInterpretation(
   const payment = matchPayment(result.payment, catalog.payments);
   if (payment) {
     changed = true;
+    if (payment.type !== state.payment?.type) changedFields.push('payment');
     next.payment = payment;
     delete next.quote;
     delete next.changeFor;
@@ -158,6 +163,7 @@ export function applyInterpretation(
   const addressText = result.address?.trim();
   if (addressText || result.newAddress) {
     changed = true;
+    changedFields.push('address');
     delete next.address;
     delete next.draftAddress;
     delete next.missingField;
@@ -166,7 +172,7 @@ export function applyInterpretation(
     notes.push(OTHER_ADDRESS_NOTE);
   }
 
-  return changed ? { state: next, notes } : null;
+  return changed ? { state: next, notes, changedFields } : null;
 }
 
 async function loadCatalog(state: OrderState, tools: FlowTools): Promise<Catalog> {
@@ -315,12 +321,22 @@ export async function freeText(
   const applied = result.intent === 'order' ? applyInterpretation(state, result, catalog) : null;
   if (!applied) return misunderstood(state, tools, fallback);
 
-  const noted = notedReplies(result, catalog, applied.notes);
+  const revised = state.revision !== undefined && applied.changedFields.length > 0;
+  const toNext: OrderState = revised
+    ? { ...applied.state, revision: (state.revision ?? 1) + 1 }
+    : applied.state;
+  if (revised) tools.track({ name: 'summary_changed', fields: applied.changedFields });
+
   const ask = asks[state.step];
   const next =
     IDENTIFICATION_STEPS.includes(state.step) && ask
-      ? await ask(applied.state, tools)
-      : await nextStep(applied.state, tools);
+      ? await ask(toNext, tools)
+      : await nextStep(toNext, tools);
+  if (revised && next.state?.step === 'summary') {
+    const noted = notedReplies(result, catalog, []);
+    return { ...next, replies: [...noted, text(msg.summaryUpdated), ...next.replies] };
+  }
+  const noted = notedReplies(result, catalog, applied.notes);
   return { ...next, replies: [...noted, ...next.replies] };
 }
 
