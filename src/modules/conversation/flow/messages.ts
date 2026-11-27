@@ -199,15 +199,24 @@ export const msg = {
   fixAddress: 'Endereço',
   fixPayment: 'Pagamento',
   saleCreated: (id: number, total: number) =>
-    `Pedido nº ${id} confirmado! Total: ${formatMoney(total)}. Já estamos separando seu gás.`,
+    `Pedido nº ${id} registrado na revenda. Total: ${formatMoney(total)}. Se precisar de algo, é só chamar.`,
   demoSaleCreated: (id: number, total: number) =>
     `Pedido de demonstração nº ${id} registrado. Total: ${formatMoney(total)}. Nenhum gás será entregue.`,
   saleFailed:
     'Não consegui registrar seu pedido agora. Nada foi cobrado. Pode tentar de novo ou falar com um atendente.',
   saleRejected: (phone?: string) => `Não foi possível registrar seu pedido. ${storeContact(phone)}`,
+  saleStoreUnavailable:
+    'Estou com instabilidade para registrar pedidos agora. Seu pedido não foi enviado. Tente confirmar de novo em alguns minutos.',
+  saleUncertain:
+    'Não consegui confirmar se seu pedido foi registrado. Para não duplicar, não vou enviar de novo. Chamei um atendente para conferir com a revenda.',
+  priceChanged: 'O preço mudou desde o resumo. Confira os valores atualizados antes de confirmar.',
   retry: 'Tentar de novo',
   saleInProgress: 'Estou registrando seu pedido, só um instante.',
   cancelled: 'Pedido cancelado. É só mandar mensagem quando quiser pedir.',
+  draftDiscarded:
+    'Pronto, descartei este pedido. Nada foi enviado à revenda. É só mandar mensagem quando quiser pedir.',
+  cancelNeedsAgent:
+    'Não tenho pedido em andamento aqui. Se você quer cancelar um pedido já feito, um atendente resolve isso.',
   talkToStore: (phone?: string) => storeContact(phone),
   talkToAgent: 'Falar com atendente',
   orderStart: 'Fazer pedido',
