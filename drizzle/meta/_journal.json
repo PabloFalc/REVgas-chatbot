@@ -36,6 +36,13 @@
       "when": 1795538730065,
       "tag": "0004_drop_better_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795783026980,
+      "tag": "0005_sale_attempts",
+      "breakpoints": true
     }
   ]
 }

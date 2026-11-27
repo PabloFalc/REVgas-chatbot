@@ -88,6 +88,7 @@ export interface OrderState {
   productCandidates?: Product[];
   pendingAddressText?: string;
   product?: Product;
+  purchaseStarted?: true;
   quantity?: number;
   paymentOptions?: PaymentOption[];
   payment?: PaymentOption;

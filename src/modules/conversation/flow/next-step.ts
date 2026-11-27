@@ -1,3 +1,4 @@
+import { customerSegmentOf } from './customer-segment';
 import {
   type FlowTools,
   MAX_QUANTITY,
@@ -56,6 +57,10 @@ export async function nextStep(state: OrderState, tools: FlowTools): Promise<Ste
   }
   if (!state.product) {
     return goTo(state, state.productCandidates?.length ? 'pickProduct' : 'chooseProduct', tools);
+  }
+  if (!state.purchaseStarted) {
+    tools.track({ name: 'purchase_started', reason: customerSegmentOf(state) });
+    return nextStep({ ...state, purchaseStarted: true }, tools);
   }
   if (!state.quantity) return goTo(state, 'chooseQuantity', tools);
   const quantityResult = await checkQuantity(state, tools);

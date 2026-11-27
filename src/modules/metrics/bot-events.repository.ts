@@ -6,10 +6,13 @@ import { env } from 'src/config/env';
 import { DRIZZLE } from 'src/infra/database/drizzle-client';
 import type * as schema from 'src/infra/database/schemas';
 import { botEvents } from 'src/infra/database/schemas/metrics/bot-events.table';
+import { resolveRevgasConfig } from 'src/integrations/revgas/shared/revgas.config';
 import type { MetricEvent } from './contracts/metrics.types';
 
 @Injectable()
 export class BotEventsRepository {
+  private readonly isSimulated = resolveRevgasConfig(env).mode !== 'live';
+
   constructor(
     @Inject(DRIZZLE) private readonly db: NodePgDatabase<typeof schema>,
     private readonly logger: PinoLogger,
@@ -22,7 +25,7 @@ export class BotEventsRepository {
     try {
       void this.db
         .insert(botEvents)
-        .values({ ...event, occurredAt: new Date() })
+        .values({ ...event, isSimulated: this.isSimulated, occurredAt: new Date() })
         .catch(() => this.warn());
     } catch {
       this.warn();

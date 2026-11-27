@@ -1,4 +1,13 @@
-import { bigint, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 export const botEvents = pgTable(
   'bot_events',
@@ -13,6 +22,7 @@ export const botEvents = pgTable(
     reason: text(),
     durationMs: integer('duration_ms'),
     amount: integer(),
+    isSimulated: boolean('is_simulated').notNull().default(true),
   },
   table => [
     index('bot_events_occurred_at_idx').on(table.occurredAt),
