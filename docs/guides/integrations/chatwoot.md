@@ -60,7 +60,8 @@ ele.
 | `off` | Sem Chatwoot: o pedido de atendente responde com o telefone da revenda (`STORE_PHONE`), não há espelho e o webhook responde 401. |
 
 Padrão (variável vazia): `live` se houver `CHATWOOT_API_TOKEN`, senão `off`. Os testes e2e forçam
-`fake` em `vitest.config.e2e.ts`. Variáveis:
+`fake` em `vitest.config.e2e.ts`. Com `NODE_ENV=production`, o bot não sobe com `fake`, e `off` exige
+`STORE_PHONE`; sem Chatwoot live, o cliente precisa de um canal humano. Variáveis:
 [environment.md](../conventions/environment.md#chatwoot-handoff-para-atendente).
 
 ## Subir o Chatwoot local (Docker)

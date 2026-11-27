@@ -113,7 +113,7 @@ Como obter cada valor no painel do Chatwoot: [chatwoot.md](../integrations/chatw
 
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
-| `CHATWOOT_MODE` | Não | vazio = automático | `live`, `fake` ou `off`. Vazio: `live` se houver `CHATWOOT_API_TOKEN`, senão `off`. Em `off` o pedido de atendente responde com `STORE_PHONE`, não há espelho e o webhook recusa tudo (401). |
+| `CHATWOOT_MODE` | Não | vazio = automático | `live`, `fake` ou `off`. Vazio: `live` se houver `CHATWOOT_API_TOKEN`, senão `off`. Em `off` o pedido de atendente responde com `STORE_PHONE`, não há espelho e o webhook recusa tudo (401). Em `NODE_ENV=production`, `fake` é recusado no boot e `off` exige `STORE_PHONE`. |
 | `CHATWOOT_URL` | Não | `http://localhost:3000` | URL base do Chatwoot. Validada como URL; a barra final é removida. |
 | `CHATWOOT_ACCOUNT_ID` | Obrigatória em `live` | vazio | Id numérico da conta (aparece na URL do painel). |
 | `CHATWOOT_INBOX_ID` | Obrigatória em `live` | vazio | Id numérico da caixa do tipo API. Eventos de outra caixa são ignorados no webhook. |
