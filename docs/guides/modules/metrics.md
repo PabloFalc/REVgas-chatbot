@@ -73,6 +73,10 @@ As consultas estão em [`../metrics/sql/`](../metrics/sql/). Cole cada arquivo e
 | `ia.sql` | Uso e bloqueios de IA por hora e finalidade |
 | `latencia.sql` | p50 e p95 do turno por dia |
 | `operacao.sql` | Limites de quantidade, status de pedido e CPF |
+| `gestor-vendas.sql` | Pedidos registrados, valor e ticket médio em BRL, sem simulações, e tentativas incertas, a partir de `sale_attempts` |
+| `gestor-conversao.sql` | Conversão por coorte de `purchase_started`: madura (mais de 24 h) e sobre todas as intenções |
+| `gestor-abandono.sql` | Ciclos com `purchase_started` sem resultado terminal há mais de 24 h, por última etapa |
+| `supervisor-espera.sql` | Mediana e p90 da espera, em segundos, do pedido de handoff até a assunção, sem percentual de meta |
 
 O funil agrupa pelo dia do primeiro evento do ciclo dentro do intervalo. Os cards consideram apenas eventos no período escolhido; ciclos cortados pela janela podem ficar incompletos. Recuperações de venda contam como eventos `sale created`; o funil deduplica por ciclo. Ofertas de handoff podem se repetir após o limiar.
 
