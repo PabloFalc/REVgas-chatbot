@@ -94,7 +94,7 @@ describe('Eventos do bot (e2e)', () => {
       ['product:900000101', true],
       ['qty:1', true],
       ['pay:PIX', true],
-      ['summary:confirm', true],
+      ['summary:confirm:1', true],
     ] as const) {
       whatsapp.clear();
       await post(value, choice);

@@ -42,15 +42,27 @@ function saleCreated(id: number, total: number, tools: FlowTools) {
   return text(tools.demo ? msg.demoSaleCreated(id, total) : msg.saleCreated(id, total));
 }
 
-const summary: AskFn = async state => ({
-  state: { ...state, step: 'summary' },
-  replies: [
-    buttons(msg.summary(state), [
-      { id: 'summary:confirm', title: msg.confirm },
-      { id: 'summary:fix', title: msg.fix },
-    ]),
-  ],
-});
+const CONFIRM_REVISION = /^confirm:([1-9]\d*)$/;
+
+function confirmedRevision(choice: string): number | null {
+  const match = CONFIRM_REVISION.exec(choice);
+  if (!match) return null;
+  const revision = Number(match[1]);
+  return Number.isSafeInteger(revision) ? revision : null;
+}
+
+const summary: AskFn = async state => {
+  const revision = state.revision ?? 1;
+  return {
+    state: { ...state, step: 'summary', revision },
+    replies: [
+      buttons(msg.summary(state), [
+        { id: `summary:confirm:${revision}`, title: msg.confirm },
+        { id: 'summary:fix', title: msg.fix },
+      ]),
+    ],
+  };
+};
 
 const chooseCorrection: AskFn = async state => ({
   state: { ...state, step: 'chooseCorrection' },
@@ -98,26 +110,37 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
 
 const handleSummary: HandleFn = async (state, input, tools) => {
   const choice = choiceOf(input, 'summary');
-  if (choice === 'confirm') return submitSale(state, tools);
+  if (choice?.startsWith('confirm')) {
+    if (state.revision !== undefined && confirmedRevision(choice) === state.revision) {
+      return submitSale(state, tools);
+    }
+    tools.track({ name: 'summary_confirmation_rejected', reason: 'stale_revision' });
+    const current = await summary(state, tools);
+    return { ...current, replies: [text(msg.staleConfirmation), ...current.replies] };
+  }
   if (choice === 'fix') return chooseCorrection(state, tools);
   const raw = textOf(input);
   if (raw !== null) return freeText(state, raw, tools);
   return summary(state, tools);
 };
 
+function nextRevision(state: OrderState): number {
+  return (state.revision ?? 1) + 1;
+}
+
 const handleChooseCorrection: HandleFn = async (state, input, tools) => {
   const choice = choiceOf(input, 'fix');
   if (choice === 'product') {
     const { product: _product, quantity: _quantity, quote: _quote, ...rest } = state;
-    return nextStep(rest, tools);
+    return nextStep({ ...rest, revision: nextRevision(state) }, tools);
   }
   if (choice === 'address') {
     const { address: _address, ...rest } = state;
-    return nextStep(rest, tools);
+    return nextStep({ ...rest, revision: nextRevision(state) }, tools);
   }
   if (choice === 'payment') {
     const { payment: _payment, quote: _quote, changeFor: _changeFor, ...rest } = state;
-    return nextStep(rest, tools);
+    return nextStep({ ...rest, revision: nextRevision(state) }, tools);
   }
   const raw = textOf(input);
   if (raw !== null) return freeText(state, raw, tools);
