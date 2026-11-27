@@ -265,7 +265,7 @@ describe('messages de texto livre', () => {
 describe('freeText', () => {
   const paying: OrderState = {
     step: 'choosePayment',
-    customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+    customer: { id: 1, name: 'Maria da Silva', tagId: null },
     address,
     product: p13,
     quantity: 1,
@@ -283,7 +283,7 @@ describe('freeText', () => {
     const confirming: OrderState = {
       step: 'summary',
       revision: 1,
-      customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+      customer: { id: 1, name: 'Maria da Silva', tagId: null },
       addresses: [address],
       address,
       product: p13,

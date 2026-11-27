@@ -259,8 +259,6 @@ describe('ConversationRepository (identidade)', () => {
     await repository.markVerified(phone, 2);
 
     await expect(repository.verifiedCustomer(phone)).resolves.toBe(2);
-    await expect(repository.isVerified(phone, 1)).resolves.toBe(false);
-    await expect(repository.isVerified(phone, 2)).resolves.toBe(true);
     expect(cache.set).toHaveBeenLastCalledWith({
       prefix: IDENTITY_PREFIX,
       key: phone,
@@ -277,16 +275,14 @@ describe('ConversationRepository (identidade)', () => {
     await expect(repository.verifiedCustomer(phone)).resolves.toBe(1);
     advance(1);
     await expect(repository.verifiedCustomer(phone)).resolves.toBeNull();
-    await expect(repository.isVerified(phone, 1)).resolves.toBe(false);
   });
 
   it('vínculo não vale para outro cliente nem para outro telefone', async () => {
     const { repository } = setupIdentity();
     await repository.markVerified(phone, 1);
 
-    await expect(repository.isVerified(phone, 2)).resolves.toBe(false);
+    await expect(repository.verifiedCustomer(phone)).resolves.toBe(1);
     await expect(repository.verifiedCustomer('5586988887777')).resolves.toBeNull();
-    await expect(repository.isVerified('5586988887777', 1)).resolves.toBe(false);
   });
 
   it('chave antiga por telefone e cliente não conta como verificada', async () => {
@@ -294,7 +290,6 @@ describe('ConversationRepository (identidade)', () => {
     store.set(`conversation:verified:${phone}:1`, 1);
 
     await expect(repository.verifiedCustomer(phone)).resolves.toBeNull();
-    await expect(repository.isVerified(phone, 1)).resolves.toBe(false);
   });
 
   it('terceiro erro bloqueia por 1 hora', async () => {

@@ -24,7 +24,7 @@ const money = { type: 'MONEY', label: 'Dinheiro' };
 
 const full: OrderState = {
   step: 'summary',
-  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', tagId: null },
   addresses: [address],
   address,
   product: p13,
@@ -64,7 +64,7 @@ describe('texto guiado da etapa quando a IA não entende', () => {
 
   it.each([
     ['askCpf', 'não tenho CPF', msg.invalidCpf],
-    ['askCpfPrefix', 'não lembro', msg.cpfPrefixFormat],
+    ['confirmCpf', 'não lembro', msg.askFullCpf],
     ['askQuantity', 'uns dois', msg.invalidQuantity],
     ['askChangeAmount', 'não sei ainda', msg.invalidChange(110)],
   ] as [Step, string, string][])('%s: "%s" recebe o texto da etapa', async (step, raw, guided) => {
@@ -157,19 +157,19 @@ describe('fallback de texto livre nas etapas', () => {
     expect(interpretCalls(fake)).toHaveLength(1);
   });
 
-  it('askCpfPrefix', async () => {
-    const valid = await run('askCpfPrefix', '123');
+  it('confirmCpf', async () => {
+    const valid = await run('confirmCpf', '123.456.789-09');
     expect(interpretCalls(valid.fake)).toHaveLength(0);
 
-    for (const bad of ['12345678909', 'meu cpf é 123.456.789-00']) {
-      const { fake, out } = await run('askCpfPrefix', bad);
-      expect(out?.replies).toEqual([text(msg.cpfPrefixFormat)]);
+    for (const bad of ['111.222.333-44', 'meu cpf é 123.456.789-00']) {
+      const { fake, out } = await run('confirmCpf', bad);
+      expect(out?.replies).toEqual([text(msg.invalidCpf)]);
       expect(interpretCalls(fake)).toHaveLength(0);
     }
 
-    const { fake, out } = await run('askCpfPrefix', 'quero no pix');
+    const { fake, out } = await run('confirmCpf', 'quero no pix');
     expect(interpretCalls(fake)).toHaveLength(1);
-    expect(out?.state?.step).toBe('askCpfPrefix');
+    expect(out?.state?.step).toBe('confirmCpf');
   });
 
   it.each([

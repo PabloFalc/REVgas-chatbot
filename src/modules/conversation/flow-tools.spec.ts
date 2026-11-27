@@ -31,7 +31,7 @@ const CYCLE = '6f1c2b8e-4a1d-4c8e-9f3a-2b7d5e0c1a90';
 
 function setup() {
   const customers = {
-    findByPhone: vi.fn(async () => null),
+    findAllByPhone: vi.fn(async () => []),
     create: vi.fn(),
     history: vi.fn(),
   };
@@ -51,7 +51,6 @@ function setup() {
   };
   const conversations = {
     verifiedCustomer: vi.fn(async () => 1),
-    isVerified: vi.fn(async () => true),
     markVerified: vi.fn(async () => undefined),
     registerCpfMismatch: vi.fn(async () => 2),
     isBlocked: vi.fn(async () => false),
@@ -122,7 +121,7 @@ describe('FlowToolsService.forPhone', () => {
     const tools = service.forPhone(PHONE, async () => undefined, CYCLE);
     const customer = { id: 1, tagId: null };
 
-    await tools.findCustomer('5586999991234');
+    await tools.findCustomers('5586999991234');
     await tools.listProducts(customer);
     await tools.quote(customer, 3, 'PIX', 2);
     await tools.addressFromCep('64000000');
@@ -130,7 +129,7 @@ describe('FlowToolsService.forPhone', () => {
     await expect(tools.createSale({} as never, { segment: 'recurring' })).resolves.toBe(7);
     await tools.findRecentSale({} as never, new Date());
 
-    expect(customers.findByPhone).toHaveBeenCalledWith('5586999991234');
+    expect(customers.findAllByPhone).toHaveBeenCalledWith('5586999991234');
     expect(catalog.quote).toHaveBeenCalledWith(customer, 3, 'PIX', 2);
     expect(addresses.fromCep).toHaveBeenCalledWith('64000000');
     expect(addresses.fromText).toHaveBeenCalledWith('rua x');
@@ -143,13 +142,11 @@ describe('FlowToolsService.forPhone', () => {
     const phone = '5586999991234';
 
     await expect(tools.verifiedCustomer(phone)).resolves.toBe(1);
-    await expect(tools.isVerified(phone, 1)).resolves.toBe(true);
     await tools.markVerified(phone, 1);
     await expect(tools.registerCpfMismatch(phone)).resolves.toBe(2);
     await expect(tools.isBlocked(phone)).resolves.toBe(false);
 
     expect(conversations.verifiedCustomer).toHaveBeenCalledWith(phone);
-    expect(conversations.isVerified).toHaveBeenCalledWith(phone, 1);
     expect(conversations.markVerified).toHaveBeenCalledWith(phone, 1);
     expect(conversations.registerCpfMismatch).toHaveBeenCalledWith(phone);
     expect(conversations.isBlocked).toHaveBeenCalledWith(phone);

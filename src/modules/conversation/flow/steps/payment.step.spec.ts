@@ -29,7 +29,7 @@ const options = [
 
 const base: OrderState = {
   step: 'choosePayment',
-  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', tagId: null },
   address,
   product: { id: 1, name: 'Botijão P13' },
   quantity: 2,

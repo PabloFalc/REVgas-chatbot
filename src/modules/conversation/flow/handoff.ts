@@ -21,6 +21,7 @@ const STEP_LABELS: Record<Step, string> = {
   askName: 'Nome do cliente',
   askCpf: 'CPF do cliente',
   askCpfPrefix: 'Confirmação de identidade',
+  confirmCpf: 'Confirmação de identidade',
   offerRepeat: 'Oferta de repetir o último pedido',
   chooseAddress: 'Escolha do endereço',
   askNewAddress: 'Novo endereço',
@@ -57,7 +58,7 @@ export function offer(body: string): Reply {
 export function handoffSummary(state: OrderState | null): HandoffOrderSummary | null {
   if (!state) return null;
   const stepLabel = STEP_LABELS[state.step];
-  if (state.step === 'askCpfPrefix') {
+  if (state.step === 'askCpfPrefix' || state.step === 'confirmCpf') {
     return { stepLabel, identityConfirmed: false, newCustomer: false };
   }
   const { customer, product, quantity, address, payment, quote } = state;

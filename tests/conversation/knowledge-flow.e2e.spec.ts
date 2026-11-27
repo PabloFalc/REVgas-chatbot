@@ -207,10 +207,10 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
     });
     await send('cadê meu gás', phone);
     await vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1));
-    expect(bodyOf(whatsapp.sent[0])).toContain(msg.askCpfPrefix);
+    expect(bodyOf(whatsapp.sent[0])).toContain(msg.askFullCpf);
     expect(bodyOf(whatsapp.sent[0])).not.toContain(`Pedido nº ${sale.id}`);
     whatsapp.clear();
-    await send('123', phone);
+    await send('123.456.789-09', phone);
     await vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1));
     expect(bodyOf(whatsapp.sent[0])).toContain(`Pedido nº ${sale.id}: recebido`);
     await expect(redis.get(`${ORDER_PREFIX}:${phone}`)).resolves.toBeNull();

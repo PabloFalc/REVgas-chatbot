@@ -34,6 +34,7 @@ export type MetricEvent = Cycle &
       }
     | { name: 'order_status'; outcome: 'found' | 'none' }
     | { name: 'cpf'; outcome: 'mismatch' | 'blocked' | 'blocked_hit'; amount: number }
+    | { name: 'identity_check'; outcome: 'verified' | 'failed' | 'owner_changed' }
     | {
         name: 'sale_outcome_unknown';
         reason: 'timeout' | 'server_error' | 'invalid_response' | 'other';

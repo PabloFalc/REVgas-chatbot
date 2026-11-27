@@ -35,27 +35,6 @@ const build = (seedCustomers: RevgasCustomer[] = []) => {
 };
 
 describe('CustomerRepository', () => {
-  describe('findByPhone', () => {
-    it('finds the customer by phone', async () => {
-      const { repository } = build([
-        seeded({ id: 5001, name: 'Maria', tag_id: 7, cpf: '11144477735' }),
-      ]);
-
-      expect(await repository.findByPhone(PHONE)).toEqual({
-        id: 5001,
-        name: 'Maria',
-        cpf: '11144477735',
-        tagId: 7,
-      });
-    });
-
-    it('returns null when nobody matches', async () => {
-      const { repository } = build();
-
-      expect(await repository.findByPhone(PHONE)).toBeNull();
-    });
-  });
-
   describe('findAllByPhone', () => {
     it('devolve todos os cadastros do telefone com page_size 100', async () => {
       const { http, call } = setupHttp([

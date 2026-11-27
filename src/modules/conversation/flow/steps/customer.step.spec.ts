@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type FlowInput, ToolError } from '../flow.types';
+import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { offer } from '../handoff';
 import { msg } from '../messages';
 import { text } from '../replies';
@@ -13,6 +13,8 @@ const say = (body: string): FlowInput => ({
 });
 
 const VALID_CPF = '123.456.789-09';
+const OTHER_CPF = '987.654.321-00';
+const unverified = { verifiedCustomer: async () => null };
 
 describe('start', () => {
   it('cliente desconhecido recebe boas-vindas e vai pedir o nome', async () => {
@@ -41,7 +43,8 @@ describe('start', () => {
 
   it('cliente sem CPF recebe o contato da revenda', async () => {
     const tools = createFakeTools({
-      findCustomer: async () => ({ id: 7, name: 'Joana Lima', cpf: null, tagId: 3 }),
+      ...unverified,
+      findCustomers: async () => [{ id: 7, name: 'Joana Lima', cpf: null, tagId: 3 }],
     });
     const result = await start(say('oi'), tools);
     expect(result).toEqual({
@@ -62,37 +65,27 @@ describe('start', () => {
     expect(tools.calls.map(call => call.name)).not.toContain('customerHistory');
   });
 
-  it('não verificado pede os 3 dígitos sem mostrar o nome', async () => {
-    const tools = createFakeTools({ isVerified: async () => false });
-    const spy = vi.spyOn(tools, 'isVerified');
+  it('não verificado pede o CPF completo sem mostrar o nome', async () => {
+    const tools = createFakeTools(unverified);
     const result = await start(say('oi'), tools);
-    expect(result.state).toEqual({
-      step: 'askCpfPrefix',
-      customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
-    });
-    expect(result.replies).toEqual([text(msg.askCpfPrefix)]);
+    expect(result.state).toEqual({ step: 'confirmCpf', customer: {} });
+    expect(result.replies).toEqual([text(msg.askFullCpf)]);
     expect(JSON.stringify(result.replies)).not.toContain('Maria');
     expect(tools.calls.map(call => call.name)).not.toContain('customerHistory');
-    expect(spy).toHaveBeenCalledWith(FAKE_PHONE, 1);
   });
 
-  it('cliente com CPF carrega histórico e segue para o fluxo', async () => {
+  it('cliente com vínculo carrega histórico e segue para o fluxo', async () => {
     const tools = createFakeTools();
     const result = await start(say('oi'), tools);
     expect(result.replies[0]).toEqual(text(msg.welcomeBack('Maria da Silva')));
-    expect(result.state?.customer).toEqual({
-      id: 1,
-      name: 'Maria da Silva',
-      cpfPrefix: '123',
-      tagId: null,
-    });
+    expect(result.state?.customer).toEqual({ id: 1, name: 'Maria da Silva', tagId: null });
     expect(result.state?.addresses).toHaveLength(2);
     expect(result.state?.boughtProductIds).toEqual([2]);
     expect(result.state?.step).toBe('chooseAddress');
     expect(tools.calls.map(call => call.name)).toEqual([
-      'findCustomer',
+      'findCustomers',
       'isBlocked',
-      'isVerified',
+      'verifiedCustomer',
       'customerHistory',
     ]);
   });
@@ -314,128 +307,89 @@ describe('askCpf', () => {
   });
 });
 
-describe('askCpfPrefix', () => {
-  const state = {
-    step: 'askCpfPrefix' as const,
-    customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
-  };
+describe('confirmCpf', () => {
+  const state: OrderState = { step: 'confirmCpf', customer: {} };
 
-  it('acerto marca verificado, dá as boas-vindas e segue o fluxo', async () => {
-    const tools = createFakeTools({ isVerified: async () => false });
+  it('pede o CPF completo', async () => {
+    const result = await asks.confirmCpf?.(state, createFakeTools());
+    expect(result).toEqual({ state, replies: [text(msg.askFullCpf)] });
+  });
+
+  it('CPF completo correto marca verificado e dá as boas-vindas', async () => {
+    const tools = createFakeTools(unverified);
     const spy = vi.spyOn(tools, 'markVerified');
-    const result = await handlers.askCpfPrefix?.(state, say('123'), tools);
+    const result = await handlers.confirmCpf?.(state, say('12345678909'), tools);
     expect(spy).toHaveBeenCalledWith(FAKE_PHONE, 1);
     expect(result?.replies[0]).toEqual(text(msg.welcomeBack('Maria da Silva')));
+    expect(result?.state?.customer).toEqual({ id: 1, name: 'Maria da Silva', tagId: null });
     expect(result?.state?.step).toBe('chooseAddress');
     expect(result?.state?.addresses).toHaveLength(2);
   });
 
-  it('aceita "123." com pontuação', async () => {
-    const tools = createFakeTools();
-    const result = await handlers.askCpfPrefix?.(state, say('123.'), tools);
+  it('CPF com pontuação confere com o cadastro', async () => {
+    const tools = createFakeTools(unverified);
+    const result = await handlers.confirmCpf?.(state, say(`meu cpf é ${VALID_CPF}`), tools);
     expect(tools.calls.map(call => call.name)).toContain('markVerified');
     expect(result?.state?.step).toBe('chooseAddress');
   });
 
-  it.each([1, 2])('erro %i repete a pergunta mantendo o estado', async count => {
-    const tools = createFakeTools({ registerCpfMismatch: async () => count });
+  it('com dois cadastros no telefone, o CPF escolhe o cadastro certo', async () => {
+    const tools = createFakeTools({
+      ...unverified,
+      findCustomers: async () => [
+        { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+        { id: 2, name: 'João Souza', cpf: '98765432100', tagId: 4 },
+      ],
+    });
+    const spy = vi.spyOn(tools, 'markVerified');
+    const result = await handlers.confirmCpf?.(state, say(OTHER_CPF), tools);
+    expect(spy).toHaveBeenCalledWith(FAKE_PHONE, 2);
+    expect(result?.replies[0]).toEqual(text(msg.welcomeBack('João Souza')));
+    expect(JSON.stringify(result)).not.toContain('Maria');
+  });
+
+  it('CPF que não confere conta tentativa e pede de novo', async () => {
+    const tools = createFakeTools(unverified);
     const spy = vi.spyOn(tools, 'registerCpfMismatch');
-    const result = await handlers.askCpfPrefix?.(state, say('999'), tools);
+    const result = await handlers.confirmCpf?.(state, say(OTHER_CPF), tools);
     expect(spy).toHaveBeenCalledWith(FAKE_PHONE);
-    expect(result).toEqual({ state, replies: [text(msg.cpfPrefixMismatch)] });
+    expect(result?.state).toEqual(state);
+    expect(JSON.stringify(result?.replies)).toContain(msg.cpfMismatch);
     expect(tools.calls.map(call => call.name)).not.toContain('markVerified');
   });
 
-  it('terceiro erro encerra com o contato da revenda', async () => {
-    const tools = createFakeTools({ registerCpfMismatch: async () => 3 });
-    const result = await handlers.askCpfPrefix?.(state, say('999'), tools);
-    expect(result).toEqual({
-      state: null,
-      replies: [text(msg.identityContactStore('86999990000'))],
-    });
-  });
-
-  it('dígitos do CPF no meio do pedido não chegam à IA', async () => {
-    const tools = createFakeTools({
-      interpret: async () => ({ intent: 'order', quantity: 2, confidence: 0.9 }),
-    });
-    const spy = vi.spyOn(tools, 'interpret');
-    const result = await handlers.askCpfPrefix?.(state, say('quero 2 botijões, cpf 123'), tools);
-    const sent = spy.mock.calls[0]?.[0];
-    expect(sent).toContain('quero 2 botijões');
-    expect(sent).not.toContain('123');
-    expect(result?.state?.step).toBe('askCpfPrefix');
+  it('CPF inválido não conta tentativa', async () => {
+    const tools = createFakeTools(unverified);
+    const result = await handlers.confirmCpf?.(state, say('111.222.333-44'), tools);
+    expect(result).toEqual({ state, replies: [text(msg.invalidCpf)] });
     expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
-  });
-
-  it('só dígitos soltos sem pedido pedem o formato sem contar tentativa', async () => {
-    const tools = createFakeTools();
-    const spy = vi.spyOn(tools, 'interpret');
-    const result = await handlers.askCpfPrefix?.(state, say('123 456'), tools);
-    expect(result).toEqual({ state, replies: [text(msg.cpfPrefixFormat)] });
-    expect(spy).not.toHaveBeenCalled();
-    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
-  });
-
-  it('botão em vez de texto pede o formato sem contar tentativa', async () => {
-    const tools = createFakeTools();
-    const input: FlowInput = {
-      phone: FAKE_PHONE,
-      content: { type: 'choice', id: 'x', title: 'x' },
-    };
-    const result = await handlers.askCpfPrefix?.(state, input, tools);
-    expect(result).toEqual({ state, replies: [text(msg.cpfPrefixFormat)] });
-    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
-  });
-
-  it.each([
-    { id: 1, name: 'Maria da Silva', tagId: null },
-    { name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
-  ])('estado sem id ou prefixo do CPF encerra com o contato da revenda', async customer => {
-    const tools = createFakeTools();
-    const result = await handlers.askCpfPrefix?.({ ...state, customer }, say('123'), tools);
-    expect(result).toEqual({
-      state: null,
-      replies: [text(msg.identityContactStore('86999990000'))],
-    });
-    expect(tools.calls).toEqual([]);
-  });
-
-  it('CPF inteiro não conta tentativa', async () => {
-    const tools = createFakeTools();
-    const result = await handlers.askCpfPrefix?.(state, say('12345678909'), tools);
-    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
-    expect(result).toEqual({ state, replies: [text(msg.cpfPrefixFormat)] });
   });
 
   it('respostas nunca repetem os dígitos digitados', async () => {
-    const tools = createFakeTools();
-    const result = await handlers.askCpfPrefix?.(state, say('987'), tools);
-    expect(JSON.stringify(result?.replies)).not.toContain('987');
+    const tools = createFakeTools(unverified);
+    for (const typed of ['98765432100', '111.222.333-44', '987']) {
+      const result = await handlers.confirmCpf?.(state, say(typed), tools);
+      const body = JSON.stringify(result?.replies);
+      expect(body).not.toContain('987');
+      expect(body).not.toContain('111');
+    }
   });
 
-  it.each(['quero 1 botijão P13', '2 botijões 12'])(
-    'pedido com 3 dígitos no texto (%s) não conta tentativa e vai para a IA',
-    async body => {
-      const tools = createFakeTools();
-      const spy = vi.spyOn(tools, 'interpret');
-      await handlers.askCpfPrefix?.(state, say(body), tools);
-      expect(spy).toHaveBeenCalled();
-      expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
-      expect(tools.calls.map(call => call.name)).not.toContain('markVerified');
-    },
-  );
-
-  it('"2 P13" sem palavra de pedido pede o formato sem contar tentativa', async () => {
-    const tools = createFakeTools();
-    const result = await handlers.askCpfPrefix?.(state, say('2 P13'), tools);
-    expect(result).toEqual({ state, replies: [text(msg.cpfPrefixFormat)] });
-    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
-    expect(tools.calls.map(call => call.name)).not.toContain('markVerified');
+  it('acerto com consulta de status pendente responde o status', async () => {
+    const tools = createFakeTools(unverified);
+    const spy = vi.spyOn(tools, 'latestOrderStatus');
+    const pending: OrderState = {
+      ...state,
+      pendingOrderStatus: { resumeStep: null, customer: {} },
+    };
+    const result = await handlers.confirmCpf?.(pending, say(VALID_CPF), tools);
+    expect(spy).toHaveBeenCalledWith(1, expect.any(Date));
+    expect(result?.state).toBeNull();
   });
 
   it('acerto com falha na consulta da oferta de repetir segue o fluxo normal', async () => {
     const tools = createFakeTools({
+      ...unverified,
       customerHistory: async () => ({
         addresses: [],
         productIds: [],
@@ -456,33 +410,27 @@ describe('askCpfPrefix', () => {
         throw new ToolError(new Error('fora'));
       },
     });
-    const result = await handlers.askCpfPrefix?.(state, say('123'), tools);
+    const result = await handlers.confirmCpf?.(state, say(VALID_CPF), tools);
     expect(tools.calls.map(call => call.name)).toContain('markVerified');
-    expect(result?.state?.step).not.toBe('askCpfPrefix');
+    expect(result?.state?.step).not.toBe('confirmCpf');
     expect(result?.state?.step).not.toBe('offerRepeat');
     expect(result?.replies[0]).toEqual(text(msg.welcomeBack('Maria da Silva')));
   });
+});
 
-  it('aceita "1 2 3" com espaços', async () => {
-    const tools = createFakeTools();
-    const result = await handlers.askCpfPrefix?.(state, say('1 2 3'), tools);
-    expect(tools.calls.map(call => call.name)).toContain('markVerified');
-    expect(result?.state?.step).toBe('chooseAddress');
-  });
-
-  it('texto de pedido anota e repete a pergunta', async () => {
-    const tools = createFakeTools({
-      interpret: async () => ({
-        intent: 'order',
-        products: ['Botijão P13'],
-        confidence: 0.9,
-      }),
+describe('askCpfPrefix (estado gravado antes do deploy)', () => {
+  it('reinicia a identificação pedindo o CPF completo', async () => {
+    const tools = createFakeTools(unverified);
+    const old = {
+      step: 'askCpfPrefix',
+      customer: { id: 1, name: 'Maria da Silva', tagId: null },
+    } as unknown as OrderState;
+    const result = await handlers.askCpfPrefix?.(old, say('123'), tools);
+    expect(result).toEqual({
+      state: { step: 'confirmCpf', customer: {} },
+      replies: [text(msg.askFullCpf)],
     });
-    const result = await handlers.askCpfPrefix?.(state, say('quero um botijão P13'), tools);
-    expect(result?.replies).toEqual([text(msg.noted(['Botijão P13'])), text(msg.askCpfPrefix)]);
-    expect(result?.state?.product).toEqual({ id: 1, name: 'Botijão P13' });
-    expect(result?.state?.step).toBe('askCpfPrefix');
-    expect(tools.calls.map(call => call.name)).not.toContain('registerCpfMismatch');
+    expect(tools.calls.map(call => call.name)).not.toContain('markVerified');
   });
 });
 
@@ -499,16 +447,15 @@ describe('produto oferecido na primeira mensagem', () => {
     expect(result.state?.quantity).toBeUndefined();
   });
 
-  it('askCpfPrefix concluído reconfere o produto com o cliente identificado', async () => {
-    const tools = createFakeTools({ listProducts: async () => [p45] });
+  it('confirmCpf concluído reconfere o produto com o cliente identificado', async () => {
+    const tools = createFakeTools({
+      ...unverified,
+      findCustomers: async () => [{ id: 7, name: 'Joana Lima', cpf: '12345678909', tagId: 3 }],
+      listProducts: async () => [p45],
+    });
     const spy = vi.spyOn(tools, 'listProducts');
-    const state = {
-      step: 'askCpfPrefix' as const,
-      customer: { id: 7, name: 'Joana Lima', cpfPrefix: '123', tagId: 3 },
-      product: p13,
-      quantity: 2,
-    };
-    const result = await handlers.askCpfPrefix?.(state, say('123'), tools);
+    const state: OrderState = { step: 'confirmCpf', customer: {}, product: p13, quantity: 2 };
+    const result = await handlers.confirmCpf?.(state, say(VALID_CPF), tools);
     expect(spy).toHaveBeenCalledWith({ id: 7, tagId: 3 });
     expect(result?.state?.product).toBeUndefined();
   });

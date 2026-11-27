@@ -31,14 +31,6 @@ interface RawAddress {
 
 const digitsOnly = (value: string): string => value.replace(/\D/g, '');
 
-const lastSaleTime = (customer: RevgasCustomer): number => {
-  if (typeof customer.last_sale !== 'string') {
-    return Number.NEGATIVE_INFINITY;
-  }
-  const time = Date.parse(customer.last_sale);
-  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
-};
-
 const toCustomer = (customer: RevgasCustomer): Customer => ({
   id: customer.id,
   name: customer.name ?? '',
@@ -119,21 +111,6 @@ const addressKey = (address: Address): string =>
 @Injectable()
 export class CustomerRepository {
   constructor(@Inject(REVGAS_CLIENT) private readonly revgas: RevgasClient) {}
-
-  async findByPhone(phone: string): Promise<Customer | null> {
-    const found = await this.revgas.customers.findByPhone(phone);
-    if (found.length === 0) {
-      return null;
-    }
-    const latest = found.reduce((best, current) => {
-      const diff = lastSaleTime(current) - lastSaleTime(best);
-      if (diff > 0 || (diff === 0 && current.id > best.id)) {
-        return current;
-      }
-      return best;
-    });
-    return toCustomer(latest);
-  }
 
   async findAllByPhone(phone: string): Promise<CustomerCandidate[]> {
     const found = await this.revgas.customers.findByPhone(phone);

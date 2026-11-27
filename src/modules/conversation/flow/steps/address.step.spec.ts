@@ -31,7 +31,7 @@ const a3 = { ...a1, street: 'Rua Nova', number: '5' };
 
 const known: OrderState = {
   step: 'chooseAddress',
-  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', tagId: null },
   addresses: [a1, a2],
 };
 
