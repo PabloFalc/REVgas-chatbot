@@ -297,6 +297,31 @@ describe('conversas completas', () => {
     expect(createSale?.args[0]).not.toHaveProperty('observation');
   });
 
+  it('mantém compra por botões com LLM indisponível', async () => {
+    const llm = {
+      interpret: vi.fn().mockRejectedValue(new Error('provedor indisponível')),
+      readName: vi.fn().mockRejectedValue(new Error('provedor indisponível')),
+      answerQuestion: vi.fn().mockRejectedValue(new Error('provedor indisponível')),
+      addressFromText: vi.fn().mockRejectedValue(new Error('provedor indisponível')),
+    };
+    const tools = createFakeTools(llm);
+    const chat = new Conversation(tools);
+    await chat.send(say('oi'));
+    await chat.send(pick('address:1'));
+    await chat.send(pick('product:2'));
+    await chat.send(pick('qty:1'));
+    await chat.send(pick('pay:PIX'));
+    expect(chat.step).toBe('summary');
+    expect(tools.calls.some(call => call.name === 'createSale')).toBe(false);
+    const done = await chat.send(pick('summary:confirm:1'));
+    expect(done).toMatchObject({ state: null, saleId: 4521 });
+    expect(done.replies).toEqual([text(msg.saleCreated(4521, 110))]);
+    const quotes = tools.calls.filter(call => call.name === 'quote');
+    expect(quotes.length).toBeGreaterThan(0);
+    for (const spy of Object.values(llm)) expect(spy).not.toHaveBeenCalled();
+    expect(tools.calls.filter(call => call.name === 'createSale')).toHaveLength(1);
+  });
+
   it('corrigir o endereço volta ao resumo', async () => {
     const chat = new Conversation(createFakeTools());
     await chat.send(say('oi'));
