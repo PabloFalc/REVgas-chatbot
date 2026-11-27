@@ -12,8 +12,11 @@ import {
   VERIFIED_PREFIX,
 } from './conversation.repository';
 
-function setup(setIfAbsent: RedisService['setIfAbsent']) {
-  const cache = { setIfAbsent: vi.fn(setIfAbsent) };
+function setup(
+  setIfAbsent: RedisService['setIfAbsent'],
+  remove: RedisService['delete'] = async () => undefined,
+) {
+  const cache = { setIfAbsent: vi.fn(setIfAbsent), delete: vi.fn(remove) };
   const logger = { setContext: vi.fn(), error: vi.fn() };
   const repository = new ConversationRepository(
     cache as unknown as RedisService,
@@ -46,6 +49,28 @@ describe('ConversationRepository.claimMessage', () => {
     });
 
     await expect(repository.claimMessage('wamid.1')).resolves.toBe(true);
+    expect(logger.error).toHaveBeenCalledOnce();
+  });
+});
+
+describe('ConversationRepository.releaseMessage', () => {
+  it('apaga a chave da mensagem com o prefixo de entrada', async () => {
+    const { repository, cache } = setup(async () => true);
+
+    await repository.releaseMessage('wamid.1');
+
+    expect(cache.delete).toHaveBeenCalledWith({ prefix: INBOUND_PREFIX, key: 'wamid.1' });
+  });
+
+  it('com o Redis fora, loga e não propaga o erro', async () => {
+    const { repository, logger } = setup(
+      async () => true,
+      async () => {
+        throw new Error('ECONNREFUSED');
+      },
+    );
+
+    await expect(repository.releaseMessage('wamid.1')).resolves.toBeUndefined();
     expect(logger.error).toHaveBeenCalledOnce();
   });
 });

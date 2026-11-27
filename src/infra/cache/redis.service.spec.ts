@@ -142,7 +142,7 @@ describe('RedisService primitivas novas', () => {
     const evalFn = vi.fn().mockRejectedValue(new Error('boom'));
     const service = buildWith({ eval: evalFn });
 
-    await expect(service.increment({ key: 'k', ttl: 3600 })).rejects.toThrow('boom');
+    await expect(service.increment({ prefix: 'p', key: 'k', ttl: 3600 })).rejects.toThrow('boom');
   });
 
   it('scheduleAdd chama zadd', async () => {

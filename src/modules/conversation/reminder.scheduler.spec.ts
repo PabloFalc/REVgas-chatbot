@@ -30,7 +30,7 @@ function setup(phones = [PHONE]) {
     })),
     loadOrder: vi.fn(async () => idleState() as OrderState | null),
     saveOrder: vi.fn(async () => undefined),
-    saveOrderKeepingTtl: vi.fn(async () => undefined),
+    saveOrderKeepingTtl: vi.fn(async (_phone: string, _state: OrderState) => undefined),
   };
   const messaging = { send: vi.fn(async (_to: string, _reply: unknown) => undefined) };
   const flowTools = { forPhone: vi.fn(() => createFakeTools()) };

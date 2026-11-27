@@ -30,6 +30,7 @@
     "db:pull": "drizzle-kit pull",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
+    "verify": "pnpm lint && pnpm exec tsc --noEmit --incremental false && pnpm test",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --reporter=verbose",

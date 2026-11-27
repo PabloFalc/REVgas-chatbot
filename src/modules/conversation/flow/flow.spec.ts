@@ -224,7 +224,7 @@ describe('conversas completas', () => {
     expect(chat.step).toBe('askChangeAmount');
     await chat.send(say('250'));
     expect(chat.step).toBe('summary');
-    const done = await chat.send(pick('summary:confirm'));
+    const done = await chat.send(pick('summary:confirm:1'));
     expect(done).toEqual({
       state: null,
       replies: [text(msg.saleCreated(4521, 220))],
@@ -254,7 +254,7 @@ describe('conversas completas', () => {
     expect(chat.step).toBe('choosePayment');
     await chat.send(pick('pay:PIX'));
     expect(chat.step).toBe('summary');
-    const done = await chat.send(pick('summary:confirm'));
+    const done = await chat.send(pick('summary:confirm:1'));
     expect(done.state).toBeNull();
     expect(done.replies).toEqual([text(msg.saleCreated(4521, 110))]);
     const createSale = tools.calls.find(call => call.name === 'createSale');
@@ -301,7 +301,7 @@ describe('conversas completas', () => {
     await chat.send(pick('product:1'));
     await chat.send(pick('qty:1'));
     await chat.send(pick('pay:PIX'));
-    const failed = await chat.send(pick('summary:confirm'));
+    const failed = await chat.send(pick('summary:confirm:1'));
     expect(chat.step).toBe('saleFailed');
     expect(failed.replies[0].type).toBe('buttons');
     const retried = await chat.send(pick('retry:sale'));

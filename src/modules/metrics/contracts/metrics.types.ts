@@ -2,6 +2,8 @@ import type { RevgasErrorKind } from 'src/core/erros/revgas/revgas.errors';
 import type { Step } from 'src/modules/conversation/flow/flow.types';
 import type { HandoffReason, HandoffStatus } from 'src/modules/handoff/contracts/handoff.types';
 
+export type CommercialField = 'product' | 'quantity' | 'payment' | 'address';
+
 type Cycle = { cycleId?: string };
 export type MetricEvent = Cycle &
   (
@@ -42,4 +44,6 @@ export type MetricEvent = Cycle &
         handoffId: string;
         durationMs: number;
       }
+    | { name: 'summary_confirmation_rejected'; reason: 'stale_revision' }
+    | { name: 'summary_changed'; fields: CommercialField[] }
   );

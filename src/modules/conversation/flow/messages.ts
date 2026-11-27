@@ -194,6 +194,8 @@ export const msg = {
     ].join('\n'),
   confirm: 'Confirmar',
   fix: 'Corrigir',
+  staleConfirmation: 'O pedido mudou desde esse botão. Confira o resumo atualizado para confirmar.',
+  summaryUpdated: 'Atualizei o pedido. Confira o novo resumo antes de confirmar.',
   chooseCorrection: 'O que você quer corrigir?',
   fixProduct: 'Produto',
   fixAddress: 'Endereço',
