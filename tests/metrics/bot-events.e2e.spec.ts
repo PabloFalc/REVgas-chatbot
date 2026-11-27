@@ -192,16 +192,30 @@ describe('Eventos do bot (e2e)', () => {
       return days;
     }
 
-    function bound(file: string, days: unknown) {
-      const value = validDays(days);
+    const PLACEHOLDER = /(\{\{dias\}\}|\{\{incluir_simulados\}\})/;
+
+    function bound(file: string, days: unknown, mode: string = 'nao') {
       return read(file)
-        .split('{{dias}}')
-        .map(part => sql.raw(part))
-        .reduce((acc, part) => sql`${acc}${value}${part}`);
+        .split(PLACEHOLDER)
+        .map(part =>
+          part === '{{dias}}'
+            ? sql`${days}`
+            : part === '{{incluir_simulados}}'
+              ? sql`${mode}`
+              : sql.raw(part),
+        )
+        .reduce((acc, part) => sql`${acc}${part}`);
     }
 
-    async function query(tx: Tx, file: string, days: unknown = 30): Promise<Row[]> {
-      const { rows } = await tx.execute(bound(file, days));
+    function pasted(file: string, days: number, mode: string = 'nao') {
+      return sql.raw(
+        read(file)
+          .replaceAll('{{dias}}', String(days))
+          .replaceAll('{{incluir_simulados}}', `'${mode}'`),
+      );
+    }
+
+    function toRows(rows: Record<string, unknown>[]): Row[] {
       return rows.map(
         row =>
           Object.fromEntries(
@@ -211,6 +225,11 @@ describe('Eventos do bot (e2e)', () => {
             ]),
           ) as Row,
       );
+    }
+
+    async function query(tx: Tx, file: string, days: unknown = 30, mode: string = 'nao') {
+      const { rows } = await tx.execute(bound(file, validDays(days), mode));
+      return toRows(rows);
     }
 
     async function isolated<T>(
@@ -547,17 +566,33 @@ describe('Eventos do bot (e2e)', () => {
       expect(code('supervisor-espera.sql')).not.toMatch(/meta|slo|sla|pct|percent(?!ile)|%/i);
     });
 
+    type Failure = { cause?: { message?: string; code?: string } };
+
+    async function failure(run: () => Promise<unknown>): Promise<Failure | undefined> {
+      try {
+        await run();
+      } catch (error) {
+        return error as Failure;
+      }
+    }
+
+    const P0_FILES = [
+      'gestor-vendas.sql',
+      'gestor-conversao.sql',
+      'gestor-abandono.sql',
+      'supervisor-espera.sql',
+    ];
+
     it('aceita apenas períodos entre 1 e 365 dias', async () => {
-      for (const file of [
-        'gestor-vendas.sql',
-        'gestor-conversao.sql',
-        'gestor-abandono.sql',
-        'supervisor-espera.sql',
-      ]) {
+      const guarded =
+        /make_interval\(days => CASE WHEN \{\{dias\}\} BETWEEN 1 AND 365 THEN \{\{dias\}\} ELSE \('dias deve estar entre 1 e 365, recebido ' \|\| \{\{dias\}\}\)::int END\)/g;
+      for (const file of P0_FILES) {
         const uses = code(file).match(/\{\{dias\}\}/g) ?? [];
-        const intervals = code(file).match(/make_interval\(days => \{\{dias\}\}\)/g) ?? [];
-        expect(uses.length).toBeGreaterThan(0);
-        expect(intervals).toHaveLength(uses.length);
+        const intervals = code(file).match(guarded) ?? [];
+        expect(intervals.length).toBeGreaterThan(0);
+        expect(uses).toHaveLength(intervals.length * 3);
+        expect(code(file).match(/make_interval/g)).toHaveLength(intervals.length);
+        expect(code(file)).not.toMatch(/\{\{dias\}\}\s*(day|days)\b|interval\s+'[^']*\{\{/i);
       }
       for (const days of [1, 30, 365]) expect(() => validDays(days)).not.toThrow();
       for (const days of [
@@ -578,6 +613,28 @@ describe('Eventos do bot (e2e)', () => {
       await expect(isolated(tx => query(tx, 'supervisor-espera.sql', 366), empty)).rejects.toThrow(
         RangeError,
       );
+
+      const forms = {
+        vinculado: (file: string, days: number) => bound(file, days),
+        literal: (file: string, days: number) => pasted(file, days),
+      };
+      for (const file of P0_FILES) {
+        for (const [form, build] of Object.entries(forms)) {
+          await isolated(async tx => {
+            for (const days of [1, 30, 365]) {
+              await expect(
+                tx.transaction(t => t.execute(build(file, days))),
+                `${file} ${form} ${days}`,
+              ).resolves.toBeDefined();
+            }
+            for (const days of [0, 366, -1, 10_000]) {
+              const error = await failure(() => tx.transaction(t => t.execute(build(file, days))));
+              expect(error, `${file} ${form} ${days}`).toBeDefined();
+              expect(error?.cause?.message).toContain('dias deve estar entre 1 e 365');
+            }
+          }, empty);
+        }
+      }
     });
 
     it('não usa bot_events como fonte de vendas financeiras', async () => {
@@ -599,6 +656,201 @@ describe('Eventos do bot (e2e)', () => {
         return query(tx, 'gestor-vendas.sql');
       });
       expect(row).toMatchObject({ pedidos_registrados: 7, valor_registrado_brl: 980 });
+    });
+
+    it('inclui simulações somente quando o modo é pedido explicitamente', async () => {
+      const simulatedAbandoned = cycle();
+      const out = await isolated(async tx => {
+        const run = async (mode: string) => ({
+          vendas: (await query(tx, 'gestor-vendas.sql', 30, mode))[0],
+          conversao: (await query(tx, 'gestor-conversao.sql', 30, mode))[0],
+          abandono: await query(tx, 'gestor-abandono.sql', 30, mode),
+          espera: (await query(tx, 'supervisor-espera.sql', 30, mode))[0],
+        });
+        const nao = await run('nao');
+        const padrao = {
+          vendas: (await query(tx, 'gestor-vendas.sql'))[0],
+          espera: (await query(tx, 'supervisor-espera.sql'))[0],
+        };
+        const sim = await run('sim');
+        const talvez = await run('talvez');
+        const vazio = await run('');
+        await tx.insert(botEvents).values([
+          event({
+            name: 'purchase_started',
+            cycleId: simulatedAbandoned,
+            reason: 'new',
+            occurredAt: ago(60),
+            isSimulated: true,
+          }),
+          event({
+            name: 'turn',
+            cycleId: simulatedAbandoned,
+            step: 'review',
+            occurredAt: ago(50),
+            isSimulated: true,
+          }),
+        ]);
+        return {
+          nao,
+          padrao,
+          sim,
+          talvez,
+          vazio,
+          abandonoNao: await query(tx, 'gestor-abandono.sql', 30, 'nao'),
+          abandonoSim: await query(tx, 'gestor-abandono.sql', 30, 'sim'),
+        };
+      });
+      const byStep = (rows: Row[]) =>
+        Object.fromEntries(rows.map(row => [String(row.ultima_etapa), row.ciclos_abandonados]));
+
+      expect(out.nao.vendas).toEqual({
+        pedidos_registrados: 7,
+        valor_registrado_brl: 980,
+        ticket_medio_brl: 140,
+        resultado_incerto: 1,
+      });
+      expect(out.padrao.vendas).toEqual(out.nao.vendas);
+      expect(out.padrao.espera).toEqual(out.nao.espera);
+      expect(out.nao.conversao).toMatchObject({
+        intencoes_maduras: 9,
+        pedidos_em_intencoes_maduras: 7,
+        intencoes_totais: 10,
+        pedidos_em_intencoes_totais: 7,
+      });
+      expect(byStep(out.nao.abandono)).toEqual({ catalog: 1, payment: 1 });
+      expect(out.nao.espera).toEqual({
+        espera_p50_seg: 360,
+        espera_p90_seg: 552,
+        handoffs_assumidos: 2,
+      });
+
+      expect(out.sim.vendas).toMatchObject({
+        pedidos_registrados: 9,
+        valor_registrado_brl: 2978,
+        resultado_incerto: 2,
+      });
+      expect(out.sim.vendas.ticket_medio_brl).toBeCloseTo(2978 / 9, 6);
+      expect(out.sim.conversao).toEqual({
+        intencoes_maduras: 10,
+        pedidos_em_intencoes_maduras: 8,
+        conversao_madura_pct: 80,
+        intencoes_totais: 11,
+        pedidos_em_intencoes_totais: 8,
+        conversao_total_pct: 72.7,
+      });
+      expect(byStep(out.sim.abandono)).toEqual({ catalog: 1, payment: 1 });
+      expect(out.sim.espera).toEqual({
+        espera_p50_seg: 600,
+        espera_p90_seg: 3000,
+        handoffs_assumidos: 3,
+      });
+      expect(byStep(out.abandonoNao)).toEqual({ catalog: 1, payment: 1 });
+      expect(byStep(out.abandonoSim)).toEqual({ catalog: 1, payment: 1, review: 1 });
+
+      expect(out.talvez).toEqual(out.nao);
+      expect(out.vazio).toEqual(out.nao);
+    });
+
+    it('não seleciona colunas de identificação pessoal', async () => {
+      const allowed = [
+        'pedidos_registrados',
+        'valor_registrado_brl',
+        'ticket_medio_brl',
+        'resultado_incerto',
+        'intencoes_maduras',
+        'pedidos_em_intencoes_maduras',
+        'conversao_madura_pct',
+        'intencoes_totais',
+        'pedidos_em_intencoes_totais',
+        'conversao_total_pct',
+        'ultima_etapa',
+        'ciclos_abandonados',
+        'espera_p50_seg',
+        'espera_p90_seg',
+        'handoffs_assumidos',
+      ];
+      const forbidden =
+        /customer_id|erp_sale_id|conversation_id|handoff_id|phone|cpf|(customer|full|first|last)_?name|\bnome\b|address|endereco|\btext\b|select\s+\*|\.\*/i;
+      const returned = await isolated(async tx => {
+        const columns = new Set<string>();
+        for (const file of P0_FILES) {
+          const { fields } = await tx.execute(bound(file, 30));
+          for (const field of fields) columns.add(field.name);
+        }
+        return [...columns];
+      });
+      expect(returned.length).toBeGreaterThan(0);
+      for (const column of returned) expect(allowed).toContain(column);
+      for (const file of P0_FILES) expect(code(file)).not.toMatch(forbidden);
+    });
+
+    it('papel restrito lê os quatro cards e não lê identificadores operacionais', async () => {
+      const role = `mr_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+      const grants = readFileSync(
+        resolve(process.cwd(), 'docker/metabase/metrics-reader.sql'),
+        'utf8',
+      )
+        .split('\n')
+        .filter(line => /^GRANT\b/i.test(line) && !/^GRANT\s+CONNECT\b/i.test(line))
+        .map(line => line.replaceAll('metrics_reader', role));
+      expect(grants.length).toBeGreaterThanOrEqual(3);
+
+      const denied = (tx: Tx, statement: string) =>
+        failure(() => tx.transaction(t => t.execute(sql.raw(statement))));
+
+      const out = await (async () => {
+        let result:
+          | { errors: (Failure | undefined)[]; readable: unknown[]; writable: unknown[] }
+          | undefined;
+        try {
+          await db.transaction(async tx => {
+            await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN`));
+            for (const grant of grants) await tx.execute(sql.raw(grant));
+            await tx.execute(sql.raw(`SET LOCAL ROLE ${role}`));
+            for (const file of P0_FILES) {
+              await tx.execute(bound(file, 30));
+            }
+            const errors = [
+              await denied(tx, 'SELECT customer_id FROM sale_attempts'),
+              await denied(tx, 'SELECT erp_sale_id FROM sale_attempts'),
+              await denied(tx, 'SELECT * FROM sale_attempts'),
+            ];
+            const readable = (
+              await tx.execute(
+                sql`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+                      AND c.relname NOT IN ('bot_events', 'sale_attempts')
+                      AND (has_table_privilege(current_user, c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+                        OR has_any_column_privilege(current_user, c.oid, 'SELECT,INSERT,UPDATE,REFERENCES'))`,
+              )
+            ).rows;
+            const writable = (
+              await tx.execute(
+                sql`SELECT c.relname FROM pg_class c
+                    WHERE c.relname IN ('bot_events', 'sale_attempts') AND c.relnamespace = 'public'::regnamespace
+                      AND (has_table_privilege(current_user, c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+                        OR has_any_column_privilege(current_user, c.oid, 'INSERT,UPDATE,REFERENCES')
+                        OR (c.relname = 'sale_attempts' AND has_table_privilege(current_user, c.oid, 'SELECT')))`,
+              )
+            ).rows;
+            result = { errors, readable, writable };
+            throw ROLLBACK;
+          });
+        } catch (error) {
+          if (error !== ROLLBACK) throw error;
+        }
+        return result;
+      })();
+
+      expect(out?.errors).toHaveLength(3);
+      for (const error of out?.errors ?? []) {
+        expect(error?.cause?.code).toBe('42501');
+      }
+      expect(out?.readable).toEqual([]);
+      expect(out?.writable).toEqual([]);
+      const left = await db.execute(sql`SELECT 1 FROM pg_roles WHERE rolname = ${role}`);
+      expect(left.rows).toHaveLength(0);
     });
   });
 });

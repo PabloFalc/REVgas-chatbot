@@ -61,7 +61,7 @@ O usuário `metrics_reader` tem CONNECT, USAGE no schema, SELECT em `bot_events`
 
 ## Cards SQL
 
-As consultas estão em [`../metrics/sql/`](../metrics/sql/). Cole cada arquivo em uma pergunta SQL e configure `dias` como variável numérica obrigatória, padrão 30. Use o mesmo fuso horário da operação nas conexões e nos cards.
+As consultas estão em [`../metrics/sql/`](../metrics/sql/). Use o mesmo fuso horário da operação nas conexões e nos cards. Os quatro cards P0 (`gestor-*` e `supervisor-espera`) seguem as regras da subseção abaixo.
 
 | Arquivo | Card |
 | --- | --- |
@@ -73,10 +73,25 @@ As consultas estão em [`../metrics/sql/`](../metrics/sql/). Cole cada arquivo e
 | `ia.sql` | Uso e bloqueios de IA por hora e finalidade |
 | `latencia.sql` | p50 e p95 do turno por dia |
 | `operacao.sql` | Limites de quantidade, status de pedido e CPF |
-| `gestor-vendas.sql` | Pedidos registrados, valor e ticket médio em BRL, sem simulações, e tentativas incertas, a partir de `sale_attempts` |
+| `gestor-vendas.sql` | Pedidos registrados, valor e ticket médio em BRL e tentativas incertas, a partir de `sale_attempts` |
 | `gestor-conversao.sql` | Conversão por coorte de `purchase_started`: madura (mais de 24 h) e sobre todas as intenções |
 | `gestor-abandono.sql` | Ciclos com `purchase_started` sem resultado terminal há mais de 24 h, por última etapa |
 | `supervisor-espera.sql` | Mediana e p90 da espera, em segundos, do pedido de handoff até a assunção, sem percentual de meta |
+
+### Cards P0 do painel
+
+Os quatro cards vão em duas coleções: Gestor (`gestor-vendas`, `gestor-conversao`, `gestor-abandono`) e Supervisor (`supervisor-espera`). Cada um usa duas variáveis, com os mesmos nomes nos quatro:
+
+- `dias`: numérica, obrigatória, padrão 30. O próprio SQL recusa valores fora de 1 a 365 com erro do Postgres (`dias deve estar entre 1 e 365, recebido N`), sem ajustar o valor. O Metabase não impede 0 ou 10000 na variável, então a trava fica no SQL.
+- `incluir_simulados`: texto, obrigatória, padrão `nao`, com lista de valores `nao` e `sim`. Com `nao` as linhas simuladas ficam de fora. Com `sim` entram também as simuladas, nas duas tabelas. Qualquer outro valor se comporta como `nao`.
+
+A espera do supervisor mostra mediana, p90 e contagem. O percentual de meta fica de fora até a revenda aprovar o limite.
+
+Limitação conhecida: o abandono depende do evento `conversation_resolved`, que ainda não tem produtor. Por isso um ciclo com `handoff_resolved` e sem venda aparece como abandono com etapa `unknown`.
+
+A fonte canônica dos quatro SQLs é o repositório de planejamento (`docs/metricas/sql/`). A cópia em `docs/guides/metrics/sql/` existe para o teste E2E e deve ficar idêntica byte a byte (`cmp`).
+
+O teste `tests/metrics/bot-events.e2e.spec.ts` cobre os números sobre uma fixture sintética, a recusa de `dias` fora do intervalo (parâmetro vinculado e número colado no texto), o controle de simulados, a ausência de colunas de identificação nos resultados e no texto dos SQLs, e o papel restrito. Para o papel, ele cria um papel temporário com os mesmos `GRANT` de `docker/metabase/metrics-reader.sql` e confere que os quatro cards executam, que `customer_id`, `erp_sale_id` e `SELECT *` em `sale_attempts` são negados e que nenhuma outra tabela do schema `public` é legível. Tudo termina em rollback. Esse teste não substitui a conferência manual no Metabase: variáveis, valores padrão, coleções e permissões de quem vê os cards precisam ser verificados na instância real.
 
 O funil agrupa pelo dia do primeiro evento do ciclo dentro do intervalo. Os cards consideram apenas eventos no período escolhido; ciclos cortados pela janela podem ficar incompletos. Recuperações de venda contam como eventos `sale created`; o funil deduplica por ciclo. Ofertas de handoff podem se repetir após o limiar.
 

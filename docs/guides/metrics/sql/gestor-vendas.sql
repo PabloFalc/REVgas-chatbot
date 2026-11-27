@@ -1,6 +1,8 @@
+-- Variáveis: dias (inteiro de 1 a 365; fora disso a consulta falha) e
+-- incluir_simulados ('nao' por padrão ou 'sim'; qualquer outro valor exclui simulados).
 -- Pedidos registrados e valor em BRL. Depende de sale_attempts da Frente D.
 WITH p AS (
-  SELECT now() - make_interval(days => {{dias}}) AS inicio
+  SELECT now() - make_interval(days => CASE WHEN {{dias}} BETWEEN 1 AND 365 THEN {{dias}} ELSE ('dias deve estar entre 1 e 365, recebido ' || {{dias}})::int END) AS inicio
 )
 SELECT
   count(*) FILTER (WHERE sa.status = 'registered') AS pedidos_registrados,
@@ -12,4 +14,4 @@ SELECT
 FROM sale_attempts sa
 CROSS JOIN p
 WHERE sa.created_at >= p.inicio
-  AND sa.is_simulated = false;
+  AND (sa.is_simulated = false OR {{incluir_simulados}} = 'sim');
