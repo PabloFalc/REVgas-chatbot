@@ -63,7 +63,7 @@ export type Step =
   | 'creatingSale'
   | 'saleFailed';
 
-export const CPF_STEPS: readonly Step[] = ['askCpf', 'askCpfPrefix'];
+export const CPF_STEPS: readonly Step[] = ['askCpf', 'askCpfPrefix', 'confirmCpf'];
 
 export interface RepeatOffer {
   product: Product;

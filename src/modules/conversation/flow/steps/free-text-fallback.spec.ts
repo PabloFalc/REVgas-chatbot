@@ -168,7 +168,7 @@ describe('fallback de texto livre nas etapas', () => {
     }
 
     const { fake, out } = await run('confirmCpf', 'quero no pix');
-    expect(interpretCalls(fake)).toHaveLength(1);
+    expect(interpretCalls(fake)).toHaveLength(0);
     expect(out?.state?.step).toBe('confirmCpf');
   });
 

@@ -307,6 +307,7 @@ export async function freeText(
     const answered = await routeIntent(state, fixed, spoken, tools);
     if (answered) return answered;
   }
+  if (state.step === 'confirmCpf') return misunderstood(state, tools, fallback);
   const catalog = await loadCatalog(state, tools);
   const interpreted = await tools.interpret(spoken, contextOf(catalog));
   if (!interpreted || interpreted.confidence < MIN_CONFIDENCE) {

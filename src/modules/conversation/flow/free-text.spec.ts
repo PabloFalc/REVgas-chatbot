@@ -428,6 +428,16 @@ describe('freeText', () => {
     expect(sent).toContain('2 botijões P13');
   });
 
+  it('não chama a IA na etapa confirmCpf', async () => {
+    const fake = tools(result({ intent: 'order', confidence: 0.9, quantity: 2 }));
+    const spy = vi.spyOn(fake, 'interpret');
+    const confirming: OrderState = { step: 'confirmCpf', customer: {} };
+    const out = await freeText(confirming, 'meu cpf é 123.456 e quero 2 botijões P13', fake);
+    expect(spy).not.toHaveBeenCalled();
+    expect(out.state?.step).toBe('confirmCpf');
+    expect(JSON.stringify(out.replies)).not.toMatch(/123|456/);
+  });
+
   it('troca quantidade e pede novo endereço', async () => {
     const withAddresses: OrderState = {
       ...paying,
