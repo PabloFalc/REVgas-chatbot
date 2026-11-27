@@ -112,6 +112,7 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
   conta como tentativa; texto de pedido com letras ("2 P13") nunca conta.
 - Cliente sem CPF no cadastro, ou bloqueado, recebe só o telefone da revenda; nada do cadastro é mostrado.
 - **CPF já cadastrado em outro telefone** (cliente novo): o bot não diz que o CPF existe. Responde a mesma mensagem neutra da falha de identidade e abre handoff `identity_failure` sem pedido nem dados na nota, para não servir de consulta de CPF.
+  Risco residual: a mensagem é neutra, mas a diferença de comportamento ainda é observável (CPF em uso leva à fila, CPF livre segue o cadastro). Sem canal humano a tentativa pode ser repetida. Mitigação pendente: limite de tentativas por telefone no cadastro.
 - **Estado do pedido só com o prefixo de 3 dígitos do CPF** para cliente conhecido; no cliente novo, o
   CPF inteiro sai do estado logo depois do cadastro.
 - **Limitação conhecida:** são ~1000 combinações de 3 dígitos e 3 tentativas por hora por telefone. É lento,
