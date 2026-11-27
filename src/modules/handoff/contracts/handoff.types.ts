@@ -1,6 +1,28 @@
 import type { Opening, ServiceWindow } from 'src/utils/service-hours';
 
-export type HandoffReason = 'customer_request' | 'sale_failed' | 'emergency';
+export type HandoffReason =
+  | 'customer_request'
+  | 'emergency'
+  | 'sale_failed'
+  | 'sale_rejected'
+  | 'sale_uncertain'
+  | 'sale_cancellation'
+  | 'quantity_limit'
+  | 'identity_failure';
+
+export type HandoffLabel =
+  | 'emergency'
+  | 'sale-failure'
+  | 'sale-cancellation'
+  | 'needs-review'
+  | 'customer-request';
+
+export type HandoffPriority = 'urgent' | 'high' | 'normal';
+
+export interface HandoffTicketMeta {
+  label: HandoffLabel;
+  priority: HandoffPriority;
+}
 
 export interface HandoffOrderSummary {
   stepLabel: string;
