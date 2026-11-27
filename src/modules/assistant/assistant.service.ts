@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { LlmError } from '../../core/erros/llm/llm.errors';
 import { LLM_CLIENT, type LlmClient } from '../../integrations/llm/llm.client';
-import { removeCpfs } from '../../utils/cpf';
+import { sanitizeForLlm } from '../../utils/pii';
 import type {
   Interpretation,
   InterpretationTopic,
@@ -137,7 +137,7 @@ export class AssistantService {
         temperature: 0,
         messages: [
           { role: 'system', content: buildSystemPrompt(context) },
-          { role: 'user', content: removeCpfs(text) },
+          { role: 'user', content: sanitizeForLlm(text) },
         ],
       });
       return presentFields(object);
@@ -158,7 +158,7 @@ export class AssistantService {
         temperature: 0,
         messages: [
           { role: 'system', content: NAME_INSTRUCTIONS },
-          { role: 'user', content: removeCpfs(text) },
+          { role: 'user', content: sanitizeForLlm(text) },
         ],
       });
       const name = object.name?.trim() || null;

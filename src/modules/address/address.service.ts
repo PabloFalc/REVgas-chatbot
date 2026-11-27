@@ -5,7 +5,7 @@ import { LlmError } from '../../core/erros/llm/llm.errors';
 import { ViacepError } from '../../core/erros/viacep/viacep.errors';
 import { LLM_CLIENT, type LlmClient } from '../../integrations/llm/llm.client';
 import { VIACEP_CLIENT, type ViacepClient } from '../../integrations/viacep/viacep.client';
-import { removeCpfs } from '../../utils/cpf';
+import { sanitizeForLlm } from '../../utils/pii';
 import type { AddressDraft } from './contracts/address.types';
 
 const UF_PATTERN = /^[A-Z]{2}$/;
@@ -95,7 +95,7 @@ export class AddressService {
         temperature: 0,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: removeCpfs(text) },
+          { role: 'user', content: sanitizeForLlm(text) },
         ],
       });
       return object;
