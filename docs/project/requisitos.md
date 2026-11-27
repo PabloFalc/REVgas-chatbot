@@ -11,7 +11,7 @@
 | RF01 | Receber pedidos pelo WhatsApp | Webhook recebe e responde mensagens (Cloud API oficial da Meta) | Slide "Como funciona?" |
 | RF02 | Identificar o cliente pelo telefone e recuperar cadastro | Telefone normalizado (só dígitos, DDI 55) consultado na API RevGás | Slide do chatbot |
 | RF03 | Cadastrar cliente novo | Coleta nome, CPF (obrigatório) e endereço; cadastra via API. Cliente já cadastrado sem CPF recebe o telefone da revenda e a conversa termina (o bot não grava CPF em cadastro existente) | Inferido de RF02 |
-| RF04 | Coletar e confirmar produto e quantidade | Produto ativo e com estoque; quantidade inteira de 1 a 10, limitada ao estoque; acima de 10 oferece o atendente | Slide do chatbot |
+| RF04 | Coletar e confirmar produto e quantidade | Produto ativo e com estoque; quantidade inteira de 1 a 10, limitada ao estoque; acima de 10 encaminha ao atendente | Slide do chatbot |
 | RF05 | Confirmar endereço salvo ou permitir alterar | Botões "Sim" / "Alterar endereço" | Mockup do WhatsApp |
 | RF06 | Coletar forma de pagamento (e troco) | Pix, cartão ou dinheiro; troco maior que o total | Slide do chatbot |
 | RF07 | Mostrar resumo com total e pedir confirmação final | Total calculado no backend com preços da API; confirmação por botão | Boa prática + guardrails |
@@ -45,7 +45,7 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 | RN02 | Cliente | Encontrado na API ou cadastrado com nome, CPF e endereço | Coletar o que falta |
 | RN03 | Cliente | CPF obrigatório, com dígito verificador válido | Pedir de novo, sem repetir o CPF na tela |
 | RN04 | Produto | Produto existe, está ativo e tem estoque | Oferecer os outros produtos |
-| RN05 | Produto | Quantidade inteira de 1 a 10 e no máximo o estoque (decisão de 2026-11-23) | Abaixo de 1 ou não numérica: pedir de novo. Acima do estoque: informar o limite. Acima de 10: oferecer o atendente |
+| RN05 | Produto | Quantidade inteira de 1 a 10 e no máximo o estoque (decisão de 2026-11-23) | Abaixo de 1 ou não numérica: pedir de novo. Acima do estoque: informar o limite. Acima de 10: abrir handoff `quantity_limit` com a quantidade pedida |
 | RN06 | Preço | Valor vem da API, nunca do texto do cliente ou do LLM | Recalcular no backend |
 | RN07 | Desconto | O bot nunca oferece promoção nem desconto; vale só o preço dos acordos | Resposta fixa ("o preço é o da tabela") e volta ao pedido |
 | RN08 | Endereço | Rua, número e bairro preenchidos | Pedir o que faltou |
@@ -110,7 +110,7 @@ Nenhuma venda é criada sem que **todas** as regras abaixo passem no backend. O 
 
 - Status do pedido (F05/RF09) entregue na versão só leitura, sem tempo estimado. Consulta a venda WhatsApp não cancelada mais recente dos últimos 7 dias, após verificar a identidade, e preserva o pedido em andamento.
 
-- **Quantidade de 1 a 10, limitada ao estoque.** A checagem fica em `nextStep` e vale para todos os caminhos (botão, texto, IA, repetir pedido). Acima de 10, o bot oferece o atendente. (RF04, RN05)
+- **Quantidade de 1 a 10, limitada ao estoque.** A checagem fica em `nextStep` e vale para todos os caminhos (botão, texto, IA, repetir pedido). Acima de 10, o bot abre handoff `quantity_limit` com a quantidade pedida, sem reduzir. (RF04, RN05)
 - **Troco precisa ser maior que o total.** Troco igual ao total não faz sentido; o código já exigia valor acima. (RF06, RN09)
 - **Idempotência é local.** RN11 e RNF04 descrevem o mecanismo real (dedup por id, trava por telefone, `creatingSale`, `findRecentSale`); não há chave de idempotência. Se a trava não é obtida em 120 s, o bot pede que o cliente reenvie a mensagem em vez de processar sem ela.
 - **Erro do Redis não é engolido.** Falha ao ler ou gravar o estado do pedido, o bloqueio de CPF ou o estado do handoff faz o bot responder "instabilidade". Exceção: se a venda já foi criada, a confirmação é enviada mesmo que o registro posterior falhe. O Redis usa `noeviction` e é a dependência crítica do `/health` (503).
