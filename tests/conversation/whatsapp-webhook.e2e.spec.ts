@@ -136,7 +136,7 @@ describe('Webhook do WhatsApp (e2e)', () => {
       await post(textWebhook('cancelar', newId(), phone)).expect(200);
 
       await vi.waitFor(() => expect(whatsapp.sent).toHaveLength(1));
-      expect(sentBodies()).toContain(msg.cancelled);
+      expect(sentBodies()).toContain(msg.draftDiscarded);
       await expect(redis.get(`${ORDER_PREFIX}:${phone}`)).resolves.toBeNull();
     });
 

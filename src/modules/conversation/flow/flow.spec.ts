@@ -32,7 +32,7 @@ describe('runFlow', () => {
       { ...hello, content: { type: 'text', text: 'cancelar' } },
       createFakeTools(),
     );
-    expect(result).toEqual({ state: null, replies: [text(msg.cancelled)] });
+    expect(result).toEqual({ state: null, replies: [text(msg.cancelNeedsAgent)] });
   });
 
   it('erro numa ferramenta sem pedido em andamento devolve indisponível', async () => {
@@ -314,7 +314,7 @@ describe('conversas completas', () => {
     await chat.send(say('oi'));
     await chat.send(pick('address:0'));
     const cancelled = await chat.send(say('cancelar'));
-    expect(cancelled).toEqual({ state: null, replies: [text(msg.cancelled)] });
+    expect(cancelled).toEqual({ state: null, replies: [text(msg.draftDiscarded)] });
   });
 });
 
