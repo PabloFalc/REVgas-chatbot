@@ -1,6 +1,6 @@
 # CI/CD
 
-Toda a automação vive em [`.github/workflows/`](../../../.github/workflows): três workflows do
+Toda a automação vive em [`.github/workflows/`](../../../.github/workflows): quatro workflows do
 GitHub Actions. Não há release automatizado (sem semantic-release, sem `CHANGELOG.md`) nem deploy
 no pipeline por enquanto. O fluxo segue um **gitflow**:
 
@@ -68,6 +68,17 @@ call-tests ──▶ build
 - **`concurrency` com `cancel-in-progress: false`**: runs da mesma branch são serializados.
 
 > Um job de deploy (quando houver ambiente de hospedagem definido) entra aqui, depois do `build`.
+
+### `docker-smoke.yml` — smoke test da imagem
+
+Roda em PR para `refactor` e em push para `refactor`. Constrói a imagem do `Dockerfile` (cache do
+Actions via `type=gha`), sobe Postgres 17 com pgvector (service) e Redis 7 com senha (`docker run`,
+porque em produção a app exige `REDIS_PASSWORD`), inicia o contêiner com `NODE_ENV=production` e
+`RUN_MIGRATIONS=true` e espera `200` em `/health` por até 2 min. Em falha, imprime os logs do contêiner.
+
+- Só valores fictícios; todas as integrações em `fake`/`off` (`CHATWOOT_MODE=off` com `STORE_PHONE`,
+  porque em produção `fake` é recusado).
+- Valida que a imagem sobe, que as migrations rodam dentro dela e que o `/health` enxerga Postgres e Redis.
 
 ---
 

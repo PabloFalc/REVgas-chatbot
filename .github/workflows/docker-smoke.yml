@@ -1,0 +1,91 @@
+name: Docker smoke test
+
+run-name: ${{ github.actor }} triggered ${{ github.workflow }} on ${{ github.ref }}
+
+on:
+  push:
+    branches: [refactor]
+  pull_request:
+    branches: [refactor]
+
+concurrency:
+  group: docker-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: smoke
+          POSTGRES_PASSWORD: smoke
+          POSTGRES_DB: smoke
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U smoke -d smoke"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: revgas-smoke:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Redis fora de services: em produção a app exige REDIS_PASSWORD e services não aceita command.
+      - name: Subir Redis com senha
+        run: |
+          docker run -d --name smoke-redis --network host redis:7-alpine \
+            redis-server --requirepass smoke-redis-password
+          for _ in $(seq 20); do
+            docker exec smoke-redis redis-cli -a smoke-redis-password ping 2>/dev/null | grep -q PONG && exit 0
+            sleep 1
+          done
+          echo "Redis não respondeu" && exit 1
+      # Valores fictícios; todas as integrações em fake/off. Em produção a app recusa CHATWOOT_MODE=fake
+      # e exige STORE_PHONE com off, WHATSAPP_APP_SECRET/VERIFY_TOKEN e WHATSAPP_ALLOWED_SENDERS (vendas simuladas).
+      - name: Subir a imagem com migrations
+        run: |
+          docker run -d --name smoke-app --network host \
+            -e RUN_MIGRATIONS=true \
+            -e DATABASE_URL=postgresql://smoke:smoke@127.0.0.1:5432/smoke \
+            -e REDIS_HOST=127.0.0.1 \
+            -e REDIS_PASSWORD=smoke-redis-password \
+            -e CORS_ORIGIN=https://smoke.invalid \
+            -e REVGAS_MODE=fake \
+            -e WHATSAPP_MODE=fake \
+            -e WHATSAPP_APP_SECRET=smoke-app-secret-0123456789-abcdefghij \
+            -e WHATSAPP_VERIFY_TOKEN=smoke-verify-token-0123 \
+            -e WHATSAPP_ALLOWED_SENDERS=5500000000000 \
+            -e LLM_MODE=fake \
+            -e VIACEP_MODE=fake \
+            -e CHATWOOT_MODE=off \
+            -e STORE_PHONE=5500000000000 \
+            revgas-smoke:ci
+      - name: Esperar 200 em /health
+        run: |
+          for _ in $(seq 60); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/health)" = "200" ]; then
+              echo "/health respondeu 200"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' smoke-app)" != "true" ]; then
+              break
+            fi
+            sleep 2
+          done
+          echo "/health não respondeu 200"
+          exit 1
+      - name: Logs do contêiner
+        if: failure()
+        run: docker logs smoke-app
