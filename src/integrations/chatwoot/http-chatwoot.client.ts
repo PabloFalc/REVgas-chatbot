@@ -2,7 +2,12 @@ import type { z } from 'zod';
 import { ChatwootError, mapChatwootError } from '../../core/erros/chatwoot/chatwoot.errors';
 import { isTimeoutError } from '../../utils/guards';
 import { parseJsonOrText } from '../../utils/parse-json';
-import type { ChatwootClient, ChatwootContact, ConversationStatus } from './chatwoot.client';
+import type {
+  ChatwootClient,
+  ChatwootContact,
+  ConversationPriority,
+  ConversationStatus,
+} from './chatwoot.client';
 import {
   contactInboxResponseSchema,
   createContactResponseSchema,
@@ -131,6 +136,20 @@ export class HttpChatwootClient implements ChatwootClient {
     await this.request('setStatus', 'POST', 'bot', {
       path: `/conversations/${conversationId}/toggle_status`,
       body: { status },
+    });
+  }
+
+  async setLabels(conversationId: number, labels: string[]): Promise<void> {
+    await this.request('setLabels', 'POST', 'api', {
+      path: `/conversations/${conversationId}/labels`,
+      body: { labels },
+    });
+  }
+
+  async setPriority(conversationId: number, priority: ConversationPriority): Promise<void> {
+    await this.request('setPriority', 'POST', 'api', {
+      path: `/conversations/${conversationId}/toggle_priority`,
+      body: { priority },
     });
   }
 

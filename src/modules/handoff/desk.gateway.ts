@@ -5,7 +5,7 @@ import {
   type ChatwootConfig,
 } from 'src/integrations/chatwoot/shared/chatwoot.config';
 import { hideCpfs } from 'src/utils/cpf';
-import type { DeskContact } from './contracts/handoff.types';
+import type { DeskContact, HandoffLabel, HandoffPriority } from './contracts/handoff.types';
 
 @Injectable()
 export class DeskGateway {
@@ -68,6 +68,15 @@ export class DeskGateway {
 
   setStatus(conversationId: number, status: 'open' | 'pending' | 'resolved'): Promise<void> {
     return this.requireClient().setStatus(conversationId, status);
+  }
+
+  setLabel(conversationId: number, label: HandoffLabel): Promise<void> {
+    return this.requireClient().setLabels(conversationId, [label]);
+  }
+
+  async setPriority(conversationId: number, priority: HandoffPriority): Promise<void> {
+    if (priority === 'normal') return;
+    await this.requireClient().setPriority(conversationId, priority);
   }
 
   private requireClient(): ChatwootClient {

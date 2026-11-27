@@ -22,6 +22,7 @@ import {
 } from './contracts/handoff-note';
 import { DeskGateway } from './desk.gateway';
 import { HandoffRepository } from './handoff.repository';
+import { ticketMetaFor } from './needs-human';
 
 export const HANDOFF_CLOCK = Symbol('HANDOFF_CLOCK');
 export const SERVICE_HOURS = Symbol('SERVICE_HOURS');
@@ -162,7 +163,19 @@ export class HandoffService {
       if (isGone(error)) throw error;
       this.warn(phone, error, 'Falha ao anotar o ticket; handoff mantido na fila');
     }
+    const { label, priority } = ticketMetaFor(request.reason);
+    await this.tag(phone, () => this.desk.setLabel(conversationId, label), 'a etiqueta');
+    await this.tag(phone, () => this.desk.setPriority(conversationId, priority), 'a prioridade');
     return outcome('queued');
+  }
+
+  private async tag(phone: string, apply: () => Promise<void>, what: string): Promise<void> {
+    try {
+      await apply();
+    } catch (error) {
+      if (isGone(error)) throw error;
+      this.warn(phone, error, `Falha ao aplicar ${what} no ticket; handoff mantido na fila`);
+    }
   }
 
   async routeFor(phone: string): Promise<'bot' | 'queued' | 'agent'> {

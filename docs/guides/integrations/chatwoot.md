@@ -195,6 +195,11 @@ O estado fica no Redis, por telefone, separado do pedido (que expira em 15 min).
   pagamento, total, nome). Sem CPF. Se a identidade ainda não foi confirmada, a nota diz isso e não
   leva nome, endereço nem pedido. A resposta ao cliente é só o texto do handoff, sem repetir a
   pergunta da etapa.
+- **Etiqueta e prioridade:** depois de gravar `queued`, o bot aplica a etiqueta do motivo
+  (`POST /conversations/{id}/labels`, que sobrescreve as etiquetas da conversa) e a prioridade
+  (`POST /conversations/{id}/toggle_priority`, só `urgent` e `high`; `normal` não chama a API),
+  ambas com o token de API. Cada falha vira `warn` e o handoff continua na fila. Corpos conferidos
+  na documentação pública v4.19; ainda não exercitados contra uma instância real.
 - **Fora do horário** (`SERVICE_HOURS`, fuso fixo `America/Fortaleza`): o bot avisa que está
   fechado, diz quando abre e pede que o cliente mande "oi" quando abrir. Segue na fila.
 - **Ao virar `active`:** o pedido em andamento e o lembrete são apagados. As mensagens do cliente vão
