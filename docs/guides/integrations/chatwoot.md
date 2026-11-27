@@ -237,8 +237,8 @@ ao cliente. Há ainda dedup pelo id da mensagem.
 
 ### CPF
 
-Dígitos de CPF **nunca** chegam ao Chatwoot. Nas etapas `askCpf` e `askCpfPrefix` a mensagem do
-cliente vai como `[CPF ocultado]`; em qualquer etapa, trechos que casam com o padrão de CPF
+Dígitos de CPF **nunca** chegam ao Chatwoot. Nas etapas `askCpf`, `askCpfPrefix` e `confirmCpf` a mensagem
+do cliente vai como `[CPF ocultado]`; em qualquer etapa, trechos que casam com o padrão de CPF
 (`src/utils/cpf`) são trocados pelo mesmo texto. A nota de resumo não tem campo de CPF.
 
 ## Webhook

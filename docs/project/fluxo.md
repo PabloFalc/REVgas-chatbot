@@ -11,7 +11,7 @@ flowchart TD
     A["1. Cliente manda mensagem<br/>Webhook do WhatsApp chega no backend"] --> B["2. Identificar cliente<br/>API: buscar cliente pelo telefone"]
     B --> C{Cliente existe?}
     C -- não --> D["Coletar nome e CPF"]
-    C -- sim --> V["Verificar identidade<br/>3 primeiros dígitos do CPF"]
+    C -- sim --> V["Verificar identidade<br/>CPF completo"]
     D --> F["3. Endereço<br/>CEP ou texto, confirmação; cliente novo é cadastrado aqui"]
     V --> F
     F --> E["4. Produto e quantidade<br/>API: produtos com estoque; quantidade de 1 a 10, até o estoque"]
@@ -35,7 +35,7 @@ O estado do pedido (`OrderState.step`) vive no Redis por 15 min. Os valores de `
 | --- | --- | --- |
 | `askName` | Cliente novo: pede o nome (a IA tira o nome de frases como "meu nome é João Silva") | Texto |
 | `askCpf` | Cliente novo: pede o CPF (o cadastro na RevGás acontece depois, ao confirmar o endereço) | Texto (CPF inválido → pede de novo) |
-| `askCpfPrefix` | Cliente existente: pede os 3 primeiros dígitos do CPF (ver [Verificação de identidade](#verificação-de-identidade)) | Texto (3 dígitos) |
+| `confirmCpf` | Cliente existente: pede o CPF completo (ver [Verificação de identidade](#verificação-de-identidade)) | Texto (CPF) / botão (`identity:owner-changed`, `identity:agent`) |
 | `offerRepeat` | Cliente verificado: oferece repetir o último pedido (ver [Repetir último pedido](#repetir-último-pedido)) | Botão (`repeat:yes\|new`) |
 | `chooseAddress` | Mostra os endereços salvos (≤ 2 em botões, mais em lista) | Botão / lista (`address:<i>`, `address:new`) |
 | `askNewAddress` | Pede CEP ou endereço completo (ViaCEP ou IA) | Texto |
@@ -58,7 +58,7 @@ Ao concluir, o estado é apagado e o bot envia o número da venda. O status pode
 
 ### Cadastro de cliente novo
 
-O CPF é pedido em `askCpf`, mas o cliente só é criado na RevGás quando confirma o endereço (`confirmAddress`, em `flow/steps/address.step.ts`). O CPF fica no estado só até esse ponto e é apagado logo depois do cadastro; o estado guarda apenas o prefixo de 3 dígitos para cliente conhecido. Se a RevGás diz que o CPF já tem cadastro com outro telefone, a conversa termina com o telefone da revenda (`cpfTaken`) e o estado é apagado; o bot não pede outro CPF. Se a RevGás rejeita o cadastro por outro motivo, volta a `askName`.
+O CPF é pedido em `askCpf`, mas o cliente só é criado na RevGás quando confirma o endereço (`confirmAddress`, em `flow/steps/address.step.ts`). O CPF fica no estado só até esse ponto e é apagado logo depois do cadastro; o estado não guarda CPF de cliente conhecido. Se a RevGás diz que o CPF já tem cadastro com outro telefone, a conversa termina com o telefone da revenda (`cpfTaken`) e o estado é apagado; o bot não pede outro CPF. Se a RevGás rejeita o cadastro por outro motivo, volta a `askName`.
 
 ### Limite de quantidade
 
@@ -126,26 +126,32 @@ Mensagem que fala de vazamento ou cheiro de gás (`flow/emergency.ts`, `detectEm
 
 ## Verificação de identidade
 
-Cliente que o telefone já identifica na RevGás precisa confirmar os 3 primeiros dígitos do CPF
-antes de ver endereços ou pedidos (`askCpfPrefix`, em `flow/steps/customer.step.ts`). O telefone
-pode ter mudado de dono.
+Cliente que o telefone já identifica na RevGás precisa digitar o CPF completo antes de ver
+endereços ou pedidos (`confirmCpf`, em `flow/steps/customer.step.ts`; regras em `flow/identity.ts`).
+O início do pedido e a consulta de status usam a mesma verificação. O telefone pode ter mudado de
+dono e pode ter mais de um cadastro: o CPF digitado é comparado com todos os cadastros do telefone,
+e o bot nunca escolhe um deles pela última venda.
 
 - **Validade:** 7 dias, guardada no Redis numa chave por telefone com o id do cliente na RevGás. Verificar outro cliente no mesmo telefone substitui o vínculo. Dentro do prazo o `start` pula a pergunta.
-- **Sem CPF no cadastro, ou telefone bloqueado:** mensagem fixa com o telefone da revenda e a conversa termina (estado apagado). O bot não pede nem grava CPF de cadastro existente.
-- **Erros:** 3 dígitos que não batem contam como tentativa; na 3ª o telefone fica bloqueado por 1 h e recebe o telefone da revenda. Acertar zera as tentativas.
-- **Formato:** só conta como tentativa a entrada só numérica (dígitos, espaços, pontos ou traços, como `123`, `1 2 3` ou `123.`) com exatamente 3 dígitos. Texto com letras ("2 P13", "quero 1 botijão P13") nunca conta: segue para o texto livre abaixo. Sem pedido no texto, o bot pede de novo só os 3 dígitos.
-- **Texto livre:** blocos soltos de 3 dígitos são removidos antes de o texto ir à IA, para o CPF nunca chegar ao prompt. Se não sobra texto, repete a pergunta.
-- **Cliente novo:** quem acabou de se cadastrar (digitou o CPF inteiro) já fica verificado por 7 dias; o próximo pedido não pede os 3 dígitos.
+- **Acerto:** o CPF bate com exatamente um cadastro. O bot grava o vínculo, zera as tentativas e segue com esse cliente.
+- **Erros:** CPF válido que não bate com nenhum cadastro conta como tentativa e mostra os botões "Número mudou de dono" e "Falar com atendente". Na 3ª o telefone fica bloqueado por 1 h e a conversa vai para o atendimento humano. CPF com dígitos inválidos não conta como tentativa: o bot pede de novo, com o botão de atendente.
+- **Saída humana (`identity_failure`):** telefone bloqueado, cadastro sem CPF, CPF que bate com mais de um cadastro, 3ª tentativa errada ou toque em "Falar com atendente" abrem handoff com o motivo `identity_failure`. A nota nunca leva CPF. Sem atendimento humano disponível, o bot manda o telefone da revenda e não promete ticket.
+- **Número mudou de dono:** o botão emite `identity_check` com `owner_changed`, descarta os dados do titular antigo e começa o cadastro de cliente novo (`askName`), mantendo produto e quantidade já ditos. Nada é apagado na RevGás.
+- **Privacidade:** o estado não guarda CPF nem parte dele. As respostas nunca repetem os dígitos digitados e não revelam se o CPF existe, de quem é ou quantos cadastros o telefone tem.
+- **Texto livre:** em `confirmCpf` o bot não chama a IA. Respostas fixas (dúvidas, status do pedido) continuam valendo; o resto repete o pedido do CPF.
+- **Métricas:** `identity_check` com `verified`, `failed` ou `owner_changed`, sem id de cliente.
+- **Cliente novo:** quem acabou de se cadastrar (digitou o CPF inteiro) já fica verificado por 7 dias; o próximo pedido não pede o CPF.
+- **Estado antigo:** um estado gravado antes da mudança em `askCpfPrefix` recomeça pelo `start`.
 
 ## Status do pedido
 
 F05 é uma consulta só leitura. Frases como "cadê meu gás", "status do pedido" e "já saiu pra entrega?" acionam o fluxo sem IA; o texto livre também aceita a intenção `order_status`. "Quero um gás" segue como compra nova.
 
-O telefone precisa identificar um cliente com CPF e verificação válida por 7 dias. Sem verificação, o bot pede os 3 primeiros dígitos e consulta logo após o acerto. Telefone desconhecido recebe texto fixo e o botão "Fazer pedido", sem consultar vendas.
+O telefone precisa identificar um cliente com CPF e verificação válida por 7 dias. Sem verificação, o bot pede o CPF completo e consulta logo após o acerto. Telefone desconhecido recebe texto fixo e o botão "Fazer pedido", sem consultar vendas.
 
 A consulta lê até 10 vendas WhatsApp dos últimos 7 dias e mostra a não cancelada mais recente: número, status, entregador e data de entrega quando disponíveis. `OPEN` significa recebido, `ACTIVE` em andamento, `CONFIRM` confirmado, `CHECK` em conferência e `WARNING` com pendência, oferecendo atendente. Status desconhecido fica como em andamento. Não há tempo estimado. Sem venda recente, oferece "Fazer pedido"; falha da RevGás usa a mensagem de indisponibilidade.
 
-O pedido em andamento é preservado. Após responder, o bot repete a pergunta da etapa; se precisou verificar o CPF, retoma essa mesma etapa.
+O pedido em andamento é preservado. Após responder, o bot repete a pergunta da etapa; se precisou verificar o CPF, retoma essa mesma etapa. Se a pergunta veio durante a própria confirmação do CPF, o bot responde o status e segue o atendimento do cliente verificado, sem pedir o CPF de novo.
 
 ## Repetir último pedido
 
@@ -200,7 +206,8 @@ Código em `flow/free-text.ts` e `flow/intent.ts`; o serviço de IA fica em `src
 | Comandos globais (emergência, palavrão, cancelar, atendente, desconto) | Antes de tudo. Sem IA |
 | Etapa de botão recebe texto que não entende | IA |
 | `askName` | Texto com dígito, palavra de pedido ou `?` → IA; convite para perguntar ("tenho dúvidas") ou pergunta sobre os assuntos ("me resume o que você sabe") → resposta fixa, sem IA; senão, a IA lê o nome (`readName`, ver abaixo); sem IA, validação de nome de sempre |
-| `askCpf`, `askCpfPrefix`, `askQuantity`, `askChangeAmount` | Primeiro a validação de sempre; se falhar e o texto não for só números e pontuação, mas tiver ao menos 2 letras seguidas → IA; senão, o erro de sempre |
+| `askCpf`, `askQuantity`, `askChangeAmount` | Primeiro a validação de sempre; se falhar e o texto não for só números e pontuação, mas tiver ao menos 2 letras seguidas → IA; senão, o erro de sempre |
+| `confirmCpf` | Validação do CPF; respostas fixas sem IA; o resto repete o pedido do CPF. Nunca IA |
 | Primeira mensagem (sem estado) | Só cumprimento (`oi`, `ola`, `bom dia`, `boa tarde`, `boa noite`, `opa`, `eai`, `e ai`, `menu`) → `start` sem IA; convite para perguntar ou pergunta sobre os assuntos → resposta fixa, sem IA; texto com 2 letras seguidas → IA antes do `start` |
 | Qualquer texto que iria para a IA e é só um convite para perguntar | Convite, sem IA (ver [Dúvidas, preço e guard rails](#dúvidas-preço-e-guard-rails)) |
 | `askNewAddress`, `askAddressField`, `searchProduct` | Sem mudança (já recebem texto livre) |
@@ -245,7 +252,7 @@ preços longa), ela vai em texto e os botões seguem numa mensagem curta ("Quer 
 - **Oferta de atendente:** o botão "Falar com atendente" (`handoff:request`) vem junto da resposta, antes da pergunta da etapa. Só o toque no botão aceita; "sim" digitado não.
 - **Cliente travado:** 3 "Não entendi" seguidos viram "Não estou conseguindo entender. Quer falar com um atendente?" com o botão. O contador fica no Redis (TTL 15 min), fora do pedido, e zera quando uma mensagem é entendida.
 - **Ofensas:** contador por telefone no Redis (TTL 1 h), fora do pedido. Vale para o palavrão pego pelo código ([Palavrões](#palavrões)) e para a ofensa da IA.
-- **Texto guiado:** quando a IA não entende em `askCpf`, `askCpfPrefix`, `askQuantity` ou `askChangeAmount`, o bot mostra o texto de ajuda da etapa (por exemplo, "Mande a quantidade...") em vez de "Não entendi.", até chegar ao 3º seguido.
+- **Texto guiado:** quando a IA não entende em `askCpf`, `askQuantity` ou `askChangeAmount`, o bot mostra o texto de ajuda da etapa (por exemplo, "Mande a quantidade...") em vez de "Não entendi.", até chegar ao 3º seguido.
 - **Limite de IA por telefone:** `AI_CALLS_PER_PHONE_HOUR` (padrão 30 por hora). `interpret` custa 1, ler o nome (`readName`) custa 1, ler endereço em texto livre (`addressFromText`) custa 1 e responder dúvida custa 2; a lista de assuntos não usa IA. Passou do limite ou se o contador falhar, a chamada de IA é bloqueada e o bot continua sem IA com os botões do fluxo (no endereço, pede o endereço de novo). Ver [environment.md](../guides/conventions/environment.md).
 - **A base nunca informa** preço, porcentagem, horário de funcionamento nem formas de pagamento; essas respostas vêm do código.
 
@@ -254,8 +261,8 @@ preços longa), ela vai em texto e os botões seguem numa mensagem curta ("Quer 
 **Nome com ajuda da IA.** Em `askName`, texto sem dígito, palavra de pedido nem `?` vai para `readName`: a IA devolve o nome dito ("meu nome é João Silva" → "João Silva") e se parece nome de pessoa. O bot aceita só se parecer nome, tiver nome e sobrenome e todas as palavras estiverem no texto do cliente (nome inventado pela IA é recusado); senão, "Preciso do nome completo...". Sem IA (falha, limite por telefone ou modo fake) ou texto com mais de 200 caracteres, vale a validação de sempre (duas palavras com letra, até 100 caracteres). O CPF sai do texto antes do prompt (`removeCpfs`) e palavrão nunca chega aqui (o filtro vem antes).
 
 **Identificação primeiro.** Na primeira mensagem, o que foi dito fica guardado (produto, quantidade, pagamento e
-endereço como texto pendente) e o `start` segue: cliente novo dá nome e CPF; cadastrado confirma os 3 primeiros dígitos do CPF. A saudação (boas-vindas) vem primeiro, depois o "Anotado: ..." e a pergunta seguinte. Em `askName`, texto com palavra de pedido vale como nome só quando a IA responde com confiança que não é pedido nem pergunta e o texto é um nome válido; com a IA fora do ar ou incerta, o bot diz "Não entendi" e pede o nome de novo. Texto
-livre em `askName`/`askCpf`/`askCpfPrefix` anota os campos, mas repete a pergunta de identificação. Quando o
+endereço como texto pendente) e o `start` segue: cliente novo dá nome e CPF; cadastrado confirma o CPF completo. A saudação (boas-vindas) vem primeiro, depois o "Anotado: ..." e a pergunta seguinte. Em `askName`, texto com palavra de pedido vale como nome só quando a IA responde com confiança que não é pedido nem pergunta e o texto é um nome válido; com a IA fora do ar ou incerta, o bot diz "Não entendi" e pede o nome de novo. Texto
+livre em `askName`/`askCpf` anota os campos, mas repete a pergunta de identificação. Quando o
 cliente fica conhecido, o produto guardado é conferido de novo com a lista dele e descartado se não estiver nela.
 
 ## Atalhos e transições especiais

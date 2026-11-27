@@ -27,6 +27,7 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 | `ai_call` | `allowed` ou `limited`; `interpret`, `read_name`, `address`, `question`; unidades do limite em `amount` |
 | `order_status` | `found` ou `none` |
 | `cpf` | `mismatch`, `blocked`, `blocked_hit`; tentativas em `amount` |
+| `identity_check` | `verified`, `failed` ou `owner_changed` na confirmação do CPF completo; sem id de cliente nem CPF |
 | `sale_outcome_unknown` | Venda de resultado incerto: `timeout`, `server_error`, `invalid_response` ou `other`. Também sai com `other` para cada tentativa `pending` que a varredura marca como `uncertain` 60 s depois do boot |
 
 `SaleRejectedError` não carrega `kind`: recebe razão `unexpected` e outcome `rejected`. Um `blocked_hit` usa o limiar de três tentativas, pois o estado de bloqueio guarda apenas sua existência. `ai_call` mede unidades do limite local, sem tokens ou custo financeiro.
