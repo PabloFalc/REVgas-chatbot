@@ -128,6 +128,16 @@ describe('HandoffService', () => {
       expect(allMessages(client)).toHaveLength(before);
     });
 
+    it('não abre ticket duplicado quando o pedido já está na fila', async () => {
+      const { service, client } = setup();
+      const request = { phone: PHONE, reason: 'customer_request' as const, summary: null };
+      await service.requestHandoff(request);
+      const outcome = await service.requestHandoff({ ...request, reason: 'quantity_limit' });
+      expect(outcome.status).toBe('alreadyQueued');
+      expect(client.conversations.size).toBe(1);
+      expect(allMessages(client).filter(message => message.private)).toHaveLength(1);
+    });
+
     it('emergência já na fila deixa a nota de emergência e devolve alreadyQueued', async () => {
       const { service, client } = setup();
       await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
