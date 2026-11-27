@@ -1,0 +1,1 @@
+ALTER TABLE "bot_events" ADD COLUMN "handoff_id" uuid;

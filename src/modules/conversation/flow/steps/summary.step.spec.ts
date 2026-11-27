@@ -1,5 +1,16 @@
+import {
+  RevgasUnauthorizedError,
+  RevgasUnavailableError,
+} from 'src/core/erros/revgas/revgas.errors';
 import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
-import { SaleRejectedError } from 'src/modules/order/contracts/order.types';
+import type { HandoffRequest } from 'src/modules/handoff/contracts/handoff.types';
+import {
+  SaleAlreadyRegisteredError,
+  type SaleAttemptStatus,
+  SaleAttemptStoreError,
+  SaleRejectedError,
+  SaleUncertainError,
+} from 'src/modules/order/contracts/order.types';
 import { describe, expect, it, vi } from 'vitest';
 import { runFlow } from '../flow';
 import { type FlowInput, type OrderState, ToolError } from '../flow.types';
@@ -30,6 +41,7 @@ const money = { type: 'MONEY', label: 'Dinheiro' };
 const base: OrderState = {
   step: 'summary',
   revision: 1,
+  purchaseStarted: true,
   customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   addresses: [address],
   address,
@@ -49,6 +61,31 @@ const order = {
   paymentType: 'PIX',
   total: 110,
 };
+
+function callNames(calls: { name: string }[]): string[] {
+  return calls.map(call => call.name);
+}
+
+function handoffRequests(calls: { name: string; args: unknown[] }[]): HandoffRequest[] {
+  return calls
+    .filter(call => call.name === 'requestHandoff')
+    .map(call => call.args[0] as HandoffRequest);
+}
+
+function expectUncertainHandoff(calls: { name: string; args: unknown[] }[]) {
+  const [request, ...others] = handoffRequests(calls);
+  expect(others).toEqual([]);
+  expect(request).toMatchObject({ phone: FAKE_PHONE, reason: 'sale_uncertain' });
+  const note = JSON.stringify(request.summary);
+  expect(note).not.toContain('Maria');
+  expect(note).not.toContain('Rua das Flores');
+  expect(note).not.toContain('123');
+  expect(note).not.toContain(FAKE_PHONE);
+}
+
+function expectNoRetryButton(replies: { type: string }[]) {
+  expect(replies.some(reply => reply.type === 'buttons')).toBe(false);
+}
 
 describe('summary', () => {
   it('mostra o resumo com confirmar e corrigir', async () => {
@@ -308,11 +345,86 @@ describe('summary', () => {
     expect(tools.calls[1].args[0]).not.toHaveProperty('observation');
   });
 
-  it('falha ao criar a venda vai para saleFailed com tentar de novo', async () => {
+  it('banco fora volta ao resumo e avisa a instabilidade', async () => {
+    const createSale = vi.fn(async () => {
+      throw new ToolError(new SaleAttemptStoreError('fora'));
+    });
+    const tools = createFakeTools({ createSale });
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+    expect(result).toEqual({
+      state: { ...base, step: 'summary' },
+      replies: [text(msg.saleStoreUnavailable)],
+    });
+    expect(createSale).toHaveBeenCalledOnce();
+    expect(callNames(tools.calls)).toEqual(['checkpoint']);
+  });
+
+  it('confirmação repetida do ciclo devolve o número sem criar outra venda', async () => {
+    const createSale = vi.fn(async () => {
+      throw new ToolError(new SaleAlreadyRegisteredError(777));
+    });
+    const tools = createFakeTools({ createSale });
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(777, 110))],
+      saleId: 777,
+    });
+    expect(createSale).toHaveBeenCalledOnce();
+    expect(callNames(tools.calls)).not.toContain('findRecentSale');
+    expect(callNames(tools.calls)).not.toContain('requestHandoff');
+  });
+
+  it('resultado incerto chama atendente e não oferece tentar de novo', async () => {
+    const createSale = vi.fn(async () => {
+      throw new ToolError(new SaleUncertainError('pendente'));
+    });
+    const tools = createFakeTools({ createSale });
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+    expect(result?.state).toMatchObject({
+      step: 'creatingSale',
+      saleAttemptAt: FAKE_NOW.toISOString(),
+    });
+    expect(result?.replies).toEqual([text(msg.saleUncertain)]);
+    expectNoRetryButton(result?.replies ?? []);
+    expectUncertainHandoff(tools.calls);
+    expect(createSale).toHaveBeenCalledOnce();
+    expect(callNames(tools.calls)).not.toContain('findRecentSale');
+  });
+
+  it('429 no POST chama atendente e não oferece tentar de novo', async () => {
+    let status: SaleAttemptStatus | null = null;
+    const createSale = vi.fn(async () => {
+      status = 'uncertain';
+      throw new ToolError(new RevgasUnavailableError('Muitas requisições', 429));
+    });
+    const tools = createFakeTools({ createSale, saleAttemptStatus: async () => status });
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+    expect(result?.state?.step).toBe('creatingSale');
+    expect(result?.replies).toEqual([text(msg.saleUncertain)]);
+    expectNoRetryButton(result?.replies ?? []);
+    expectUncertainHandoff(tools.calls);
+    const again = await handlers.creatingSale?.(
+      result?.state as OrderState,
+      pick('retry:sale'),
+      tools,
+    );
+    expect(again?.replies).toEqual([text(msg.saleUncertain)]);
+    expect(createSale).toHaveBeenCalledOnce();
+    expect(callNames(tools.calls)).not.toContain('findRecentSale');
+  });
+
+  it('falha definitiva marca failed e mantém tentar de novo', async () => {
+    let status: SaleAttemptStatus | null = null;
+    let attempts = 0;
     const tools = createFakeTools({
       createSale: async () => {
-        throw new ToolError(new Error('fora'));
+        attempts += 1;
+        if (attempts > 1) return 4521;
+        status = 'failed';
+        throw new ToolError(new RevgasUnauthorizedError('Chave inválida'));
       },
+      saleAttemptStatus: async () => status,
     });
     const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result?.state).toMatchObject({
@@ -323,6 +435,18 @@ describe('summary', () => {
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
     expect(reply.body).toBe(msg.saleFailed);
     expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale', 'handoff:request']);
+    expect(handoffRequests(tools.calls)).toEqual([]);
+    const retried = await handlers.saleFailed?.(
+      result?.state as OrderState,
+      pick('retry:sale'),
+      tools,
+    );
+    expect(retried).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(4521, 110))],
+      saleId: 4521,
+    });
+    expect(attempts).toBe(2);
   });
 
   it('venda rejeitada pelo ERP encerra o pedido sem tentar de novo', async () => {
@@ -461,29 +585,112 @@ describe('creatingSale', () => {
     saleAttemptAt: '2026-10-21T15:00:00Z',
   };
 
-  it('tentativa com 60 s ou mais vira saleFailed com tentar de novo', async () => {
+  const pending = async () => 'pending' as const;
+
+  it('tentativa pendente com 60 s ou mais vira incerta e chama atendente', async () => {
     const stale = { ...state, saleAttemptAt: new Date(FAKE_NOW.getTime() - 60_000).toISOString() };
-    const tools = createFakeTools();
+    const tools = createFakeTools({ saleAttemptStatus: pending });
     const result = await handlers.creatingSale?.(stale, pick('x:y'), tools);
-    expect(result?.state?.step).toBe('saleFailed');
-    const reply = result?.replies[0];
-    if (reply?.type !== 'buttons') throw new Error('expected buttons');
-    expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale', 'handoff:request']);
-    expect(tools.calls).toEqual([]);
+    expect(result).toEqual({ state: stale, replies: [text(msg.saleUncertain)] });
+    expectNoRetryButton(result?.replies ?? []);
+    expectUncertainHandoff(tools.calls);
+    expect(callNames(tools.calls)).not.toContain('createSale');
+    expect(callNames(tools.calls)).not.toContain('findRecentSale');
   });
+
+  it('tentativa incerta repete o aviso sem criar venda', async () => {
+    const tools = createFakeTools({
+      saleAttemptStatus: async () => 'uncertain',
+      requestHandoff: async request => {
+        tools.calls.push({ name: 'requestHandoff', args: [request] });
+        return { status: 'alreadyQueued', open: true, nextOpening: null };
+      },
+    });
+    const result = await handlers.creatingSale?.(state, pick('summary:confirm'), tools);
+    expect(result).toEqual({ state, replies: [text(msg.saleUncertain)] });
+    expectUncertainHandoff(tools.calls);
+    expect(callNames(tools.calls)).toEqual(['requestHandoff']);
+  });
+
+  it('incerto sem atendente disponível ou fora do horário avisa como falar com a revenda', async () => {
+    const outcomes = [
+      [
+        { status: 'unavailable', open: true, nextOpening: null },
+        text(msg.talkToStore('86999990000')),
+      ],
+      [{ status: 'queued', open: false, nextOpening: null }, text(msg.handoffClosed(null))],
+    ] as const;
+    for (const [outcome, extra] of outcomes) {
+      const tools = createFakeTools({
+        saleAttemptStatus: async () => 'uncertain',
+        requestHandoff: async () => outcome,
+      });
+      const result = await handlers.creatingSale?.(state, pick('x:y'), tools);
+      expect(result).toEqual({ state, replies: [text(msg.saleUncertain), extra] });
+    }
+  });
+
+  it('leitura do estado com falha bloqueia a venda e chama atendente', async () => {
+    const tools = createFakeTools({
+      saleAttemptStatus: async () => {
+        throw new ToolError(new Error('banco fora'));
+      },
+    });
+    const result = await handlers.creatingSale?.(state, pick('x:y'), tools);
+    expect(result).toEqual({ state, replies: [text(msg.saleUncertain)] });
+    expectUncertainHandoff(tools.calls);
+    expect(callNames(tools.calls)).not.toContain('createSale');
+  });
+
+  it('tentativa registrada no ciclo devolve o número e encerra', async () => {
+    const tools = createFakeTools({
+      saleAttemptStatus: async () => 'registered',
+      createSale: async () => {
+        throw new ToolError(new SaleAlreadyRegisteredError(777));
+      },
+    });
+    const result = await handlers.creatingSale?.(state, pick('x:y'), tools);
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.saleCreated(777, 110))],
+      saleId: 777,
+    });
+    expect(callNames(tools.calls)).not.toContain('requestHandoff');
+  });
+
+  it.each(['failed', null] as const)(
+    'tentativa %s volta a saleFailed com tentar de novo',
+    async status => {
+      const saleAttemptStatus = vi.fn(async () => status);
+      const tools = createFakeTools({ saleAttemptStatus });
+      const result = await handlers.creatingSale?.(state, pick('x:y'), tools);
+      expect(result?.state?.step).toBe('saleFailed');
+      const reply = result?.replies[0];
+      if (reply?.type !== 'buttons') throw new Error('expected buttons');
+      expect(reply.buttons.map(b => b.id)).toEqual(['retry:sale', 'handoff:request']);
+      expect(saleAttemptStatus).toHaveBeenCalledOnce();
+      expect(tools.calls).toEqual([]);
+    },
+  );
 
   it('tentativa com menos de 60 s continua em andamento', async () => {
     const fresh = { ...state, saleAttemptAt: new Date(FAKE_NOW.getTime() - 59_000).toISOString() };
-    const result = await handlers.creatingSale?.(fresh, pick('x:y'), createFakeTools());
+    const result = await handlers.creatingSale?.(
+      fresh,
+      pick('x:y'),
+      createFakeTools({ saleAttemptStatus: pending }),
+    );
     expect(result).toEqual({ state: fresh, replies: [text(msg.saleInProgress)] });
   });
 
   it('qualquer entrada responde que está em andamento e não cria venda', async () => {
-    const tools = createFakeTools();
+    const saleAttemptStatus = vi.fn(pending);
+    const tools = createFakeTools({ saleAttemptStatus });
     const confirm = await handlers.creatingSale?.(state, pick(CONFIRM), tools);
     const retry = await handlers.creatingSale?.(state, pick('retry:sale'), tools);
     expect(confirm).toEqual({ state, replies: [text(msg.saleInProgress)] });
     expect(retry).toEqual({ state, replies: [text(msg.saleInProgress)] });
+    expect(saleAttemptStatus).toHaveBeenCalledTimes(2);
     expect(tools.calls).toEqual([]);
   });
 });
@@ -535,18 +742,33 @@ describe('saleFailed', () => {
   });
 
   it('sem venda recente, salva novo checkpoint e cria a venda', async () => {
-    const tools = createFakeTools();
+    const saleAttemptStatus = vi.fn(async () => 'failed' as const);
+    const tools = createFakeTools({ saleAttemptStatus });
     const result = await handlers.saleFailed?.(state, pick('retry:sale'), tools);
     expect(result).toEqual({
       state: null,
       replies: [text(msg.saleCreated(4521, 110))],
       saleId: 4521,
     });
+    expect(saleAttemptStatus).toHaveBeenCalledOnce();
     expect(tools.calls.map(c => c.name)).toEqual(['findRecentSale', 'checkpoint', 'createSale']);
     expect(tools.calls[1].args[0]).toMatchObject({
       step: 'creatingSale',
       saleAttemptAt: state.saleAttemptAt,
     });
+  });
+
+  it('tentar de novo com tentativa incerta chama atendente sem consultar venda nem criar', async () => {
+    const saleAttemptStatus = vi.fn(async () => 'uncertain' as const);
+    const tools = createFakeTools({ saleAttemptStatus });
+    const result = await handlers.saleFailed?.(state, pick('retry:sale'), tools);
+    expect(result).toEqual({
+      state: { ...state, step: 'creatingSale' },
+      replies: [text(msg.saleUncertain)],
+    });
+    expect(saleAttemptStatus).toHaveBeenCalledOnce();
+    expectUncertainHandoff(tools.calls);
+    expect(callNames(tools.calls)).toEqual(['requestHandoff']);
   });
 
   it('outra entrada repete o botão de tentar de novo sem criar venda', async () => {

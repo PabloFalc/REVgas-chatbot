@@ -3,6 +3,7 @@ import type { BasePrice } from 'src/modules/catalog/contracts/catalog.types';
 import type { HandoffOutcome, ServiceHoursInfo } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
 import type { MetricEvent } from 'src/modules/metrics/contracts/metrics.types';
+import type { SaleAttemptStatus } from 'src/modules/order/contracts/order.types';
 import type { FlowTools } from '../flow.types';
 
 export const FAKE_PHONE = '5586999990000';
@@ -87,6 +88,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
     },
     latestOrderStatus: record('latestOrderStatus', null),
     createSale: record('createSale', 4521),
+    saleAttemptStatus: record('saleAttemptStatus', null as SaleAttemptStatus | null),
     findRecentSale: record('findRecentSale', null as number | null),
     checkpoint: record('checkpoint', undefined),
     requestHandoff: record('requestHandoff', {

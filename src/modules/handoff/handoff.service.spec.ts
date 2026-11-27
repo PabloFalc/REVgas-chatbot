@@ -1,5 +1,6 @@
 import type { PinoLogger } from 'nestjs-pino';
 import { FakeChatwootClient } from 'src/integrations/chatwoot/fake-chatwoot.client';
+import type { BotEventsRepository } from 'src/modules/metrics/bot-events.repository';
 import { parseServiceHours, type ServiceWindow } from 'src/utils/service-hours';
 import { describe, expect, it, vi } from 'vitest';
 import type { DeskContact, DeskThread, HandoffState } from './contracts/handoff.types';
@@ -11,6 +12,8 @@ import { HandoffService, type TurnRecord } from './handoff.service';
 const PHONE = '5585999990000';
 const NOW = new Date('2026-11-09T10:00:00-03:00');
 const CPF_DIGITS = /\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2}/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const CYCLE_ID = '0b6f6c1e-2d1c-4e53-9a43-5b1f1f3e7a10';
 
 function memoryRepository() {
   const states = new Map<string, HandoffState>();
@@ -64,15 +67,21 @@ function setup(options: { now?: Date; hours?: ServiceWindow[]; disabled?: boolea
     info: vi.fn(),
     debug: vi.fn(),
   };
-  const clock = { now: () => options.now ?? NOW };
+  let current = options.now ?? NOW;
+  const clock = { now: () => current };
+  const events = { record: vi.fn() };
   const service = new HandoffService(
     memory.repo,
     desk,
     logger as unknown as PinoLogger,
     clock,
     options.hours ?? [],
+    events as unknown as BotEventsRepository,
   );
-  return { service, client, logger, ...memory };
+  const advance = (ms: number) => {
+    current = new Date(current.getTime() + ms);
+  };
+  return { service, client, logger, events, advance, ...memory };
 }
 
 function turn(overrides: Partial<TurnRecord> = {}): TurnRecord {
@@ -115,6 +124,8 @@ describe('HandoffService', () => {
         conversationId: conversation.id,
         reason: 'customer_request',
         since: NOW.toISOString(),
+        requestedAt: NOW.toISOString(),
+        handoffId: expect.stringMatching(UUID),
       });
     });
 
@@ -444,7 +455,60 @@ describe('HandoffService', () => {
         conversationId,
         reason: 'customer_request',
         since: NOW.toISOString(),
+        requestedAt: NOW.toISOString(),
+        assumedAt: NOW.toISOString(),
+        handoffId: expect.stringMatching(UUID),
         lastAgentAt: NOW.toISOString(),
+      });
+    });
+
+    it('calcula duração da fila ao assumir', async () => {
+      const { service, states, events, advance } = setup();
+      await service.requestHandoff({
+        phone: PHONE,
+        reason: 'customer_request',
+        summary: null,
+        cycleId: CYCLE_ID,
+      });
+      const queued = states.get(PHONE) as HandoffState;
+      advance(90_000);
+      await service.markAgentMessage(PHONE, queued.conversationId);
+      const assumedAt = new Date(NOW.getTime() + 90_000).toISOString();
+      expect(states.get(PHONE)).toMatchObject({
+        status: 'active',
+        requestedAt: NOW.toISOString(),
+        assumedAt,
+        lastAgentAt: assumedAt,
+        handoffId: queued.handoffId,
+        cycleId: CYCLE_ID,
+      });
+      expect(events.record).toHaveBeenCalledExactlyOnceWith({
+        name: 'handoff_assumed',
+        cycleId: CYCLE_ID,
+        handoffId: queued.handoffId,
+        durationMs: 90_000,
+      });
+      advance(120_000);
+      await service.markAgentMessage(PHONE, queued.conversationId);
+      expect(states.get(PHONE)?.assumedAt).toBe(assumedAt);
+      expect(states.get(PHONE)?.lastAgentAt).toBe(new Date(NOW.getTime() + 210_000).toISOString());
+      expect(events.record).toHaveBeenCalledOnce();
+    });
+
+    it('estado antigo só com since usa since como início da fila', async () => {
+      const { service, states, events } = setup();
+      states.set(PHONE, {
+        status: 'queued',
+        conversationId: 7,
+        reason: 'customer_request',
+        since: minutesAgo(5),
+      });
+      await service.markAgentMessage(PHONE, 7);
+      expect(events.record).toHaveBeenCalledExactlyOnceWith({
+        name: 'handoff_assumed',
+        cycleId: undefined,
+        handoffId: expect.stringMatching(UUID),
+        durationMs: 300_000,
       });
     });
 
@@ -541,6 +605,32 @@ describe('HandoffService', () => {
       expect(states.size).toBe(0);
     });
 
+    it('registra a expiração e limpa o estado mesmo com o Chatwoot indisponível', async () => {
+      const { service, client, states, threads, events } = await expiredSetup({
+        status: 'queued',
+        reason: 'customer_request',
+        since: minutesAgo(72 * 60 + 1),
+        requestedAt: minutesAgo(72 * 60 + 1),
+        handoffId: CYCLE_ID,
+        cycleId: CYCLE_ID,
+      });
+      let stateAtEmit: HandoffState | undefined;
+      events.record.mockImplementation(() => {
+        stateAtEmit = states.get(PHONE);
+      });
+      client.failNext();
+      expect(await service.routeFor(PHONE)).toBe('bot');
+      expect(events.record).toHaveBeenCalledExactlyOnceWith({
+        name: 'handoff_expired',
+        cycleId: CYCLE_ID,
+        handoffId: CYCLE_ID,
+        durationMs: (72 * 60 + 1) * 60_000,
+      });
+      expect(stateAtEmit).toBeDefined();
+      expect(states.size).toBe(0);
+      expect(threads.size).toBe(0);
+    });
+
     it('mensagem do atendente em active vencido não expira o próprio handoff', async () => {
       const { service, client, states, threads, id } = await expiredSetup({
         status: 'active',
@@ -582,6 +672,46 @@ describe('HandoffService', () => {
   });
 
   describe('endFromDesk', () => {
+    it('calcula duração do atendimento ao resolver', async () => {
+      const { service, states, events, advance } = setup();
+      await service.requestHandoff({
+        phone: PHONE,
+        reason: 'customer_request',
+        summary: null,
+        cycleId: CYCLE_ID,
+      });
+      const queued = states.get(PHONE) as HandoffState;
+      advance(60_000);
+      await service.markAgentMessage(PHONE, queued.conversationId);
+      advance(600_000);
+      let stateAtEmit: HandoffState | undefined;
+      events.record.mockImplementation(() => {
+        stateAtEmit = states.get(PHONE);
+      });
+
+      await service.endFromDesk(PHONE, queued.conversationId + 1);
+      expect(events.record).toHaveBeenCalledOnce();
+      expect(states.has(PHONE)).toBe(true);
+
+      await service.endFromDesk(PHONE, queued.conversationId);
+      expect(events.record).toHaveBeenLastCalledWith({
+        name: 'handoff_resolved',
+        cycleId: CYCLE_ID,
+        handoffId: queued.handoffId,
+        durationMs: 600_000,
+      });
+      expect(stateAtEmit?.conversationId).toBe(queued.conversationId);
+      expect(states.has(PHONE)).toBe(false);
+    });
+
+    it('resolver conversa ainda na fila limpa o estado sem evento de atendimento', async () => {
+      const { service, states, events } = setup();
+      await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+      await service.endFromDesk(PHONE, (states.get(PHONE) as HandoffState).conversationId);
+      expect(states.has(PHONE)).toBe(false);
+      expect(events.record).not.toHaveBeenCalled();
+    });
+
     it('id antigo não apaga o estado atual; id certo apaga', async () => {
       const { service, states, threads } = setup();
       states.set(PHONE, {
@@ -598,6 +728,47 @@ describe('HandoffService', () => {
       await service.endFromDesk(PHONE, 20);
       expect(states.size).toBe(0);
       expect(threads.size).toBe(0);
+    });
+  });
+
+  describe('privacidade dos eventos', () => {
+    it('não envia evento com telefone, CPF ou conteúdo da mensagem', async () => {
+      const { service, states, events, advance } = setup();
+      await service.requestHandoff({
+        phone: PHONE,
+        reason: 'identity_failure',
+        summary: {
+          stepLabel: 'CPF',
+          identityConfirmed: false,
+          newCustomer: false,
+          customerName: 'Maria Silva 123.456.789-09',
+          address: 'Rua das Flores, 10',
+        },
+        cycleId: CYCLE_ID,
+      });
+      await service.recordTurn(
+        turn({
+          inbound: { type: 'text', text: 'meu cpf é 12345678909' },
+          botMessages: ['segredo'],
+        }),
+      );
+      const { conversationId } = states.get(PHONE) as HandoffState;
+      advance(1000);
+      await service.markAgentMessage(PHONE, conversationId);
+      advance(1000);
+      await service.endFromDesk(PHONE, conversationId);
+
+      expect(events.record).toHaveBeenCalledTimes(2);
+      for (const [event] of events.record.mock.calls) {
+        expect(Object.keys(event).sort()).toEqual(['cycleId', 'durationMs', 'handoffId', 'name']);
+      }
+      const sent = JSON.stringify(events.record.mock.calls);
+      expect(sent).not.toContain(PHONE);
+      expect(sent).not.toMatch(CPF_DIGITS);
+      expect(sent).not.toContain('meu cpf');
+      expect(sent).not.toContain('segredo');
+      expect(sent).not.toContain('Rua das Flores');
+      expect(sent).not.toContain('conversationId');
     });
   });
 

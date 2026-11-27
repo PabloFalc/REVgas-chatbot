@@ -83,6 +83,7 @@ export class RevgasHttp {
         if (!retryable && outcome.status >= 500) {
           throw new RevgasUnknownOutcomeError(
             'RevGás server error on a write; the operation outcome is unknown',
+            'server_error',
           );
         }
         const error = mapRevgasError(outcome.status, outcome.body);
@@ -98,6 +99,7 @@ export class RevgasHttp {
           outcome.timedOut
             ? 'RevGás request timed out; the operation outcome is unknown'
             : 'RevGás network error; the operation outcome is unknown',
+          outcome.timedOut ? 'timeout' : 'network',
         );
       }
       if (attempt < maxAttempts) {

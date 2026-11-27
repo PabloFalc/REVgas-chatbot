@@ -34,6 +34,16 @@ export type MetricEvent = Cycle &
       }
     | { name: 'order_status'; outcome: 'found' | 'none' }
     | { name: 'cpf'; outcome: 'mismatch' | 'blocked' | 'blocked_hit'; amount: number }
+    | {
+        name: 'sale_outcome_unknown';
+        reason: 'timeout' | 'server_error' | 'invalid_response' | 'other';
+        isSimulated: boolean;
+      }
+    | {
+        name: 'handoff_assumed' | 'handoff_resolved' | 'handoff_expired';
+        handoffId: string;
+        durationMs: number;
+      }
     | { name: 'summary_confirmation_rejected'; reason: 'stale_revision' }
     | { name: 'summary_changed'; fields: CommercialField[] }
   );

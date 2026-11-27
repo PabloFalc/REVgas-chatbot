@@ -1,7 +1,9 @@
+import { RevgasUnauthorizedError } from 'src/core/erros/revgas/revgas.errors';
 import {
   CpfTakenError,
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
+import type { SaleAttemptStatus } from 'src/modules/order/contracts/order.types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runFlow } from './flow';
 import {
@@ -279,12 +281,15 @@ describe('conversas completas', () => {
 
   it('falha ao criar a venda e tentar de novo encontra a venda já criada', async () => {
     let createAttempts = 0;
+    let status: SaleAttemptStatus | null = null;
     const sinceSeen: Date[] = [];
     const tools = createFakeTools({
       createSale: async () => {
         createAttempts += 1;
-        throw new Error('timeout');
+        status = 'failed';
+        throw new RevgasUnauthorizedError('Chave inválida');
       },
+      saleAttemptStatus: async () => status,
       findRecentSale: async (_order, since) => {
         sinceSeen.push(since);
         return 9001;

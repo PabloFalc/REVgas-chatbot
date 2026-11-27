@@ -125,7 +125,10 @@ describe('other errors', () => {
     const response = new RevgasResponseError('schema', [{ path: 'id', message: 'required' }]);
     expect(response.kind).toBe('response');
     expect(response.issues).toHaveLength(1);
-    expect(new RevgasUnknownOutcomeError('timeout').kind).toBe('unknown_outcome');
+    expect(new RevgasUnknownOutcomeError('timeout', 'timeout')).toMatchObject({
+      kind: 'unknown_outcome',
+      reason: 'timeout',
+    });
     expect(new RevgasUnavailableError('down').kind).toBe('unavailable');
   });
 });

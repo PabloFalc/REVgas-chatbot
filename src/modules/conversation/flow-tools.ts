@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { env } from 'src/config/env';
-import { RevgasError } from 'src/core/erros/revgas/revgas.errors';
+import { RevgasError, RevgasUnknownOutcomeError } from 'src/core/erros/revgas/revgas.errors';
+import { resolveRevgasConfig } from 'src/integrations/revgas/shared/revgas.config';
 import { maskPhone } from 'src/utils/mask';
 import { AddressService } from '../address/address.service';
 import { AiUsageRepository } from '../assistant/ai-usage.repository';
@@ -12,8 +13,13 @@ import { HandoffService } from '../handoff/handoff.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { BotEventsRepository } from '../metrics/bot-events.repository';
 import type { MetricEvent } from '../metrics/contracts/metrics.types';
-import { SaleRejectedError } from '../order/contracts/order.types';
+import {
+  type SaleAttemptOutcome,
+  SaleAttemptStoreError,
+  SaleRejectedError,
+} from '../order/contracts/order.types';
 import { OrderRepository } from '../order/order.repository';
+import { SaleAttemptsRepository } from '../order/sale-attempts.repository';
 import { ConversationRepository } from './conversation.repository';
 import type { FlowTools, OrderState } from './flow/flow.types';
 import { MAX_CPF_ATTEMPTS } from './flow/flow.types';
@@ -25,8 +31,44 @@ const QUESTION_COST = 2;
 const ADDRESS_COST = 1;
 const NAME_COST = 1;
 
+function saleOutcomeOf(error: unknown): SaleAttemptOutcome {
+  if (error instanceof SaleRejectedError) return { status: 'rejected', errorKind: 'validation' };
+  if (error instanceof RevgasUnknownOutcomeError) {
+    return { status: 'uncertain', errorKind: error.reason };
+  }
+  if (error instanceof RevgasError) {
+    switch (error.kind) {
+      case 'unauthorized':
+      case 'blocked':
+      case 'forbidden':
+      case 'not_found':
+        return { status: 'failed', errorKind: error.kind };
+      case 'response':
+        return { status: 'uncertain', errorKind: 'invalid_response' };
+      case 'duplicate':
+      case 'unavailable':
+        return { status: 'uncertain', errorKind: error.kind };
+    }
+  }
+  return { status: 'uncertain', errorKind: 'unexpected' };
+}
+
+function unknownReason(
+  errorKind: SaleAttemptOutcome['errorKind'],
+): 'timeout' | 'server_error' | 'invalid_response' | 'other' {
+  return errorKind === 'timeout' || errorKind === 'server_error' || errorKind === 'invalid_response'
+    ? errorKind
+    : 'other';
+}
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
 @Injectable()
 export class FlowToolsService {
+  private readonly isSimulated = resolveRevgasConfig(env).mode !== 'live';
+
   constructor(
     private readonly customers: CustomerRepository,
     private readonly catalog: CatalogRepository,
@@ -39,6 +81,7 @@ export class FlowToolsService {
     private readonly aiUsage: AiUsageRepository,
     private readonly logger: PinoLogger,
     private readonly events: BotEventsRepository,
+    private readonly attempts: SaleAttemptsRepository,
   ) {
     this.logger.setContext(FlowToolsService.name);
   }
@@ -112,20 +155,59 @@ export class FlowToolsService {
         track({ name: 'order_status', outcome: status ? 'found' : 'none' });
         return status;
       },
-      createSale: async order => {
+      createSale: async (order, { segment }) => {
+        if (!cycleId) {
+          throw new SaleAttemptStoreError('Tentativa de venda sem ciclo');
+        }
         try {
-          const sale = await this.orders.createSale(order);
-          track({ name: 'sale', outcome: 'created', reason: 'direct' });
-          return sale;
+          await this.attempts.begin({
+            cycleId,
+            customerId: order.customerId,
+            totalCents: Math.round(order.total * 100),
+            productCode: String(order.productId),
+            paymentMethodCode: order.paymentType,
+            customerSegment: segment,
+            isSimulated: this.isSimulated,
+          });
+        } catch (error) {
+          if (error instanceof SaleAttemptStoreError) {
+            this.logger.error(
+              {
+                component: 'sale_attempt',
+                event: 'sale_attempt_store_failed',
+                cycleId,
+                error: errorName(error.cause ?? error),
+              },
+              'Falha ao gravar a tentativa de venda',
+            );
+          }
+          throw error;
+        }
+        let sale: number;
+        try {
+          sale = await this.orders.createSale(order);
         } catch (error) {
           track({
             name: 'sale',
             outcome: error instanceof SaleRejectedError ? 'rejected' : 'failed',
             reason: error instanceof RevgasError ? error.kind : 'unexpected',
           });
+          const outcome = saleOutcomeOf(error);
+          if (outcome.status === 'uncertain') {
+            track({
+              name: 'sale_outcome_unknown',
+              reason: unknownReason(outcome.errorKind),
+              isSimulated: this.isSimulated,
+            });
+          }
+          await this.finishAttempt(cycleId, outcome);
           throw error;
         }
+        track({ name: 'sale', outcome: 'created', reason: 'direct' });
+        await this.finishAttempt(cycleId, { status: 'registered', erpSaleId: sale });
+        return sale;
       },
+      saleAttemptStatus: async () => (cycleId ? this.attempts.statusOf(cycleId) : null),
       findRecentSale: async (order, since) => {
         const sale = await this.orders.findRecentSale(order, since);
         if (sale !== null) track({ name: 'sale', outcome: 'created', reason: 'recovered' });
@@ -133,19 +215,37 @@ export class FlowToolsService {
       },
       checkpoint: save,
       requestHandoff: async request => {
-        const outcome = await this.handoff.requestHandoff(request);
+        const outcome = await this.handoff.requestHandoff({ ...request, cycleId });
         track({ name: 'handoff', reason: request.reason, outcome: outcome.status });
         return outcome;
       },
       serviceHours: async () => this.handoff.serviceHours(),
       storePhone: env.STORE_PHONE,
-      demo: env.REVGAS_MODE !== 'live',
+      demo: this.isSimulated,
       now: () => new Date(),
     };
   }
 
   private track(event: MetricEvent): void {
     this.events.record(event);
+  }
+
+  private async finishAttempt(cycleId: string, outcome: SaleAttemptOutcome): Promise<void> {
+    try {
+      await this.attempts.finish(cycleId, outcome);
+    } catch (error) {
+      this.logger.error(
+        {
+          component: 'sale_attempt',
+          event: 'sale_attempt_finish_failed',
+          cycleId,
+          status: outcome.status,
+          saleId: outcome.erpSaleId,
+          error: errorName(error),
+        },
+        'Falha ao gravar o resultado da tentativa de venda',
+      );
+    }
   }
 
   private async withinLimit(

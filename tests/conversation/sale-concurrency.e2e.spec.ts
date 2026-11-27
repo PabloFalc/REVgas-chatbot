@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { eq, inArray } from 'drizzle-orm';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { REDIS } from 'src/infra/cache/redis.client';
 import { RedisService } from 'src/infra/cache/redis.service';
+import { DRIZZLE } from 'src/infra/database/drizzle-client';
+import type * as schema from 'src/infra/database/schemas';
+import { saleAttempts } from 'src/infra/database/schemas';
 import { FakeRevgasClient } from 'src/integrations/revgas/fake-revgas.client';
 import { REVGAS_CLIENT } from 'src/integrations/revgas/revgas.client';
 import { FakeWhatsappClient } from 'src/integrations/whatsapp/fake-whatsapp.client';
@@ -34,10 +39,12 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
   let repository: ConversationRepository;
   let cache: RedisService;
   let redis: Redis;
+  let db: NodePgDatabase<typeof schema>;
   const inboundIds: string[] = [];
   const phones = [PHONE, SEQUENTIAL_PHONE];
   const cacheKeys: string[] = [];
   const scheduleMembers: string[] = [];
+  const cycles: string[] = [];
 
   const newPhone = () => {
     const phone = `55869${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
@@ -140,6 +147,7 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
     repository = app.get(ConversationRepository);
     cache = app.get(RedisService);
     redis = app.get(REDIS);
+    db = app.get(DRIZZLE);
     await clearPhoneState();
   }, 30000);
 
@@ -154,6 +162,8 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
     await clearPhoneState();
     if (cacheKeys.length > 0) await redis.del(...cacheKeys);
     if (scheduleMembers.length > 0) await redis.zrem(REMINDER_SET, ...scheduleMembers);
+    if (cycles.length > 0)
+      await db.delete(saleAttempts).where(inArray(saleAttempts.cycleId, cycles));
     await app.close();
   }, 30000);
 
@@ -164,6 +174,9 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
 
   it('confirma duas mensagens concorrentes como uma única venda e envia um número', async () => {
     await sendUntilSummary(PHONE);
+    const cycleId = (await repository.loadOrder(PHONE))?.cycleId;
+    if (!cycleId) throw new Error('Pedido sem ciclo');
+    cycles.push(cycleId);
     const saleCount = (await revgas.sales.list()).pagination.total_count;
     await Promise.all([
       postChoice('summary:confirm:1', PHONE),
@@ -183,6 +196,11 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
         ),
       ).toHaveLength(1),
     );
+    const attempts = await db
+      .select({ status: saleAttempts.status, erpSaleId: saleAttempts.erpSaleId })
+      .from(saleAttempts)
+      .where(eq(saleAttempts.cycleId, cycleId));
+    expect(attempts).toEqual([{ status: 'registered', erpSaleId: sale.id }]);
   });
 
   it('uma confirmação posterior à venda não cria outra venda', async () => {

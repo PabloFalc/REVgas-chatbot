@@ -40,6 +40,15 @@ describe('BotEventsRepository', () => {
     });
   });
 
+  it('grava o handoff_id e a duração dos eventos do ciclo humano', () => {
+    const { repository, values } = setup();
+    const handoffId = '0b6f6c1e-2d1c-4e53-9a43-5b1f1f3e7a10';
+    repository.record({ name: 'handoff_resolved', handoffId, durationMs: 600_000 });
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'handoff_resolved', handoffId, durationMs: 600_000 }),
+    );
+  });
+
   it('grava o modo efetivo da venda em cada evento', () => {
     const cases = [
       { mode: 'fake', isSimulated: true },

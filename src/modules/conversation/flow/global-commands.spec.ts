@@ -5,7 +5,7 @@ import { handoffButton, offer, orderStartButton } from './handoff';
 import { msg } from './messages';
 import { buttons, text } from './replies';
 import { asks } from './steps';
-import { createFakeTools, FAKE_PHONE } from './testing/fake-tools';
+import { createFakeTools, FAKE_NOW, FAKE_PHONE } from './testing/fake-tools';
 
 const state: OrderState = { step: 'askName', customer: {} };
 const question = { type: 'text', text: 'pergunta da etapa' } as const;
@@ -22,9 +22,33 @@ afterEach(() => {
 
 describe('globalCommand', () => {
   it('cancelar durante creatingSale mantém o pedido e avisa que está em andamento', async () => {
-    const creating: OrderState = { step: 'creatingSale', customer: {} };
-    const result = await globalCommand(creating, say('cancelar'), createFakeTools());
+    const creating: OrderState = {
+      step: 'creatingSale',
+      customer: {},
+      saleAttemptAt: FAKE_NOW.toISOString(),
+    };
+    const saleAttemptStatus = vi.fn(async () => 'pending' as const);
+    const tools = createFakeTools({ saleAttemptStatus });
+    const result = await globalCommand(creating, say('cancelar'), tools);
     expect(result).toEqual({ state: creating, replies: [text(msg.saleInProgress)] });
+    expect(saleAttemptStatus).toHaveBeenCalledOnce();
+    expect(tools.calls).toEqual([]);
+  });
+
+  it('cancelar durante creatingSale incerto chama atendente e não diz que cancelou', async () => {
+    const creating: OrderState = {
+      step: 'creatingSale',
+      customer: { id: 1 },
+      saleAttemptAt: FAKE_NOW.toISOString(),
+    };
+    const saleAttemptStatus = vi.fn(async () => 'uncertain' as const);
+    const tools = createFakeTools({ saleAttemptStatus });
+    const result = await globalCommand(creating, say('cancelar'), tools);
+    expect(result).toEqual({ state: creating, replies: [text(msg.saleUncertain)] });
+    expect(saleAttemptStatus).toHaveBeenCalledOnce();
+    expect(tools.calls.map(call => call.name)).toEqual(['requestHandoff']);
+    expect(tools.calls[0].args[0]).toMatchObject({ reason: 'sale_uncertain' });
+    expect(tools.calls).not.toContainEqual({ name: 'track', args: [{ name: 'order_cancelled' }] });
   });
 
   it('cancelar em saleFailed com venda já criada devolve o número da venda', async () => {
