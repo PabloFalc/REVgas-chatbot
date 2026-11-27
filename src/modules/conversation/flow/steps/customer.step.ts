@@ -16,7 +16,7 @@ import {
   keepOfferedProduct,
   looksLikeOrder,
 } from '../free-text';
-import { identityHandoff } from '../handoff';
+import { handoffSummary, identityHandoff } from '../handoff';
 import { checkCpf, resolveIdentity } from '../identity';
 import { textOf } from '../input';
 import { msg } from '../messages';
@@ -171,7 +171,11 @@ const handleConfirmCpf: HandleFn = async (state, input, tools) => {
   if (input.content.type === 'choice') {
     if (input.content.id === OWNER_CHANGED_CHOICE) return ownerChanged(state, tools);
     if (input.content.id === IDENTITY_AGENT_CHOICE) {
-      return identityHandoff(state, input.phone, tools);
+      return identityHandoff(state, input.phone, tools, {
+        state: null,
+        summary: handoffSummary(state),
+        requested: true,
+      });
     }
   }
   const raw = textOf(input);

@@ -446,8 +446,18 @@ describe('confirmCpf', () => {
   it('botão de atendente abre handoff de identidade', async () => {
     const tools = createFakeTools(unverified);
     const result = await handlers.confirmCpf?.(state, choose('identity:agent'), tools);
-    expect(result).toEqual({ state: null, replies: identityHandoffReplies() });
-    expect(handoffRequests(tools)).toMatchObject([{ reason: 'identity_failure' }]);
+    expect(result).toEqual({ state: null, replies: [text(msg.handoffQueued)] });
+    expect(handoffRequests(tools)).toEqual([
+      {
+        phone: FAKE_PHONE,
+        reason: 'identity_failure',
+        summary: {
+          stepLabel: 'Confirmação de identidade',
+          identityConfirmed: false,
+          newCustomer: false,
+        },
+      },
+    ]);
   });
 
   it('número mudou de dono segue para cadastro novo sem dado anterior', async () => {

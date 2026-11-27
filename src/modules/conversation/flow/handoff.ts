@@ -104,7 +104,11 @@ export async function identityHandoff(
   state: OrderState | null,
   phone: string,
   tools: FlowTools,
-  keep: { state: OrderState | null; summary: HandoffOrderSummary | null } = {
+  keep: {
+    state: OrderState | null;
+    summary: HandoffOrderSummary | null;
+    requested?: boolean;
+  } = {
     state: null,
     summary: handoffSummary(state),
   },
@@ -117,5 +121,7 @@ export async function identityHandoff(
   if (outcome.status === 'unavailable') {
     return { state: keep.state, replies: [text(msg.identityContactStore(tools.storePhone))] };
   }
-  return { state: keep.state, replies: [text(msg.identityHandoff), queueReply(outcome)] };
+  const queued = queueReply(outcome);
+  const replies = keep.requested ? [queued] : [text(msg.identityHandoff), queued];
+  return { state: keep.state, replies };
 }
