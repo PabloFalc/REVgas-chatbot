@@ -4,6 +4,8 @@ import { publicHealth } from './health.public';
 import type { HealthCheckResult, HealthResult } from './schemas/health.schemas';
 import { HealthRegistryService } from './services/registry.service';
 
+const CRITICAL_CHECKS = ['cache', 'database'];
+
 @Injectable()
 export class HealthService {
   private readonly serverStartTime = Date.now();
@@ -37,13 +39,13 @@ export class HealthService {
 
     let globalStatus: 'ok' | 'unavailable' | 'degraded' = 'ok';
 
-    const cacheStatus = checks.cache?.status ?? 'error';
+    const criticalDown = CRITICAL_CHECKS.some(name => (checks[name]?.status ?? 'error') !== 'ok');
 
-    if (cacheStatus !== 'ok') {
+    if (criticalDown) {
       globalStatus = 'unavailable';
     } else {
       const hasSecondaryFailures = Object.entries(checks).some(
-        ([name, result]) => name !== 'cache' && result.status !== 'ok',
+        ([name, result]) => !CRITICAL_CHECKS.includes(name) && result.status !== 'ok',
       );
 
       if (hasSecondaryFailures) {

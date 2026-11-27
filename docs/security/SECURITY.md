@@ -87,8 +87,9 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 
 ## Resiliência / disponibilidade
 
-- **Redis é a dependência crítica:** `/health` responde 503 sem ele; Postgres fora só marca o serviço
-  como degradado (o fluxo de pedido não depende do Postgres, só a base de conhecimento).
+- **Redis e Postgres são dependências críticas:** `/health` responde 503 se qualquer um estiver fora
+  (consulta leve com timeout curto, sem expor host, usuário nem string de conexão). Memória alta
+  só marca o serviço como degradado (200).
 - **Trava por telefone nunca é ignorada:** se não for obtida em 120 s, o bot pede que o cliente reenvie
   a mensagem em vez de processar sem a trava (evita dois pedidos concorrentes do mesmo telefone).
 - **Falha do Redis não é engolida** no estado do pedido, no bloqueio de CPF e no estado do handoff:

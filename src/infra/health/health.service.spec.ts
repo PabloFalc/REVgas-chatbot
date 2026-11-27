@@ -21,6 +21,11 @@ describe('HealthService', () => {
       check: async () => ({ status: 'ok', responseTime: 5 }),
       onModuleInit: () => {},
     });
+    registry.register({
+      name: 'database',
+      check: async () => ({ status: 'ok', responseTime: 5 }),
+      onModuleInit: () => {},
+    });
 
     const result = await service.check();
 
@@ -36,7 +41,7 @@ describe('HealthService', () => {
 
     await expect(service.check()).rejects.toMatchObject({ statusCode: 503 });
   });
-  it('deve retornar degraded quando apenas database falha', async () => {
+  it('deve retornar unavailable quando apenas database falha', async () => {
     registry.register({
       name: 'cache',
       check: async () => ({ status: 'ok', responseTime: 5 }),
@@ -45,6 +50,36 @@ describe('HealthService', () => {
     registry.register({
       name: 'database',
       check: async () => ({ status: 'error', error: 'conn failed' }),
+      onModuleInit: () => {},
+    });
+
+    await expect(service.check()).rejects.toMatchObject({ statusCode: 503 });
+  });
+
+  it('deve retornar unavailable quando database não está registrado', async () => {
+    registry.register({
+      name: 'cache',
+      check: async () => ({ status: 'ok', responseTime: 5 }),
+      onModuleInit: () => {},
+    });
+
+    await expect(service.check()).rejects.toMatchObject({ statusCode: 503 });
+  });
+
+  it('deve retornar degraded quando apenas um check secundário falha', async () => {
+    registry.register({
+      name: 'cache',
+      check: async () => ({ status: 'ok', responseTime: 5 }),
+      onModuleInit: () => {},
+    });
+    registry.register({
+      name: 'database',
+      check: async () => ({ status: 'ok', responseTime: 5 }),
+      onModuleInit: () => {},
+    });
+    registry.register({
+      name: 'Memory',
+      check: async () => ({ status: 'error', error: 'heap' }),
       onModuleInit: () => {},
     });
 

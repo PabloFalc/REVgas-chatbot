@@ -7,6 +7,8 @@ import { HealthRegistryService } from '../health/services/registry.service';
 import { DRIZZLE } from './drizzle-client';
 import type * as schema from './schemas/index';
 
+const TIMEOUT_MS = 2_000;
+
 @Injectable()
 export class DrizzleHealthService implements IHealthChecks {
   readonly name: string = 'database';
@@ -22,20 +24,28 @@ export class DrizzleHealthService implements IHealthChecks {
 
   async check(): Promise<HealthCheckResult> {
     const start = Date.now();
+    let timer: NodeJS.Timeout | undefined;
     try {
-      await this.db.execute(sql`SELECT 1`);
+      await Promise.race([
+        this.db.execute(sql`SELECT 1`),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Database timeout')), TIMEOUT_MS);
+        }),
+      ]);
       return {
         status: 'ok',
         responseTime: Date.now() - start,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Database halth check failed';
+      const timedOut = error instanceof Error && error.message === 'Database timeout';
 
       return {
         status: 'error',
-        responseTime: 0,
-        error: message,
+        responseTime: Date.now() - start,
+        error: timedOut ? 'Database timeout' : 'Database unavailable',
       };
+    } finally {
+      clearTimeout(timer);
     }
   }
 }
