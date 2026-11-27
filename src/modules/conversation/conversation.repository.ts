@@ -57,6 +57,17 @@ export class ConversationRepository {
     }
   }
 
+  async releaseMessage(messageId: string): Promise<void> {
+    try {
+      await this.cache.delete({ prefix: INBOUND_PREFIX, key: messageId });
+    } catch (error) {
+      this.logger.error(
+        { component: 'conversation', err: error },
+        'Falha ao liberar a mensagem recebida; a reentrega pode ser ignorada',
+      );
+    }
+  }
+
   loadOrder(phone: string): Promise<OrderState | null> {
     return this.cache.get<OrderState>({ prefix: ORDER_PREFIX, key: phone });
   }

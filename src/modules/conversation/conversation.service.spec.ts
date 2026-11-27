@@ -36,6 +36,9 @@ function setup(whatsapp = new FakeWhatsappClient()) {
       claimed.add(id);
       return true;
     }),
+    releaseMessage: vi.fn(async (id: string) => {
+      claimed.delete(id);
+    }),
     loadOrder: vi.fn(async () => null as OrderState | null),
     saveOrder: vi.fn(async (_phone: string, _state: OrderState) => undefined),
     clearOrder: vi.fn(async () => undefined),
@@ -155,6 +158,57 @@ describe('ConversationService.handle', () => {
       expect.objectContaining({ messageId: 'wamid.BUSY', from: '*******1234' }),
       'Lock do telefone não liberou a tempo; mensagem não processada',
     );
+  });
+
+  it('libera o claim da mensagem quando o lock está ocupado', async () => {
+    const { service, repository, whatsapp } = setup();
+    repository.withPhoneLock.mockResolvedValueOnce({ ran: false });
+    const events = parseWebhook(textWebhook('oi', 'wamid.REL1'));
+
+    await service.handle(events);
+
+    expect(repository.releaseMessage).toHaveBeenCalledWith('wamid.REL1');
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.busy);
+
+    await service.handle(events);
+
+    expect(runFlowMock).toHaveBeenCalledOnce();
+    expect(whatsapp.sent).toHaveLength(2);
+    expect(JSON.stringify(whatsapp.sent[1].body)).toContain('olá');
+  });
+
+  it('libera o claim quando a aquisição do lock falha antes do processamento', async () => {
+    const { service, repository, whatsapp } = setup();
+    repository.withPhoneLock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    const events = parseWebhook(textWebhook('oi', 'wamid.REL2'));
+
+    await service.handle(events);
+
+    expect(repository.releaseMessage).toHaveBeenCalledWith('wamid.REL2');
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.unavailable);
+
+    await service.handle(events);
+
+    expect(runFlowMock).toHaveBeenCalledOnce();
+    expect(whatsapp.sent).toHaveLength(2);
+    expect(JSON.stringify(whatsapp.sent[1].body)).toContain('olá');
+  });
+
+  it('mantém o claim quando o processamento já começou', async () => {
+    const { service, repository, whatsapp } = setup();
+    runFlowMock.mockRejectedValueOnce(new Error('bug'));
+    const events = parseWebhook(textWebhook('oi', 'wamid.REL3'));
+
+    await service.handle(events);
+    await service.handle(events);
+
+    expect(repository.releaseMessage).not.toHaveBeenCalled();
+    expect(runFlowMock).toHaveBeenCalledOnce();
+    expect(whatsapp.sent).toEqual([]);
   });
 
   it('falha ao obter o lock não roda o fluxo e avisa a instabilidade', async () => {
