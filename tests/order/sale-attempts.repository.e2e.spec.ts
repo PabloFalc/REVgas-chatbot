@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DatabaseModule } from 'src/infra/database/database.module';
 import { DRIZZLE } from 'src/infra/database/drizzle-client';
@@ -36,6 +36,17 @@ describe('SaleAttemptsRepository (e2e)', () => {
       customerSegment: 'recurring',
       isSimulated: true,
     };
+  }
+
+  function newCustomer(): number {
+    return 800_000_000 + Math.floor(Math.random() * 99_999_999);
+  }
+
+  async function uncertainFor(customerId: number, isSimulated: boolean): Promise<string> {
+    const cycleId = newCycle();
+    await repository.begin({ ...attempt(cycleId), customerId, isSimulated });
+    await repository.finish(cycleId, { status: 'uncertain', errorKind: 'timeout' });
+    return cycleId;
   }
 
   const rowsOf = (cycleId: string) =>
@@ -118,5 +129,48 @@ describe('SaleAttemptsRepository (e2e)', () => {
     insert.mockRestore();
     expect(await rowsOf(cycleId)).toHaveLength(0);
     expect(await repository.statusOf(randomUUID())).toBeNull();
+  });
+
+  it('recusa tentativa nova com incerta recente do mesmo cliente em outro ciclo', async () => {
+    const customerId = newCustomer();
+    await uncertainFor(customerId, true);
+    const cycleId = newCycle();
+
+    await expect(
+      repository.begin({ ...attempt(cycleId), customerId, isSimulated: true }),
+    ).rejects.toBeInstanceOf(SaleUncertainError);
+
+    expect(await rowsOf(cycleId)).toHaveLength(0);
+    const otherCustomer = newCycle();
+    await repository.begin({ ...attempt(otherCustomer), customerId: newCustomer() });
+    expect(await repository.statusOf(otherCustomer)).toBe('pending');
+  });
+
+  it('permite tentativa nova quando a incerta do mesmo cliente é mais antiga que a janela', async () => {
+    const customerId = newCustomer();
+    const old = await uncertainFor(customerId, true);
+    await db
+      .update(saleAttempts)
+      .set({ updatedAt: sql`now() - interval '25 hours'` })
+      .where(eq(saleAttempts.cycleId, old));
+    const cycleId = newCycle();
+
+    await repository.begin({ ...attempt(cycleId), customerId, isSimulated: true });
+
+    expect(await repository.statusOf(cycleId)).toBe('pending');
+  });
+
+  it('tentativa simulada e tentativa real não se bloqueiam', async () => {
+    const simulatedCustomer = newCustomer();
+    await uncertainFor(simulatedCustomer, true);
+    const real = newCycle();
+    await repository.begin({ ...attempt(real), customerId: simulatedCustomer, isSimulated: false });
+    expect(await repository.statusOf(real)).toBe('pending');
+
+    const realCustomer = newCustomer();
+    await uncertainFor(realCustomer, false);
+    const simulated = newCycle();
+    await repository.begin({ ...attempt(simulated), customerId: realCustomer, isSimulated: true });
+    expect(await repository.statusOf(simulated)).toBe('pending');
   });
 });

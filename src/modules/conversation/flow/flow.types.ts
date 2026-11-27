@@ -28,7 +28,12 @@ import type {
 } from 'src/modules/handoff/contracts/handoff.types';
 import type { KnowledgeAnswer } from 'src/modules/knowledge/contracts/knowledge.types';
 import type { MetricEvent } from 'src/modules/metrics/contracts/metrics.types';
-import type { OrderStatus, SaleOrder } from 'src/modules/order/contracts/order.types';
+import type {
+  CustomerSegment,
+  OrderStatus,
+  SaleAttemptStatus,
+  SaleOrder,
+} from 'src/modules/order/contracts/order.types';
 import type { IncomingContent, Reply } from '../contracts/conversation.types';
 
 export const MAX_CPF_ATTEMPTS = 3;
@@ -148,7 +153,8 @@ export interface FlowTools {
     quantity: number,
   ): Promise<Quote | null>;
   latestOrderStatus(customerId: number, now: Date): Promise<OrderStatus | null>;
-  createSale(order: SaleOrder): Promise<number>;
+  createSale(order: SaleOrder, attempt: { segment: CustomerSegment }): Promise<number>;
+  saleAttemptStatus(): Promise<SaleAttemptStatus | null>;
   findRecentSale(order: SaleOrder, since: Date): Promise<number | null>;
   checkpoint(state: OrderState): Promise<void>;
   requestHandoff(request: HandoffRequest): Promise<HandoffOutcome>;

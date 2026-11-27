@@ -90,9 +90,14 @@ export class RevgasResponseError extends RevgasError {
   }
 }
 
+export type RevgasUnknownOutcomeReason = 'timeout' | 'server_error' | 'network';
+
 export class RevgasUnknownOutcomeError extends RevgasError {
-  constructor(message: string) {
+  readonly reason: RevgasUnknownOutcomeReason;
+
+  constructor(message: string, reason: RevgasUnknownOutcomeReason) {
     super('unknown_outcome', message);
+    this.reason = reason;
   }
 }
 

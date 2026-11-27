@@ -32,4 +32,9 @@ export type MetricEvent = Cycle &
       }
     | { name: 'order_status'; outcome: 'found' | 'none' }
     | { name: 'cpf'; outcome: 'mismatch' | 'blocked' | 'blocked_hit'; amount: number }
+    | {
+        name: 'sale_outcome_unknown';
+        reason: 'timeout' | 'server_error' | 'invalid_response' | 'other';
+        isSimulated: boolean;
+      }
   );

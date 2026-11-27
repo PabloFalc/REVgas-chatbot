@@ -1,5 +1,6 @@
 import { type SaleOrder, SaleRejectedError } from 'src/modules/order/contracts/order.types';
 import { formatMoney } from 'src/utils/money';
+import { customerSegmentOf } from '../customer-segment';
 import {
   type AskFn,
   type FlowTools,
@@ -83,7 +84,7 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
   };
   await tools.checkpoint(attempt);
   try {
-    const id = await tools.createSale(order);
+    const id = await tools.createSale(order, { segment: customerSegmentOf(state) });
     return { state: null, replies: [saleCreated(id, order.total, tools)], saleId: id };
   } catch (error) {
     if (error instanceof ToolError) {

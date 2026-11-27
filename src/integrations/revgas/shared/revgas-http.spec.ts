@@ -161,17 +161,17 @@ describe('RevgasHttp', () => {
 
   it('POST com timeout lança RevgasUnknownOutcomeError', async () => {
     const { http, fetchMock } = setup([timeout(), json({ id: 1 })]);
-    await expect(
-      http.request({ method: 'POST', path: '/x', body: {}, schema }),
-    ).rejects.toBeInstanceOf(RevgasUnknownOutcomeError);
+    const error = http.request({ method: 'POST', path: '/x', body: {}, schema });
+    await expect(error).rejects.toBeInstanceOf(RevgasUnknownOutcomeError);
+    await expect(error).rejects.toMatchObject({ reason: 'timeout' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('POST com erro de rede lança RevgasUnknownOutcomeError', async () => {
     const { http, fetchMock } = setup([new TypeError('fetch failed'), json({ id: 1 })]);
-    await expect(
-      http.request({ method: 'POST', path: '/x', body: {}, schema }),
-    ).rejects.toBeInstanceOf(RevgasUnknownOutcomeError);
+    const error = http.request({ method: 'POST', path: '/x', body: {}, schema });
+    await expect(error).rejects.toBeInstanceOf(RevgasUnknownOutcomeError);
+    await expect(error).rejects.toMatchObject({ reason: 'network' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -193,6 +193,7 @@ describe('RevgasHttp', () => {
         .request({ method: 'POST', path: '/x', body: {}, schema })
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(RevgasUnknownOutcomeError);
+      expect(error).toMatchObject({ reason: 'server_error' });
       expect((error as Error).message).not.toContain('segredo-do-corpo');
       expect((error as Error).message).not.toContain(API_KEY);
       expect(fetchMock).toHaveBeenCalledTimes(1);

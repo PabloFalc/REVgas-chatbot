@@ -1,6 +1,12 @@
 import type { PinoLogger } from 'nestjs-pino';
-import { RevgasError } from 'src/core/erros/revgas/revgas.errors';
-import { describe, expect, it, vi } from 'vitest';
+import { env } from 'src/config/env';
+import {
+  mapRevgasError,
+  RevgasError,
+  RevgasResponseError,
+  RevgasUnknownOutcomeError,
+} from 'src/core/erros/revgas/revgas.errors';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AddressService } from '../address/address.service';
 import type { AiUsageRepository } from '../assistant/ai-usage.repository';
 import type { AssistantService } from '../assistant/assistant.service';
@@ -9,12 +15,19 @@ import type { CustomerRepository } from '../customer/customer.repository';
 import type { HandoffService } from '../handoff/handoff.service';
 import type { KnowledgeService } from '../knowledge/knowledge.service';
 import type { BotEventsRepository } from '../metrics/bot-events.repository';
-import { SaleRejectedError } from '../order/contracts/order.types';
+import {
+  SaleAttemptStoreError,
+  SaleRejectedError,
+  SaleUncertainError,
+} from '../order/contracts/order.types';
 import type { OrderRepository } from '../order/order.repository';
+import type { SaleAttemptsRepository } from '../order/sale-attempts.repository';
 import type { ConversationRepository } from './conversation.repository';
+import { customerSegmentOf } from './flow/customer-segment';
 import { FlowToolsService } from './flow-tools';
 
 const PHONE = '5586999991234';
+const CYCLE = '6f1c2b8e-4a1d-4c8e-9f3a-2b7d5e0c1a90';
 
 function setup() {
   const customers = {
@@ -51,10 +64,15 @@ function setup() {
   };
   const aiUsage = { consume: vi.fn(async () => true) };
   const events = { record: vi.fn() };
-  const logger = { setContext: vi.fn(), warn: vi.fn() };
+  const logger = { setContext: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const handoff = {
     requestHandoff: vi.fn(async () => ({ status: 'queued', open: true, nextOpening: null })),
     serviceHours: vi.fn(() => ({ open: true, nextOpening: null, windows: [] })),
+  };
+  const attempts = {
+    begin: vi.fn(async () => undefined),
+    finish: vi.fn(async () => undefined),
+    statusOf: vi.fn(async () => null),
   };
   const service = new FlowToolsService(
     customers as unknown as CustomerRepository,
@@ -68,9 +86,11 @@ function setup() {
     aiUsage as unknown as AiUsageRepository,
     logger as unknown as PinoLogger,
     events as unknown as BotEventsRepository,
+    attempts as unknown as SaleAttemptsRepository,
   );
   return {
     service,
+    attempts,
     events,
     customers,
     catalog,
@@ -98,7 +118,7 @@ describe('FlowToolsService.forPhone', () => {
 
   it('delega cada ferramenta ao repositório ou serviço correspondente', async () => {
     const { service, customers, catalog, orders, addresses } = setup();
-    const tools = service.forPhone(PHONE, async () => undefined);
+    const tools = service.forPhone(PHONE, async () => undefined, CYCLE);
     const customer = { id: 1, tagId: null };
 
     await tools.findCustomer('5586999991234');
@@ -106,7 +126,7 @@ describe('FlowToolsService.forPhone', () => {
     await tools.quote(customer, 3, 'PIX', 2);
     await tools.addressFromCep('64000000');
     await tools.addressFromText('rua x');
-    await expect(tools.createSale({} as never)).resolves.toBe(7);
+    await expect(tools.createSale({} as never, { segment: 'recurring' })).resolves.toBe(7);
     await tools.findRecentSale({} as never, new Date());
 
     expect(customers.findByPhone).toHaveBeenCalledWith('5586999991234');
@@ -284,7 +304,7 @@ describe('FlowToolsService métricas', () => {
   it('grava criação e recuperação sem incluir dados do pedido', async () => {
     const { service, events, orders } = setup();
     const tools = service.forPhone(PHONE, async () => undefined, 'cycle');
-    await expect(tools.createSale(saleOrder)).resolves.toBe(7);
+    await expect(tools.createSale(saleOrder, { segment: 'recurring' })).resolves.toBe(7);
     expect(events.record).toHaveBeenLastCalledWith({
       name: 'sale',
       cycleId: 'cycle',
@@ -308,12 +328,16 @@ describe('FlowToolsService métricas', () => {
   ])('preserva o erro de venda e registra apenas classificação', async (error, outcome, reason) => {
     const { service, events, orders } = setup();
     orders.createSale.mockRejectedValueOnce(error);
-    await expect(service.forPhone(PHONE, async () => undefined).createSale(saleOrder)).rejects.toBe(
-      error,
-    );
+    await expect(
+      service
+        .forPhone(PHONE, async () => undefined, CYCLE)
+        .createSale(saleOrder, {
+          segment: 'recurring',
+        }),
+    ).rejects.toBe(error);
     expect(events.record).toHaveBeenCalledWith({
       name: 'sale',
-      cycleId: undefined,
+      cycleId: CYCLE,
       outcome,
       reason,
     });
@@ -395,4 +419,233 @@ it('identifica o custo de cada chamada de IA', async () => {
       expect.objectContaining({ name: 'ai_call', outcome: 'allowed', reason, amount }),
     );
   }
+});
+
+const revgasEnv = {
+  REVGAS_MODE: env.REVGAS_MODE,
+  REVGAS_API_KEY: env.REVGAS_API_KEY,
+  REVGAS_ESTABLISHMENT_ID: env.REVGAS_ESTABLISHMENT_ID,
+};
+
+describe('FlowToolsService tentativa de venda', () => {
+  afterEach(() => {
+    Object.assign(env, revgasEnv);
+  });
+
+  const createSale = (error?: unknown) => {
+    const ctx = setup();
+    if (error !== undefined) ctx.orders.createSale.mockRejectedValueOnce(error);
+    const tools = ctx.service.forPhone(PHONE, async () => undefined, CYCLE);
+    return { ...ctx, tools, run: () => tools.createSale(saleOrder, { segment: 'recurring' }) };
+  };
+
+  const unknownEvent = (reason: string) => ({
+    name: 'sale_outcome_unknown',
+    cycleId: CYCLE,
+    reason,
+    isSimulated: true,
+  });
+
+  it('grava a tentativa pendente antes de criar a venda', async () => {
+    const { attempts, orders, run } = createSale();
+
+    await expect(run()).resolves.toBe(7);
+
+    expect(attempts.begin).toHaveBeenCalledExactlyOnceWith({
+      cycleId: CYCLE,
+      customerId: 1,
+      totalCents: 10000,
+      productCode: '1',
+      paymentMethodCode: 'PIX',
+      customerSegment: 'recurring',
+      isSimulated: true,
+    });
+    expect(attempts.finish).toHaveBeenCalledExactlyOnceWith(CYCLE, {
+      status: 'registered',
+      erpSaleId: 7,
+    });
+    const [begin] = attempts.begin.mock.invocationCallOrder;
+    const [post] = orders.createSale.mock.invocationCallOrder;
+    const [finish] = attempts.finish.mock.invocationCallOrder;
+    expect(begin).toBeLessThan(post);
+    expect(post).toBeLessThan(finish);
+  });
+
+  it('não cria a venda quando a tentativa não pode ser gravada', async () => {
+    const { attempts, orders, logger, events, run } = createSale();
+    const error = new SaleAttemptStoreError('Falha ao gravar a tentativa de venda', {
+      cause: new Error('senha do banco 12345678909'),
+    });
+    attempts.begin.mockRejectedValueOnce(error);
+
+    await expect(run()).rejects.toBe(error);
+
+    expect(orders.createSale).not.toHaveBeenCalled();
+    expect(attempts.finish).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error.mock.calls[0][0]).toMatchObject({ cycleId: CYCLE });
+    const logged = JSON.stringify(logger.error.mock.calls);
+    expect(logged).not.toContain('12345678909');
+    expect(logged).not.toContain(PHONE);
+    expect(events.record).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'sale_outcome_unknown' }),
+    );
+  });
+
+  it('não cria a venda quando a tentativa não tem ciclo', async () => {
+    const { service, attempts, orders } = setup();
+    const tools = service.forPhone(PHONE, async () => undefined);
+
+    await expect(tools.createSale(saleOrder, { segment: 'recurring' })).rejects.toBeInstanceOf(
+      SaleAttemptStoreError,
+    );
+
+    expect(attempts.begin).not.toHaveBeenCalled();
+    expect(orders.createSale).not.toHaveBeenCalled();
+  });
+
+  it('timeout marca a tentativa como incerta com error_kind timeout', async () => {
+    const error = new RevgasUnknownOutcomeError('timeout', 'timeout');
+    const { attempts, orders, events, run } = createSale(error);
+
+    await expect(run()).rejects.toBe(error);
+
+    expect(orders.createSale).toHaveBeenCalledOnce();
+    expect(attempts.finish).toHaveBeenCalledExactlyOnceWith(CYCLE, {
+      status: 'uncertain',
+      errorKind: 'timeout',
+    });
+    expect(events.record).toHaveBeenCalledWith(unknownEvent('timeout'));
+  });
+
+  it('resposta ilegível marca a tentativa como incerta', async () => {
+    const error = new RevgasResponseError('schema', [{ path: 'id', message: 'required' }], 200);
+    const { attempts, events, run } = createSale(error);
+
+    await expect(run()).rejects.toBe(error);
+
+    expect(attempts.finish).toHaveBeenCalledExactlyOnceWith(CYCLE, {
+      status: 'uncertain',
+      errorKind: 'invalid_response',
+    });
+    expect(events.record).toHaveBeenCalledWith(unknownEvent('invalid_response'));
+  });
+
+  it('429 no POST marca a tentativa como incerta com error_kind unavailable', async () => {
+    const error = mapRevgasError(429, { message: 'too many requests' });
+    const { attempts, orders, events, run } = createSale(error);
+
+    await expect(run()).rejects.toBe(error);
+
+    expect(orders.createSale).toHaveBeenCalledOnce();
+    expect(attempts.finish).toHaveBeenCalledExactlyOnceWith(CYCLE, {
+      status: 'uncertain',
+      errorKind: 'unavailable',
+    });
+    expect(events.record).toHaveBeenCalledWith(unknownEvent('other'));
+  });
+
+  it('erro de lock no POST marca a tentativa como incerta com error_kind unavailable', async () => {
+    const error = mapRevgasError(409, { message: 'Resource lock, try again' });
+    const { attempts, orders, events, run } = createSale(error);
+
+    await expect(run()).rejects.toBe(error);
+
+    expect(orders.createSale).toHaveBeenCalledOnce();
+    expect(attempts.finish).toHaveBeenCalledExactlyOnceWith(CYCLE, {
+      status: 'uncertain',
+      errorKind: 'unavailable',
+    });
+    expect(events.record).toHaveBeenCalledWith(unknownEvent('other'));
+  });
+
+  it('recusa definitiva ou validação não marcam a tentativa como incerta', async () => {
+    const cases = [
+      [mapRevgasError(401, {}), { status: 'failed', errorKind: 'unauthorized' }],
+      [mapRevgasError(402, {}), { status: 'failed', errorKind: 'blocked' }],
+      [mapRevgasError(403, {}), { status: 'failed', errorKind: 'forbidden' }],
+      [mapRevgasError(404, {}), { status: 'failed', errorKind: 'not_found' }],
+      [new SaleRejectedError('inválida'), { status: 'rejected', errorKind: 'validation' }],
+    ] as const;
+    for (const [error, outcome] of cases) {
+      const { attempts, events, run } = createSale(error);
+
+      await expect(run()).rejects.toBe(error);
+
+      expect(attempts.finish).toHaveBeenCalledExactlyOnceWith(CYCLE, outcome);
+      expect(events.record).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'sale_outcome_unknown' }),
+      );
+    }
+  });
+
+  it('devolve o número da venda quando o resultado não pode ser gravado', async () => {
+    const { attempts, orders, logger, run } = createSale();
+    attempts.finish.mockRejectedValueOnce(new Error('conexão perdida 12345678909'));
+
+    await expect(run()).resolves.toBe(7);
+
+    expect(orders.createSale).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(logger.error.mock.calls[0][0]).toMatchObject({ cycleId: CYCLE, saleId: 7 });
+    const logged = JSON.stringify(logger.error.mock.calls);
+    expect(logged).not.toContain('12345678909');
+    expect(logged).not.toContain(PHONE);
+  });
+
+  it('modo híbrido grava a tentativa como simulada', async () => {
+    for (const [mode, isSimulated] of [
+      ['hybrid', true],
+      ['live', false],
+    ] as const) {
+      Object.assign(env, {
+        REVGAS_MODE: mode,
+        REVGAS_API_KEY: 'chave-de-teste',
+        REVGAS_ESTABLISHMENT_ID: 1,
+      });
+      const { attempts, tools, run } = createSale();
+
+      await run();
+
+      expect(attempts.begin).toHaveBeenCalledWith(expect.objectContaining({ isSimulated }));
+      expect(tools.demo).toBe(isSimulated);
+    }
+  });
+
+  it('cliente sem histórico carregado conta como novo', async () => {
+    const { attempts, tools } = createSale();
+    const segment = customerSegmentOf({ step: 'summary', customer: {} });
+
+    await tools.createSale(saleOrder, { segment });
+
+    expect(attempts.begin).toHaveBeenCalledWith(
+      expect.objectContaining({ customerSegment: 'new' }),
+    );
+  });
+
+  it('não cria a venda quando o mesmo cliente tem tentativa incerta recente em outro ciclo', async () => {
+    const error = new SaleUncertainError('Tentativa incerta recente do mesmo cliente');
+    const { attempts, orders, events, run } = createSale();
+    attempts.begin.mockRejectedValueOnce(error);
+
+    await expect(run()).rejects.toBe(error);
+
+    expect(orders.createSale).not.toHaveBeenCalled();
+    expect(attempts.finish).not.toHaveBeenCalled();
+    expect(events.record).not.toHaveBeenCalled();
+  });
+
+  it('saleAttemptStatus lê a tentativa do ciclo da conversa', async () => {
+    const { service, attempts } = setup();
+    attempts.statusOf.mockResolvedValueOnce('uncertain' as never);
+
+    await expect(
+      service.forPhone(PHONE, async () => undefined, CYCLE).saleAttemptStatus(),
+    ).resolves.toBe('uncertain');
+    await expect(
+      service.forPhone(PHONE, async () => undefined).saleAttemptStatus(),
+    ).resolves.toBeNull();
+
+    expect(attempts.statusOf).toHaveBeenCalledExactlyOnceWith(CYCLE);
+  });
 });

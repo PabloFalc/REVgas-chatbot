@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, lt, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DRIZZLE } from 'src/infra/database/drizzle-client';
 import type * as schema from 'src/infra/database/schemas';
@@ -14,6 +14,7 @@ import {
 } from './contracts/order.types';
 
 const STALE_ATTEMPT_SECONDS = 60;
+const UNCERTAIN_GUARD_HOURS = 24;
 
 type Existing = { status: SaleAttemptStatus; erpSaleId: number | null } | undefined;
 
@@ -22,6 +23,9 @@ export class SaleAttemptsRepository {
   constructor(@Inject(DRIZZLE) private readonly db: NodePgDatabase<typeof schema>) {}
 
   async begin(attempt: SaleAttemptInput): Promise<void> {
+    if (await this.store(() => this.hasRecentUncertain(attempt))) {
+      throw new SaleUncertainError('Tentativa incerta recente do mesmo cliente em outro ciclo');
+    }
     const existing = await this.store(() => this.claim(attempt));
     if (!existing) return;
     if (existing.status === 'registered' && existing.erpSaleId !== null) {
@@ -67,6 +71,23 @@ export class SaleAttemptsRepository {
       )
       .returning({ cycleId: saleAttempts.cycleId });
     return rows.map(row => row.cycleId);
+  }
+
+  private async hasRecentUncertain(attempt: SaleAttemptInput): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: saleAttempts.id })
+      .from(saleAttempts)
+      .where(
+        and(
+          eq(saleAttempts.customerId, attempt.customerId),
+          ne(saleAttempts.cycleId, attempt.cycleId),
+          eq(saleAttempts.status, 'uncertain'),
+          eq(saleAttempts.isSimulated, attempt.isSimulated),
+          gt(saleAttempts.updatedAt, sql`now() - make_interval(hours => ${UNCERTAIN_GUARD_HOURS})`),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
   }
 
   private async claim(attempt: SaleAttemptInput): Promise<Existing> {
