@@ -3,11 +3,13 @@ import { RevgasDuplicateError, RevgasValidationError } from '../../core/erros/re
 import type { RevgasCustomer } from '../../integrations/revgas/customers/customers.schemas';
 import { REVGAS_CLIENT, type RevgasClient } from '../../integrations/revgas/revgas.client';
 import type { RevgasSale } from '../../integrations/revgas/sales/sales.schemas';
+import { onlyDigits } from '../../utils/cpf';
 import { normalizeText } from '../../utils/text';
 import type { Address } from '../address/contracts/address.types';
 import {
   CpfTakenError,
   type Customer,
+  type CustomerCandidate,
   type CustomerHistory,
   CustomerRejectedError,
   type LastOrder,
@@ -42,6 +44,11 @@ const toCustomer = (customer: RevgasCustomer): Customer => ({
   name: customer.name ?? '',
   cpf: customer.cpf ?? null,
   tagId: customer.tag_id ?? null,
+});
+
+const toCandidate = (customer: RevgasCustomer): CustomerCandidate => ({
+  ...toCustomer(customer),
+  cpf: onlyDigits(customer.cpf ?? '') || null,
 });
 
 const toAddress = (raw: RawAddress): Address | null => {
@@ -126,6 +133,11 @@ export class CustomerRepository {
       return best;
     });
     return toCustomer(latest);
+  }
+
+  async findAllByPhone(phone: string): Promise<CustomerCandidate[]> {
+    const found = await this.revgas.customers.findByPhone(phone);
+    return found.map(toCandidate);
   }
 
   async create(input: NewCustomer): Promise<Customer> {

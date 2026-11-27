@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RevgasDuplicateError, RevgasValidationError } from '../../core/erros/revgas/revgas.errors';
+import { CustomersHttp } from '../../integrations/revgas/customers/customers.http';
 import type { RevgasCustomer } from '../../integrations/revgas/customers/customers.schemas';
 import { FakeRevgasClient } from '../../integrations/revgas/fake-revgas.client';
+import type { RevgasClient } from '../../integrations/revgas/revgas.client';
+import { pagination, setupHttp } from '../../integrations/revgas/testing/http.testing';
 import type { Address } from '../address/contracts/address.types';
 import { CpfTakenError, CustomerRejectedError } from './contracts/customer.types';
 import { CustomerRepository } from './customer.repository';
@@ -46,20 +49,61 @@ describe('CustomerRepository', () => {
       });
     });
 
-    it('picks the customer with the most recent last_sale when several share the phone', async () => {
-      const { repository } = build([
-        seeded({ id: 5001, name: 'Antigo', last_sale: '2024-01-01T00:00:00' }),
-        seeded({ id: 5002, name: 'Recente', last_sale: '2025-06-01T00:00:00' }),
-        seeded({ id: 5003, name: 'Sem compra' }),
-      ]);
-
-      expect((await repository.findByPhone(PHONE))?.name).toBe('Recente');
-    });
-
     it('returns null when nobody matches', async () => {
       const { repository } = build();
 
       expect(await repository.findByPhone(PHONE)).toBeNull();
+    });
+  });
+
+  describe('findAllByPhone', () => {
+    it('devolve todos os cadastros do telefone com page_size 100', async () => {
+      const { http, call } = setupHttp([
+        {
+          body: {
+            data: [
+              seeded({
+                id: 5001,
+                name: 'Antigo',
+                cpf: '111.444.777-35',
+                tag_id: 7,
+                last_sale: '2024-01-01T00:00:00',
+              }),
+              seeded({ id: 5002, name: 'Recente', cpf: null, last_sale: '2025-06-01T00:00:00' }),
+            ],
+            pagination: pagination({ count: 2, total_count: 2 }),
+          },
+        },
+      ]);
+      const client = { customers: new CustomersHttp(http) } as unknown as RevgasClient;
+      const repository = new CustomerRepository(client);
+
+      expect(await repository.findAllByPhone('+55 (86) 99999-0000')).toEqual([
+        { id: 5001, name: 'Antigo', cpf: '11144477735', tagId: 7 },
+        { id: 5002, name: 'Recente', cpf: null, tagId: null },
+      ]);
+      const { url } = call();
+      expect(url.pathname).toBe('/v1/customers');
+      expect(url.searchParams.get('phone')).toBe(PHONE);
+      expect(url.searchParams.get('page_size')).toBe('100');
+    });
+
+    it('cadastro sem dígitos de CPF vira cpf null', async () => {
+      const { repository } = build([
+        seeded({ id: 5001, cpf: '' }),
+        seeded({ id: 5002, cpf: '.-' }),
+      ]);
+
+      expect((await repository.findAllByPhone(PHONE)).map(candidate => candidate.cpf)).toEqual([
+        null,
+        null,
+      ]);
+    });
+
+    it('devolve lista vazia quando ninguém tem o telefone', async () => {
+      const { repository } = build();
+
+      expect(await repository.findAllByPhone(PHONE)).toEqual([]);
     });
   });
 

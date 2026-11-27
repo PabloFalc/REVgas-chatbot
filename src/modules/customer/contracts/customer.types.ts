@@ -7,6 +7,8 @@ export interface Customer {
   tagId: number | null;
 }
 
+export type CustomerCandidate = Customer;
+
 export interface NewCustomer {
   phone: string;
   name: string;
