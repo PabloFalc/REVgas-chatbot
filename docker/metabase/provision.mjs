@@ -2,16 +2,19 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
   buildCardPayload,
-  buildCardUpdate,
+  buildDashboardPayload,
   buildDatabasePayload,
   CARDS,
   COLLECTIONS,
+  DASHBOARDS,
   DATABASE_NAME,
   findByName,
   loadConfig,
   planCard,
+  planDashboard,
   planDatabase,
   redact,
+  reuseDashcardIds,
 } from './provision.lib.mjs';
 
 const REPORT_TIMEZONE = 'America/Sao_Paulo';
@@ -195,21 +198,65 @@ async function provisionCollections(client) {
 }
 
 async function provisionCards(client, databaseId, collectionIds) {
-  for (const { name, collection } of CARDS) {
-    const sql = await readFile(`${SQL_DIR}${name}.sql`, 'utf8');
+  const provisioned = {};
+  for (const { name, sqlFile, collection, display, settings } of CARDS) {
+    const sql = await readFile(`${SQL_DIR}${sqlFile}.sql`, 'utf8');
     const collectionId = collectionIds[collection];
-    const desired = buildCardPayload({ name, sql, databaseId, collectionId });
+    const desired = buildCardPayload({
+      name,
+      sql,
+      databaseId,
+      collectionId,
+      display,
+      visualizationSettings: settings,
+    });
     const items = await client.get(`/api/collection/${collectionId}/items?models=card&limit=500`);
     const found = findByName(items.data, name);
     const existing = found ? await client.get(`/api/card/${found.id}`) : undefined;
     const action = planCard(existing, desired);
-    const label = `pergunta "${name}" (coleção ${collection})`;
+    const label = `pergunta "${name}" (coleção ${collection}, ${display})`;
+    let id = existing?.id;
     if (action === 'create') {
-      await client.post('/api/card', desired);
+      id = (await client.post('/api/card', desired)).id;
     } else if (action === 'update') {
-      await client.put(`/api/card/${existing.id}`, buildCardUpdate(desired));
+      await client.put(`/api/card/${existing.id}`, desired);
     }
+    provisioned[name] = { id, sql };
     report(action, label);
+  }
+  return provisioned;
+}
+
+async function provisionDashboards(client, collectionIds, cards) {
+  for (const { name, collection, cards: layout } of DASHBOARDS) {
+    const collectionId = collectionIds[collection];
+    const desired = buildDashboardPayload({
+      name,
+      collectionId,
+      cards: layout.map(item => ({
+        cardId: cards[item.card].id,
+        sql: cards[item.card].sql,
+        col: item.col,
+        row: item.row,
+        sizeX: item.sizeX,
+        sizeY: item.sizeY,
+        title: item.title,
+      })),
+    });
+    const items = await client.get(
+      `/api/collection/${collectionId}/items?models=dashboard&limit=500`,
+    );
+    const found = findByName(items.data, name);
+    const existing = found ? await client.get(`/api/dashboard/${found.id}`) : undefined;
+    const action = planDashboard(existing, desired);
+    if (action !== 'unchanged') {
+      const id =
+        existing?.id ??
+        (await client.post('/api/dashboard', { name, collection_id: collectionId })).id;
+      const { parameters, dashcards } = reuseDashcardIds(existing, desired);
+      await client.put(`/api/dashboard/${id}`, { parameters, dashcards });
+    }
+    report(action, `dashboard "${name}" (coleção ${collection})`);
   }
 }
 
@@ -229,7 +276,9 @@ async function main() {
   console.log('Coleções');
   const collectionIds = await provisionCollections(client);
   console.log('Perguntas');
-  await provisionCards(client, databaseId, collectionIds);
+  const cards = await provisionCards(client, databaseId, collectionIds);
+  console.log('Dashboards');
+  await provisionDashboards(client, collectionIds, cards);
 
   console.log(
     `Concluído: ${summary.create} criado(s), ${summary.update} atualizado(s), ${summary.unchanged} sem mudança.`,

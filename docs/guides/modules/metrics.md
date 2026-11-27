@@ -117,6 +117,12 @@ Os quatro cards vão em duas coleções, criadas pelo provisionamento: Gestor (`
 - `dias`: numérica, obrigatória, padrão 30. O próprio SQL recusa valores fora de 1 a 365 com erro do Postgres (`dias deve estar entre 1 e 365, recebido N`), sem ajustar o valor. O Metabase não impede 0 ou 10000 na variável, então a trava fica no SQL.
 - `incluir_simulados`: texto, obrigatória, padrão `nao`, com lista de valores `nao` e `sim`. Com `nao` as linhas simuladas ficam de fora. Com `sim` entram também as simuladas, nas duas tabelas. Qualquer outro valor se comporta como `nao`.
 
+### Dashboards
+
+O mesmo comando cria o dashboard "Gestor" na coleção Gestor (vendas, conversão e abandono) e o dashboard "Supervisor" na coleção Supervisor (espera até assumir). Para abrir, entre no Metabase, vá em Collections, escolha a coleção e clique no dashboard.
+
+Cada dashboard tem os filtros "Dias" (padrão 30) e "Incluir simulados" (padrão `nao`), ligados às variáveis de todos os cards. Pedidos, valor, ticket médio, incertos, conversão e espera são números (`scalar`, uma coluna por card, reaproveitando o mesmo SQL); o abandono por etapa é gráfico de barras. Rodar o provisionamento de novo só corrige o que divergir.
+
 A espera do supervisor mostra mediana, p90 e contagem. O percentual de meta fica de fora até a revenda aprovar o limite.
 
 Limitação conhecida: o abandono depende do evento `conversation_resolved`, que ainda não tem produtor. Por isso um ciclo com `handoff_resolved` e sem venda aparece como abandono com etapa `unknown`.

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCardPayload,
+  buildDashboardParameters,
+  buildDashboardPayload,
+  buildDashcardMappings,
   buildDatabasePayload,
   buildParameters,
   buildTemplateTags,
@@ -8,8 +11,10 @@ import {
   findByName,
   loadConfig,
   planCard,
+  planDashboard,
   planDatabase,
   redact,
+  reuseDashcardIds,
 } from './provision.lib.mjs';
 
 const SQL = `-- {{comentario}} fica de fora? não, o regex pega
@@ -35,6 +40,8 @@ function lerComoApi(original: ReturnType<typeof buildCardPayload>) {
         },
       ],
     },
+    display: payload.display,
+    visualization_settings: { ...payload.visualization_settings, 'extra.key': true },
     parameters: payload.parameters,
   };
 }
@@ -179,6 +186,185 @@ describe('planCard', () => {
     lido.database_id = 99;
     lido.dataset_query.database = 99;
     expect(planCard(lido, desired)).toBe('update');
+  });
+});
+
+describe('visualização do card', () => {
+  const base = { name: 'x', sql: 'SELECT 1', databaseId: 3, collectionId: 9 };
+
+  it('sem visualização informada mantém tabela sem configurações', () => {
+    const payload = buildCardPayload(base);
+    expect(payload.display).toBe('table');
+    expect(payload.visualization_settings).toEqual({});
+  });
+
+  it('usa display e configurações informados', () => {
+    const payload = buildCardPayload({
+      ...base,
+      display: 'bar',
+      visualizationSettings: { 'graph.dimensions': ['a'], 'graph.metrics': ['b'] },
+    });
+    expect(payload.display).toBe('bar');
+    expect(payload.visualization_settings).toEqual({
+      'graph.dimensions': ['a'],
+      'graph.metrics': ['b'],
+    });
+  });
+
+  it('planCard ignora chaves extras que o Metabase acrescenta nas configurações', () => {
+    const desired = buildCardPayload({
+      ...base,
+      display: 'scalar',
+      visualizationSettings: { 'scalar.field': 'a' },
+    });
+    expect(planCard(lerComoApi(desired), desired)).toBe('unchanged');
+  });
+
+  it('planCard manda atualizar quando o tipo de gráfico mudou', () => {
+    const desired = buildCardPayload({ ...base, display: 'bar' });
+    const lido = lerComoApi(desired);
+    lido.display = 'table';
+    expect(planCard(lido, desired)).toBe('update');
+  });
+
+  it('planCard manda atualizar quando uma configuração mudou', () => {
+    const desired = buildCardPayload({
+      ...base,
+      display: 'scalar',
+      visualizationSettings: { 'scalar.field': 'a' },
+    });
+    const lido = lerComoApi(desired);
+    lido.visualization_settings['scalar.field'] = 'b';
+    expect(planCard(lido, desired)).toBe('update');
+  });
+});
+
+describe('dashboard', () => {
+  const sqlDias = 'SELECT {{dias}}, {{incluir_simulados}}';
+  const cards = [
+    { cardId: 5, sql: sqlDias, col: 0, row: 0, sizeX: 12, sizeY: 3, title: 'Um' },
+    { cardId: 6, sql: 'SELECT {{dias}}', col: 12, row: 0, sizeX: 12, sizeY: 3 },
+  ];
+  const desired = buildDashboardPayload({ name: 'Gestor', collectionId: 9, cards });
+
+  function lerDashboard(original: typeof desired) {
+    const payload = structuredClone(original);
+    return {
+      id: 4,
+      name: payload.name,
+      collection_id: payload.collection_id,
+      parameters: payload.parameters.map((p: object) => ({ ...p, sectionId: 'x' })),
+      dashcards: payload.dashcards.map((d: { id: number }, i: number) => ({
+        ...d,
+        id: 100 + i,
+        entity_id: 'abc',
+      })),
+    };
+  }
+
+  it('cria filtros Dias e Incluir simulados com os padrões das perguntas', () => {
+    const [dias, simulados] = buildDashboardParameters();
+    expect(dias).toMatchObject({
+      name: 'Dias',
+      slug: 'dias',
+      type: 'number/=',
+      default: 30,
+    });
+    expect(simulados).toMatchObject({
+      name: 'Incluir simulados',
+      slug: 'incluir_simulados',
+      type: 'string/=',
+      default: ['nao'],
+      values_source_type: 'static-list',
+      values_source_config: { values: ['nao', 'sim'] },
+    });
+  });
+
+  it('mapeia cada filtro às variáveis que o SQL do card usa', () => {
+    const [dias, simulados] = buildDashboardParameters();
+    expect(buildDashcardMappings(5, sqlDias)).toEqual([
+      {
+        card_id: 5,
+        parameter_id: dias.id,
+        target: ['variable', ['template-tag', 'dias']],
+      },
+      {
+        card_id: 5,
+        parameter_id: simulados.id,
+        target: ['variable', ['template-tag', 'incluir_simulados']],
+      },
+    ]);
+  });
+
+  it('só mapeia as variáveis presentes no SQL', () => {
+    expect(buildDashcardMappings(6, 'SELECT {{dias}}')).toHaveLength(1);
+  });
+
+  it('monta dashcards com posição, mapeamentos e título', () => {
+    expect(desired.name).toBe('Gestor');
+    expect(desired.collection_id).toBe(9);
+    expect(desired.dashcards).toHaveLength(2);
+    expect(desired.dashcards[0]).toMatchObject({
+      card_id: 5,
+      col: 0,
+      row: 0,
+      size_x: 12,
+      size_y: 3,
+      visualization_settings: { 'card.title': 'Um' },
+    });
+    expect(desired.dashcards[0].parameter_mappings).toHaveLength(2);
+    expect(desired.dashcards[1].visualization_settings).toEqual({});
+  });
+
+  it('usa ids temporários negativos e distintos nos dashcards', () => {
+    const ids = desired.dashcards.map((d: { id: number }) => d.id);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids.every((id: number) => id < 0)).toBe(true);
+  });
+
+  it('reaproveita o id do dashcard existente do mesmo card', () => {
+    const lido = lerDashboard(desired);
+    const novo = reuseDashcardIds(lido, desired);
+    expect(novo.dashcards.map((d: { id: number }) => d.id)).toEqual([100, 101]);
+    expect(reuseDashcardIds(undefined, desired).dashcards[0].id).toBe(-1);
+  });
+
+  it('sem dashboard existente manda criar', () => {
+    expect(planDashboard(undefined, desired)).toBe('create');
+  });
+
+  it('dashboard igual, lido no formato da API, não muda', () => {
+    expect(planDashboard(lerDashboard(desired), desired)).toBe('unchanged');
+  });
+
+  it('card removido do dashboard manda atualizar', () => {
+    const lido = lerDashboard(desired);
+    lido.dashcards.pop();
+    expect(planDashboard(lido, desired)).toBe('update');
+  });
+
+  it('mapeamento perdido manda atualizar', () => {
+    const lido = lerDashboard(desired);
+    lido.dashcards[0].parameter_mappings.pop();
+    expect(planDashboard(lido, desired)).toBe('update');
+  });
+
+  it('padrão de filtro alterado manda atualizar', () => {
+    const lido = lerDashboard(desired);
+    lido.parameters[0].default = 7;
+    expect(planDashboard(lido, desired)).toBe('update');
+  });
+
+  it('posição diferente manda atualizar', () => {
+    const lido = lerDashboard(desired);
+    lido.dashcards[1].row = 9;
+    expect(planDashboard(lido, desired)).toBe('update');
+  });
+
+  it('título diferente manda atualizar', () => {
+    const lido = lerDashboard(desired);
+    lido.dashcards[0].visualization_settings = {};
+    expect(planDashboard(lido, desired)).toBe('update');
   });
 });
 
