@@ -144,6 +144,8 @@ export const msg = {
   invalidCpf: 'Esse CPF não parece válido. Confira e mande de novo (só números).',
   askFullCpf: 'Para sua segurança, digite seu CPF completo.',
   cpfMismatch: 'Não consegui confirmar. Confira o CPF e digite de novo.',
+  identityHandoff: 'Não consegui confirmar seus dados por aqui. Vou passar para um atendente.',
+  ownerChanged: 'Número mudou de dono',
   identityContactStore: (phone?: string) =>
     `Não consegui confirmar seus dados por aqui. ${storeContact(phone)}`,
   cpfTaken: (phone?: string) =>

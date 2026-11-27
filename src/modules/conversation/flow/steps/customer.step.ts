@@ -16,12 +16,13 @@ import {
   keepOfferedProduct,
   looksLikeOrder,
 } from '../free-text';
+import { identityHandoff } from '../handoff';
 import { checkCpf, resolveIdentity } from '../identity';
 import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
 import { answerOrderStatus } from '../order-status';
-import { text } from '../replies';
+import { buttons, text } from '../replies';
 import { offerOrNext } from './repeat.step';
 
 const MAX_NAME_LENGTH = 100;
@@ -89,9 +90,11 @@ export async function welcomeKnown(state: OrderState, tools: FlowTools): Promise
   };
 }
 
-function contactStore(tools: FlowTools): StepResult {
-  return { state: null, replies: [text(msg.identityContactStore(tools.storePhone))] };
-}
+const OWNER_CHANGED_CHOICE = 'identity:owner-changed';
+const IDENTITY_AGENT_CHOICE = 'identity:agent';
+
+const agentOption = { id: IDENTITY_AGENT_CHOICE, title: msg.talkToAgent };
+const ownerChangedOption = { id: OWNER_CHANGED_CHOICE, title: msg.ownerChanged };
 
 function askIdentity(state: OrderState): StepResult {
   return { state: { ...state, step: 'confirmCpf', customer: {} }, replies: [text(msg.askFullCpf)] };
@@ -110,7 +113,7 @@ export async function start(
         replies: [text(greeting(msg.welcomeNew, tools))],
       };
     case 'handoff':
-      return contactStore(tools);
+      return identityHandoff(null, input.phone, tools);
     case 'verified':
       return welcomeKnown({ step: 'confirmCpf', ...seed, customer: identity.customer }, tools);
     case 'ask':
@@ -154,10 +157,24 @@ const handleAskCpf: HandleFn = async (state, input, tools) => {
   return nextStep({ ...state, customer: { ...state.customer, cpf: onlyDigits(raw) } }, tools);
 };
 
+function ownerChanged(state: OrderState, tools: FlowTools): Promise<StepResult> {
+  tools.track({ name: 'identity_check', outcome: 'owner_changed' });
+  const { pendingOrderStatus: _pending, ...rest } = state;
+  return askName({ ...rest, customer: {} }, tools);
+}
+
 const handleConfirmCpf: HandleFn = async (state, input, tools) => {
+  if (input.content.type === 'choice') {
+    if (input.content.id === OWNER_CHANGED_CHOICE) return ownerChanged(state, tools);
+    if (input.content.id === IDENTITY_AGENT_CHOICE) {
+      return identityHandoff(state, input.phone, tools);
+    }
+  }
   const raw = textOf(input);
   if (raw === null || !isValidCpf(raw)) {
-    if (raw !== null && hasCpfLikeDigits(raw)) return { state, replies: [text(msg.invalidCpf)] };
+    if (raw !== null && hasCpfLikeDigits(raw)) {
+      return { state, replies: [buttons(msg.invalidCpf, [agentOption])] };
+    }
     return freeTextOr(state, raw, tools, msg.askFullCpf);
   }
   const result = await checkCpf(input.phone, raw, tools);
@@ -166,13 +183,13 @@ const handleConfirmCpf: HandleFn = async (state, input, tools) => {
       if (state.pendingOrderStatus) return answerOrderStatus(state, result.customer.id, tools);
       return welcomeKnown({ ...state, customer: result.customer }, tools);
     case 'mismatch':
-      return { state, replies: [text(msg.cpfMismatch)] };
+      return { state, replies: [buttons(msg.cpfMismatch, [ownerChangedOption, agentOption])] };
     case 'invalid':
-      return { state, replies: [text(msg.invalidCpf)] };
+      return { state, replies: [buttons(msg.invalidCpf, [agentOption])] };
     case 'new':
     case 'ask':
     case 'handoff':
-      return contactStore(tools);
+      return identityHandoff(state, input.phone, tools);
   }
 };
 

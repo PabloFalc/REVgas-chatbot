@@ -1,5 +1,6 @@
 import type {
   HandoffOrderSummary,
+  HandoffOutcome,
   HandoffReason,
 } from 'src/modules/handoff/contracts/handoff.types';
 import { normalizeText } from 'src/utils/text';
@@ -79,6 +80,13 @@ export function requestReasonFor(state: OrderState | null): HandoffReason {
   return state?.step === 'saleFailed' ? 'sale_failed' : 'customer_request';
 }
 
+function queueReply(outcome: HandoffOutcome): Reply {
+  if (outcome.status === 'queued') {
+    return text(outcome.open ? msg.handoffQueued : msg.handoffClosed(outcome.nextOpening));
+  }
+  return text(msg.handoffAlreadyQueued);
+}
+
 export async function handoff(
   state: OrderState | null,
   phone: string,
@@ -89,9 +97,21 @@ export async function handoff(
   if (outcome.status === 'unavailable') {
     return { state, replies: [text(msg.talkToStore(tools.storePhone))] };
   }
-  if (outcome.status === 'queued') {
-    const body = outcome.open ? msg.handoffQueued : msg.handoffClosed(outcome.nextOpening);
-    return { state, replies: [text(body)] };
+  return { state, replies: [queueReply(outcome)] };
+}
+
+export async function identityHandoff(
+  state: OrderState | null,
+  phone: string,
+  tools: FlowTools,
+): Promise<StepResult> {
+  const outcome = await tools.requestHandoff({
+    phone,
+    reason: 'identity_failure',
+    summary: handoffSummary(state),
+  });
+  if (outcome.status === 'unavailable') {
+    return { state: null, replies: [text(msg.identityContactStore(tools.storePhone))] };
   }
-  return { state, replies: [text(msg.handoffAlreadyQueued)] };
+  return { state: null, replies: [text(msg.identityHandoff), queueReply(outcome)] };
 }

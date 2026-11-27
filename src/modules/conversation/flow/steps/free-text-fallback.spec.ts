@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FlowInput, FlowTools, OrderState, Step } from '../flow.types';
 import { offer } from '../handoff';
 import { msg } from '../messages';
-import { text } from '../replies';
+import { buttons, text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
 import { handlers } from './index';
 
@@ -163,7 +163,9 @@ describe('fallback de texto livre nas etapas', () => {
 
     for (const bad of ['111.222.333-44', 'meu cpf é 123.456.789-00']) {
       const { fake, out } = await run('confirmCpf', bad);
-      expect(out?.replies).toEqual([text(msg.invalidCpf)]);
+      expect(out?.replies).toEqual([
+        buttons(msg.invalidCpf, [{ id: 'identity:agent', title: msg.talkToAgent }]),
+      ]);
       expect(interpretCalls(fake)).toHaveLength(0);
     }
 
