@@ -147,11 +147,13 @@ export class ConversationService {
     } catch (error) {
       if (started) throw error;
       this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao obter o lock do telefone');
+      await this.conversations.releaseMessage(event.id);
       await this.sendAll(event.from, [text(msg.unavailable)], log);
       return;
     }
     if (!outcome.ran) {
       this.logger.warn(log, 'Lock do telefone não liberou a tempo; mensagem não processada');
+      await this.conversations.releaseMessage(event.id);
       await this.sendAll(event.from, [text(msg.busy)], log);
     }
   }
