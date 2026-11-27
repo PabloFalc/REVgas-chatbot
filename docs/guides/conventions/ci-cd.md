@@ -12,8 +12,9 @@ feature/* ──PR──▶ develop ──▶ staging ──▶ main
 | Branch | Papel | O que dispara |
 |---|---|---|
 | `develop` | Integração das features | `pull-request.yml` (PR e push) |
-| `staging` | Homologação | `ci-cd.yml` no push → testes + build |
-| `main` | Estável | `ci-cd.yml` no push → testes + build |
+| `refactor` | Integração atual do refactor | `ci-cd.yml` no push → testes + build + imagem no GHCR; `docker-smoke.yml` |
+| `staging` | Homologação | `ci-cd.yml` no push → testes + build + imagem no GHCR |
+| `main` | Estável | `ci-cd.yml` no push → testes + build + imagem no GHCR |
 
 > PRs para `develop`, `staging` **e** `main` rodam a suíte completa antes do merge (gate). O
 > `ci-cd.yml` só roda **depois** do merge (no push) e revalida testes + build.
@@ -56,18 +57,52 @@ suíte passar. Tem `concurrency` com `cancel-in-progress: true` — um novo push
 
 ### `ci-cd.yml` — "CI Pipeline"
 
-Dispara no **push** para `staging`/`main` (ou seja, após o merge). Encadeia:
+Dispara no **push** para `refactor`/`staging`/`main` (ou seja, após o merge). Encadeia:
 
 ```
-call-tests ──▶ build
-(tests.yml)   (pnpm build)
+call-tests ──┬─▶ build
+(tests.yml)  │   (pnpm build)
+             └─▶ publish
+                 (imagem no GHCR)
 ```
 
 - **`build`**: roda `pnpm build` como gate de "o projeto compila?". Não gera artefato.
 - `permissions: contents: read` em todo o arquivo.
 - **`concurrency` com `cancel-in-progress: false`**: runs da mesma branch são serializados.
 
-> Um job de deploy (quando houver ambiente de hospedagem definido) entra aqui, depois do `build`.
+- **`publish`**: constrói a imagem `linux/amd64` e publica no GHCR depois que os testes passam.
+  Não faz deploy. Detalhes na seção abaixo.
+
+> Um job de deploy (quando houver ambiente de hospedagem definido) entra aqui, depois do `publish`.
+
+### Imagem no GHCR
+
+O job `publish` usa só o `GITHUB_TOKEN` (permissões `contents: read` e `packages: write`, só nesse
+job) e publica em `ghcr.io/<owner>/<repo>` em minúsculas, ou seja `ghcr.io/pablofalc/revgas-chatbot`.
+PRs nunca publicam. Pushes seguidos na mesma branch cancelam o `publish` anterior.
+
+Tags geradas a cada push:
+
+| Tag | Exemplo | Uso |
+|---|---|---|
+| `sha-<7 dígitos>` | `sha-a1b2c3d` | Imutável. Use para deploy e rollback. |
+| nome da branch | `refactor`, `staging`, `main` | Móvel, aponta para o último push da branch. |
+
+Para puxar:
+
+```bash
+docker pull ghcr.io/pablofalc/revgas-chatbot:sha-a1b2c3d
+```
+
+O pacote nasce **privado**. Quem puxa (o servidor, por exemplo) precisa fazer login com um token
+que tenha o escopo `read:packages`:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <usuario-github> --password-stdin
+```
+
+Se o pacote não herdar o acesso do repositório, dê acesso ao repositório em Package settings do
+GitHub, ou torne o pacote público.
 
 ### `docker-smoke.yml` — smoke test da imagem
 

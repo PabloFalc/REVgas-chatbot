@@ -8,3 +8,9 @@ logs
 *.log
 .git
 docs/project/private
+.github
+.claude
+.vscode
+docs
+tests
+scripts
