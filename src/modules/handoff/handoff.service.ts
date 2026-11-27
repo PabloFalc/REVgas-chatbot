@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { ChatwootError } from 'src/core/erros/chatwoot/chatwoot.errors';
+import type { BotEventsRepository } from 'src/modules/metrics/bot-events.repository';
 import { hideCpfs } from 'src/utils/cpf';
 import { maskPhone } from 'src/utils/mask';
 import { isOpenAt, nextOpening, type ServiceWindow } from 'src/utils/service-hours';
@@ -96,6 +98,7 @@ export class HandoffService {
     private readonly logger: PinoLogger,
     @Optional() @Inject(HANDOFF_CLOCK) clock?: HandoffClock,
     @Optional() @Inject(SERVICE_HOURS) hours?: ServiceWindow[],
+    @Optional() private readonly events?: BotEventsRepository,
   ) {
     this.clock = clock ?? { now: () => new Date() };
     this.hours = hours ?? [];
@@ -145,11 +148,15 @@ export class HandoffService {
       hideCpfs(handoffNote(request.reason, request.summary)),
     );
     await this.desk.setStatus(conversationId, 'open');
+    const requestedAt = this.clock.now().toISOString();
     await this.repo.saveState(phone, {
       status: 'queued',
       conversationId,
       reason: request.reason,
-      since: this.clock.now().toISOString(),
+      since: requestedAt,
+      requestedAt,
+      handoffId: randomUUID(),
+      ...(request.cycleId ? { cycleId: request.cycleId } : {}),
     });
     return outcome('queued');
   }
@@ -233,20 +240,46 @@ export class HandoffService {
     if (!this.desk.enabled) return { becameActive: false };
     const previous = await this.repo.getState(phone);
     const now = this.clock.now().toISOString();
+    if (previous?.status === 'active') {
+      await this.repo.saveState(phone, { ...previous, conversationId, lastAgentAt: now });
+      await this.repo.saveThread(phone, { conversationId });
+      return { becameActive: false };
+    }
+    const requestedAt = previous ? (previous.requestedAt ?? previous.since) : undefined;
+    const handoffId = previous?.handoffId ?? randomUUID();
     await this.repo.saveState(phone, {
+      ...previous,
       status: 'active',
       conversationId,
       reason: previous?.reason ?? 'agent',
-      since: previous?.status === 'active' ? previous.since : now,
+      since: now,
+      handoffId,
+      ...(requestedAt ? { requestedAt } : {}),
+      assumedAt: now,
       lastAgentAt: now,
     });
     await this.repo.saveThread(phone, { conversationId });
-    return { becameActive: previous?.status !== 'active' };
+    if (previous && requestedAt) {
+      this.emit('handoff_assumed', previous, handoffId, Date.parse(now) - Date.parse(requestedAt));
+    }
+    return { becameActive: true };
   }
 
   async endFromDesk(phone: string, conversationId: number): Promise<void> {
     const state = await this.repo.getState(phone);
-    if (state?.conversationId === conversationId) await this.repo.clearState(phone);
+    if (state?.conversationId === conversationId) {
+      if (state.status === 'active') {
+        const resolvedAt = this.clock.now();
+        const assumedAt = Date.parse(state.assumedAt ?? state.since);
+        this.emit(
+          'handoff_resolved',
+          state,
+          state.handoffId ?? randomUUID(),
+          resolvedAt.getTime() - assumedAt,
+        );
+      }
+      await this.repo.clearState(phone);
+    }
     const thread = await this.repo.getThread(phone);
     if (thread?.conversationId === conversationId) await this.repo.clearThread(phone);
   }
@@ -286,7 +319,14 @@ export class HandoffService {
   private async activeState(phone: string): Promise<HandoffState | null> {
     const state = await this.repo.getState(phone);
     if (!state) return null;
-    if (!isExpired(state, this.clock.now())) return state;
+    const now = this.clock.now();
+    if (!isExpired(state, now)) return state;
+    this.emit(
+      'handoff_expired',
+      state,
+      state.handoffId ?? randomUUID(),
+      now.getTime() - Date.parse(state.requestedAt ?? state.since),
+    );
     if (this.desk.enabled) {
       try {
         await this.desk.postNote(state.conversationId, EXPIRED_NOTE);
@@ -298,6 +338,20 @@ export class HandoffService {
     await this.repo.clearState(phone);
     await this.repo.clearThread(phone);
     return null;
+  }
+
+  private emit(
+    name: 'handoff_assumed' | 'handoff_resolved' | 'handoff_expired',
+    state: HandoffState,
+    handoffId: string,
+    durationMs: number,
+  ): void {
+    this.events?.record({
+      name,
+      cycleId: state.cycleId,
+      handoffId,
+      durationMs: Math.max(0, durationMs),
+    });
   }
 
   private async postEmergencyNote(phone: string, conversationId: number): Promise<void> {

@@ -4,7 +4,7 @@ O módulo grava eventos em `bot_events` para acompanhar pedidos, dúvidas e falh
 
 ## Schema e correlação
 
-A tabela tem `id` bigint identity, `occurred_at` timestamptz, `name`, `cycle_id` UUID opcional, `prev_step`, `step`, `outcome`, `reason`, `duration_ms` e `amount`. As classificações são uniões fechadas em `metrics.types.ts`. Os índices cobrem data, nome com data e ciclo.
+A tabela tem `id` bigint identity, `occurred_at` timestamptz, `name`, `cycle_id` UUID opcional, `handoff_id` UUID opcional, `prev_step`, `step`, `outcome`, `reason`, `duration_ms` e `amount`. As classificações são uniões fechadas em `metrics.types.ts`. Os índices cobrem data, nome com data e ciclo.
 
 `cycle_id` é um UUID aleatório gerado para cada ciclo de pedido e mantido no estado do Redis. Estados antigos recebem um UUID quando avançam ou enviam lembrete. O identificador não deriva do telefone e não permite consultar um cliente. Eventos na rota humana podem ficar sem ciclo.
 
@@ -19,6 +19,7 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 | `sale` | `created`, `failed`, `rejected`; razão `direct`, `recovered`, tipo de erro RevGás ou `unexpected` |
 | `order_cancelled` | Pedido cancelado pelo cliente sem venda criada |
 | `handoff` | Status do handoff; `customer_request`, `sale_failed`, `emergency` |
+| `handoff_assumed`, `handoff_resolved`, `handoff_expired` | `handoff_id` aleatório do ciclo humano e duração em ms: fila até a primeira mensagem humana, atendimento até a resolução, ou tempo desde o pedido até a expiração. Sem telefone, conversa Chatwoot nem mensagem |
 | `handoff_offered` | `stuck` após três incompreensões ou `offense` após duas ofensas |
 | `quantity_limit` | `max` ou `stock` |
 | `emergency` | `agent_route` quando há emergência na rota humana |

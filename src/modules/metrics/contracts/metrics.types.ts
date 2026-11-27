@@ -32,4 +32,9 @@ export type MetricEvent = Cycle &
       }
     | { name: 'order_status'; outcome: 'found' | 'none' }
     | { name: 'cpf'; outcome: 'mismatch' | 'blocked' | 'blocked_hit'; amount: number }
+    | {
+        name: 'handoff_assumed' | 'handoff_resolved' | 'handoff_expired';
+        handoffId: string;
+        durationMs: number;
+      }
   );

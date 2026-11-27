@@ -43,6 +43,13 @@
       "when": 1795783026980,
       "tag": "0005_sale_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795783480414,
+      "tag": "0006_handoff_id",
+      "breakpoints": true
     }
   ]
 }

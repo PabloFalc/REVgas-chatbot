@@ -16,6 +16,7 @@ export const botEvents = pgTable(
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
     name: text().notNull(),
     cycleId: uuid('cycle_id'),
+    handoffId: uuid('handoff_id'),
     prevStep: text('prev_step'),
     step: text(),
     outcome: text(),
