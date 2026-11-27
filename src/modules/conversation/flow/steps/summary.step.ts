@@ -1,4 +1,12 @@
-import { type SaleOrder, SaleRejectedError } from 'src/modules/order/contracts/order.types';
+import type { HandoffOrderSummary } from 'src/modules/handoff/contracts/handoff.types';
+import {
+  SaleAlreadyRegisteredError,
+  type SaleAttemptStatus,
+  SaleAttemptStoreError,
+  type SaleOrder,
+  SaleRejectedError,
+  SaleUncertainError,
+} from 'src/modules/order/contracts/order.types';
 import { formatMoney } from 'src/utils/money';
 import { customerSegmentOf } from '../customer-segment';
 import {
@@ -11,7 +19,7 @@ import {
   ToolError,
 } from '../flow.types';
 import { freeText } from '../free-text';
-import { handoffButton } from '../handoff';
+import { handoffButton, handoffSummary } from '../handoff';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -74,6 +82,62 @@ const saleFailed: AskFn = async state => ({
   replies: [buttons(msg.saleFailed, [{ id: 'retry:sale', title: msg.retry }, handoffButton()])],
 });
 
+function uncertainSummary(state: OrderState): HandoffOrderSummary | null {
+  const summary = handoffSummary(state);
+  if (!summary) return null;
+  const { customerName: _customerName, address: _address, ...rest } = summary;
+  return rest;
+}
+
+async function saleUncertain(state: OrderState, tools: FlowTools): Promise<StepResult> {
+  const creating: OrderState = { ...state, step: 'creatingSale' };
+  const outcome = await tools.requestHandoff({
+    phone: tools.phone,
+    reason: 'sale_uncertain',
+    summary: uncertainSummary(creating),
+  });
+  const replies = [text(msg.saleUncertain)];
+  if (outcome.status === 'unavailable') replies.push(text(msg.talkToStore(tools.storePhone)));
+  if (outcome.status === 'queued' && !outcome.open) {
+    replies.push(text(msg.handoffClosed(outcome.nextOpening)));
+  }
+  return { state: creating, replies };
+}
+
+async function readAttempt(tools: FlowTools): Promise<SaleAttemptStatus | null | 'unreadable'> {
+  try {
+    return await tools.saleAttemptStatus();
+  } catch (error) {
+    if (error instanceof ToolError) return 'unreadable';
+    throw error;
+  }
+}
+
+function isStale(state: OrderState, tools: FlowTools): boolean {
+  const attemptAt = state.saleAttemptAt ? new Date(state.saleAttemptAt).getTime() : 0;
+  return tools.now().getTime() - attemptAt >= STALE_ATTEMPT_MS;
+}
+
+async function fromAttempt(
+  status: SaleAttemptStatus | null | 'unreadable',
+  state: OrderState,
+  tools: FlowTools,
+): Promise<StepResult> {
+  if (status === 'pending' && !isStale(state, tools)) {
+    return { state: { ...state, step: 'creatingSale' }, replies: [text(msg.saleInProgress)] };
+  }
+  if (status === 'registered') return submitSale(state, tools);
+  if (status === 'rejected') {
+    return { state: null, replies: [text(msg.saleRejected(tools.storePhone))] };
+  }
+  if (status === 'failed' || status === null) return saleFailed(state, tools);
+  return saleUncertain(state, tools);
+}
+
+export async function checkSaleAttempt(state: OrderState, tools: FlowTools): Promise<StepResult> {
+  return fromAttempt(await readAttempt(tools), state, tools);
+}
+
 async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResult> {
   const order = buildOrder(state);
   if (!order) return nextStep(state, tools);
@@ -87,13 +151,24 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
     const id = await tools.createSale(order, { segment: customerSegmentOf(state) });
     return { state: null, replies: [saleCreated(id, order.total, tools)], saleId: id };
   } catch (error) {
-    if (error instanceof ToolError) {
-      if (error.cause instanceof SaleRejectedError) {
-        return { state: null, replies: [text(msg.saleRejected(tools.storePhone))] };
-      }
-      return saleFailed(attempt, tools);
+    if (!(error instanceof ToolError)) throw error;
+    const cause = error.cause;
+    if (cause instanceof SaleRejectedError) {
+      return { state: null, replies: [text(msg.saleRejected(tools.storePhone))] };
     }
-    throw error;
+    if (cause instanceof SaleAttemptStoreError) {
+      return { state: { ...state, step: 'summary' }, replies: [text(msg.saleStoreUnavailable)] };
+    }
+    if (cause instanceof SaleAlreadyRegisteredError) {
+      return {
+        state: null,
+        replies: [saleCreated(cause.saleId, order.total, tools)],
+        saleId: cause.saleId,
+      };
+    }
+    if (cause instanceof SaleUncertainError) return saleUncertain(attempt, tools);
+    if ((await readAttempt(tools)) === 'failed') return saleFailed(attempt, tools);
+    return saleUncertain(attempt, tools);
   }
 }
 
@@ -125,13 +200,7 @@ const handleChooseCorrection: HandleFn = async (state, input, tools) => {
   return chooseCorrection(state, tools);
 };
 
-const handleCreatingSale: HandleFn = async (state, _input, tools) => {
-  const attemptAt = state.saleAttemptAt ? new Date(state.saleAttemptAt).getTime() : 0;
-  if (tools.now().getTime() - attemptAt < STALE_ATTEMPT_MS) {
-    return { state, replies: [text(msg.saleInProgress)] };
-  }
-  return saleFailed(state, tools);
-};
+const handleCreatingSale: HandleFn = async (state, _input, tools) => checkSaleAttempt(state, tools);
 
 export async function cancelAfterFailedSale(
   state: OrderState,
@@ -156,6 +225,8 @@ const handleSaleFailed: HandleFn = async (state, input, tools) => {
   if (choiceOf(input, 'retry') !== 'sale') return saleFailed(state, tools);
   const order = buildOrder(state);
   if (!order) return nextStep(state, tools);
+  const status = await readAttempt(tools);
+  if (status !== 'failed' && status !== null) return fromAttempt(status, state, tools);
   const since = new Date(state.saleAttemptAt ?? tools.now().toISOString());
   const existing = await tools.findRecentSale(order, since);
   if (existing !== null)

@@ -18,7 +18,7 @@ import { isOrderStatusQuestion, orderStatus } from './order-status';
 import { repeatQuestion } from './repeat-question';
 import { text as textReply } from './replies';
 import { asks, start } from './steps';
-import { cancelAfterFailedSale } from './steps/summary.step';
+import { cancelAfterFailedSale, checkSaleAttempt } from './steps/summary.step';
 
 const CANCEL = ['cancelar', 'cancela', 'cancelar pedido'];
 const DISCOUNT = ['desconto', 'promocao', 'mais barato'];
@@ -57,7 +57,7 @@ export async function globalCommand(
   const text = normalizeText(raw);
 
   if (CANCEL.includes(text)) {
-    if (state?.step === 'creatingSale') return { state, replies: [textReply(msg.saleInProgress)] };
+    if (state?.step === 'creatingSale') return checkSaleAttempt(state, tools);
     if (state?.step === 'saleFailed') return cancelAfterFailedSale(state, tools);
     if (!state) return { state: null, replies: [textReply(msg.cancelNeedsAgent)] };
     tools.track({ name: 'order_cancelled' });
