@@ -222,13 +222,16 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
   });
 
   it('deleteIfEquals remove a chave somente quando o token corresponde', async () => {
-    const key = `e2e:delete-if-equals:${randomUUID()}`;
-    cacheKeys.push(key);
-    await redis.set(key, JSON.stringify('token-atual'));
+    const prefix = 'e2e';
+    const key = `delete-if-equals:${randomUUID()}`;
+    cacheKeys.push(`${prefix}:${key}`);
+    await redis.set(`${prefix}:${key}`, JSON.stringify('token-atual'));
 
-    await expect(cache.deleteIfEquals({ key, value: 'token-anterior' })).resolves.toBe(false);
-    await expect(redis.get(key)).resolves.toBe(JSON.stringify('token-atual'));
-    await expect(cache.deleteIfEquals({ key, value: 'token-atual' })).resolves.toBe(true);
-    await expect(redis.get(key)).resolves.toBeNull();
+    await expect(cache.deleteIfEquals({ prefix, key, value: 'token-anterior' })).resolves.toBe(
+      false,
+    );
+    await expect(redis.get(`${prefix}:${key}`)).resolves.toBe(JSON.stringify('token-atual'));
+    await expect(cache.deleteIfEquals({ prefix, key, value: 'token-atual' })).resolves.toBe(true);
+    await expect(redis.get(`${prefix}:${key}`)).resolves.toBeNull();
   });
 });
