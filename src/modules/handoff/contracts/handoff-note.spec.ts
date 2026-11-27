@@ -82,6 +82,21 @@ describe('handoffNote', () => {
     expect(note).not.toMatch(/\d{11}/);
   });
 
+  it('notas dos motivos novos usam texto próprio e não declaram sucesso', () => {
+    const summary = {
+      stepLabel: 'Quantidade',
+      identityConfirmed: true,
+      newCustomer: false,
+      product: 'Botijão P13',
+      quantity: 25,
+    };
+    expect(handoffNote('sale_uncertain', summary)).toContain('Resultado incerto; verificar no ERP');
+    expect(handoffNote('sale_rejected', summary)).toContain('nenhuma venda registrada');
+    expect(handoffNote('quantity_limit', summary)).toContain('Produto: 25× Botijão P13');
+    expect(handoffNote('sale_cancellation', null)).toContain('cancelamento de venda registrada');
+    expect(handoffNote('identity_failure', null)).toContain('Falha na confirmação de identidade');
+  });
+
   it('textos fixos', () => {
     expect(REASON_LABELS.sale_failed).toBe('Falha ao registrar a venda na RevGás');
     expect(REASON_LABELS.emergency).toBe('Emergência: cliente relatou possível vazamento de gás');
