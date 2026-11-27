@@ -33,6 +33,15 @@ export function resolveChatwootConfig(env: Env): ChatwootConfig {
     }
   }
 
+  if (env.NODE_ENV === 'production') {
+    if (mode === 'fake') {
+      throw new Error('CHATWOOT_MODE=fake não é permitido em produção');
+    }
+    if (mode === 'off' && !env.STORE_PHONE) {
+      throw new Error('STORE_PHONE obrigatório em produção com CHATWOOT_MODE=off');
+    }
+  }
+
   return {
     mode,
     baseUrl: env.CHATWOOT_URL.replace(/\/+$/, ''),

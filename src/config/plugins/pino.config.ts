@@ -30,11 +30,15 @@ const SECRET_REDACT_PATHS = [
   '*.refreshToken',
   'secret',
   '*.secret',
+  'cpf',
+  '*.cpf',
 ];
 
 const PII_REDACT_PATHS = ['email', '*.email', 'to', '*.to'];
 
-const REDACT_PATHS = isProd ? [...SECRET_REDACT_PATHS, ...PII_REDACT_PATHS] : SECRET_REDACT_PATHS;
+export const REDACT_PATHS = isProd
+  ? [...SECRET_REDACT_PATHS, ...PII_REDACT_PATHS]
+  : SECRET_REDACT_PATHS;
 
 const SILENCED_ROUTES = new Set(['/health']);
 

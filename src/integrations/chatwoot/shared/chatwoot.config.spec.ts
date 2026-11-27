@@ -53,3 +53,40 @@ describe('resolveChatwootConfig', () => {
     );
   });
 });
+
+describe('resolveChatwootConfig em produção', () => {
+  const prod = {
+    NODE_ENV: 'production',
+    CORS_ORIGIN: 'https://app.test',
+    REDIS_PASSWORD: 'x',
+    WHATSAPP_ALLOWED_SENDERS: '5586988887777',
+  };
+
+  it('em produção falha sem Chatwoot live e sem STORE_PHONE', () => {
+    expect(() => resolveChatwootConfig(parse(prod))).toThrow(/STORE_PHONE/);
+    expect(() => resolveChatwootConfig(parse({ ...prod, CHATWOOT_MODE: 'off' }))).toThrow(
+      /STORE_PHONE/,
+    );
+  });
+
+  it('em produção recusa o modo fake', () => {
+    expect(() =>
+      resolveChatwootConfig(
+        parse({ ...prod, CHATWOOT_MODE: 'fake', STORE_PHONE: '5586988887777' }),
+      ),
+    ).toThrow(/CHATWOOT_MODE/);
+  });
+
+  it('em produção aceita Chatwoot off com STORE_PHONE', () => {
+    const config = resolveChatwootConfig(
+      parse({ ...prod, CHATWOOT_MODE: 'off', STORE_PHONE: '5586988887777' }),
+    );
+    expect(config.mode).toBe('off');
+  });
+
+  it('em produção mantém a validação do live', () => {
+    const { CHATWOOT_BOT_TOKEN: _omit, ...rest } = live;
+    expect(() => resolveChatwootConfig(parse({ ...prod, ...rest }))).toThrow(/CHATWOOT_BOT_TOKEN/);
+    expect(resolveChatwootConfig(parse({ ...prod, ...live })).mode).toBe('live');
+  });
+});
