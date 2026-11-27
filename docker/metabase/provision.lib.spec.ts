@@ -7,6 +7,9 @@ import {
   buildDatabasePayload,
   buildParameters,
   buildTemplateTags,
+  CARDS,
+  COLLECTIONS,
+  DASHBOARDS,
   extractTemplateTagNames,
   findByName,
   loadConfig,
@@ -236,6 +239,68 @@ describe('visualização do card', () => {
     const lido = lerComoApi(desired);
     lido.visualization_settings['scalar.field'] = 'b';
     expect(planCard(lido, desired)).toBe('update');
+  });
+});
+
+describe('catálogo de cards e dashboards', () => {
+  it('cada dashboard e cada card ficam em coleção provisionada', () => {
+    for (const card of CARDS) expect(COLLECTIONS).toContain(card.collection);
+    for (const dashboard of DASHBOARDS) expect(COLLECTIONS).toContain(dashboard.collection);
+  });
+
+  it('dashboard só usa cards definidos e da mesma coleção', () => {
+    for (const dashboard of DASHBOARDS) {
+      for (const item of dashboard.cards) {
+        const card = CARDS.find(candidate => candidate.name === item.card);
+        expect(card, item.card).toBeDefined();
+        expect(card?.collection).toBe(dashboard.collection);
+      }
+    }
+  });
+
+  it('nomes de cards são únicos e todo card está em algum dashboard', () => {
+    const names = CARDS.map(card => card.name);
+    expect(new Set(names).size).toBe(names.length);
+    const used = DASHBOARDS.flatMap(dashboard => dashboard.cards.map(item => item.card));
+    expect([...names].sort()).toEqual([...used].sort());
+  });
+
+  it('cria o dashboard Técnico com latência, IA e RAG', () => {
+    const tecnico = DASHBOARDS.find(dashboard => dashboard.name === 'Técnico');
+    expect(tecnico?.cards.map(item => item.card)).toEqual([
+      'tecnico-latencia',
+      'tecnico-ia',
+      'tecnico-rag',
+    ]);
+  });
+
+  it('gráficos de série e empilhados definem dimensões e métricas', () => {
+    const grafico = CARDS.filter(card => card.display === 'line' || card.display === 'bar');
+    expect(grafico.map(card => card.name)).toEqual([
+      'gestor-funil-diario',
+      'gestor-abandono',
+      'supervisor-handoffs',
+      'tecnico-latencia',
+      'tecnico-ia',
+      'tecnico-rag',
+    ]);
+    for (const card of grafico) {
+      expect(card.settings['graph.dimensions'].length).toBeGreaterThan(0);
+      expect(card.settings['graph.metrics'].length).toBeGreaterThan(0);
+    }
+    const ia = CARDS.find(card => card.name === 'tecnico-ia');
+    expect(ia?.settings['graph.dimensions']).toEqual(['hora', 'reason']);
+    expect(ia?.settings['stackable.stack_type']).toBe('stacked');
+  });
+
+  it('moeda e percentuais usam separadores brasileiros', () => {
+    const valor = CARDS.find(card => card.name === 'gestor-vendas-valor');
+    expect(valor?.settings.column_settings['["name","valor_registrado_brl"]']).toMatchObject({
+      number_style: 'currency',
+      currency: 'BRL',
+      number_separators: ',.',
+      decimals: 2,
+    });
   });
 });
 

@@ -1,10 +1,19 @@
 export const DATABASE_NAME = 'RevGás (leitura)';
 
-export const COLLECTIONS = ['Gestor', 'Supervisor'];
+export const COLLECTIONS = ['Gestor', 'Supervisor', 'Técnico'];
 
-const BRL = { number_style: 'currency', currency: 'BRL' };
-const PERCENT = { suffix: '%' };
-const SECONDS = { suffix: ' s', decimals: 1 };
+const SEPARATORS = ',.';
+const BRL = {
+  number_style: 'currency',
+  currency: 'BRL',
+  currency_style: 'symbol',
+  decimals: 2,
+  number_separators: SEPARATORS,
+};
+const PERCENT = { suffix: '%', decimals: 1, number_separators: SEPARATORS };
+const SECONDS = { suffix: ' s', decimals: 1, number_separators: SEPARATORS };
+const ORDINAL = 'graph.x_axis.scale';
+const STACKED = 'stackable.stack_type';
 
 function scalar(field, columnSettings) {
   const settings = { 'scalar.field': field };
@@ -50,6 +59,17 @@ export const CARDS = [
     ...scalar('conversao_total_pct', PERCENT),
   },
   {
+    name: 'gestor-funil-diario',
+    sqlFile: 'gestor-funil-diario',
+    collection: 'Gestor',
+    display: 'bar',
+    settings: {
+      'graph.dimensions': ['dia'],
+      'graph.metrics': ['ciclos', 'resumos', 'vendas'],
+      [ORDINAL]: 'ordinal',
+    },
+  },
+  {
     name: 'gestor-abandono',
     sqlFile: 'gestor-abandono',
     collection: 'Gestor',
@@ -67,6 +87,51 @@ export const CARDS = [
     sqlFile: 'supervisor-espera',
     collection: 'Supervisor',
     ...scalar('espera_p90_seg', SECONDS),
+  },
+  {
+    name: 'supervisor-handoffs',
+    sqlFile: 'supervisor-handoffs',
+    collection: 'Supervisor',
+    display: 'bar',
+    settings: {
+      'graph.dimensions': ['motivo', 'tipo'],
+      'graph.metrics': ['eventos'],
+      [STACKED]: 'stacked',
+    },
+  },
+  {
+    name: 'tecnico-latencia',
+    sqlFile: 'tecnico-latencia',
+    collection: 'Técnico',
+    display: 'line',
+    settings: {
+      'graph.dimensions': ['dia'],
+      'graph.metrics': ['p50_ms', 'p95_ms'],
+      [ORDINAL]: 'ordinal',
+    },
+  },
+  {
+    name: 'tecnico-ia',
+    sqlFile: 'tecnico-ia',
+    collection: 'Técnico',
+    display: 'bar',
+    settings: {
+      'graph.dimensions': ['hora', 'reason'],
+      'graph.metrics': ['chamadas'],
+      [STACKED]: 'stacked',
+    },
+  },
+  {
+    name: 'tecnico-rag',
+    sqlFile: 'tecnico-rag',
+    collection: 'Técnico',
+    display: 'bar',
+    settings: {
+      'graph.dimensions': ['dia', 'motivo'],
+      'graph.metrics': ['chamadas'],
+      [STACKED]: 'stacked',
+      [ORDINAL]: 'ordinal',
+    },
   },
 ];
 
@@ -110,10 +175,18 @@ export const DASHBOARDS = [
         sizeY: 3,
       },
       {
+        card: 'gestor-funil-diario',
+        title: 'Funil por dia: ciclos, resumos e vendas',
+        col: 0,
+        row: 6,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
         card: 'gestor-abandono',
         title: 'Abandono por última etapa',
         col: 0,
-        row: 6,
+        row: 14,
         sizeX: 24,
         sizeY: 8,
       },
@@ -138,6 +211,44 @@ export const DASHBOARDS = [
         row: 0,
         sizeX: 12,
         sizeY: 3,
+      },
+      {
+        card: 'supervisor-handoffs',
+        title: 'Handoffs por motivo',
+        col: 0,
+        row: 3,
+        sizeX: 24,
+        sizeY: 8,
+      },
+    ],
+  },
+  {
+    name: 'Técnico',
+    collection: 'Técnico',
+    cards: [
+      {
+        card: 'tecnico-latencia',
+        title: 'Latência do turno por dia (ms, p50 e p95)',
+        col: 0,
+        row: 0,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        card: 'tecnico-ia',
+        title: 'Chamadas de IA por hora e motivo',
+        col: 0,
+        row: 8,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        card: 'tecnico-rag',
+        title: 'Chamadas ao RAG por dia e motivo',
+        col: 0,
+        row: 16,
+        sizeX: 24,
+        sizeY: 8,
       },
     ],
   },
