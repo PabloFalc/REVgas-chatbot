@@ -125,6 +125,7 @@ describe('hideCpfs', () => {
   it('troca CPFs por marcador', () => {
     expect(hideCpfs('meu cpf é 123.456.789-09 ok')).toBe('meu cpf é [CPF ocultado] ok');
     expect(hideCpfs('12345678909')).toBe('[CPF ocultado]');
+    expect(hideCpfs('cpf 123 456 789 09 ok')).toBe('cpf [CPF ocultado] ok');
   });
 
   it('não altera texto sem CPF', () => {

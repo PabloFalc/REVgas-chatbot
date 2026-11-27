@@ -249,6 +249,17 @@ describe('KnowledgeService', () => {
       expect(llm.calls[0].messages[1]).toEqual({ role: 'user', content: QUESTION });
     });
 
+    it('envia ao LLM o texto já sanitizado', async () => {
+      llm.queueObject({ answer: null, sources: [] });
+      await service.answerQuestion(
+        'meu cpf 123 456 789 09, fone 5511900000000, email cliente@example.com: entregam no Jóquei?',
+      );
+      const sent = 'meu cpf [CPF], fone [telefone], email [e-mail]: entregam no Jóquei?';
+      expect(embeddings.calls).toEqual([{ operation: 'kb-search', input: [sent] }]);
+      expect(repo.queries.map(query => query.question)).toEqual([sent]);
+      expect(llm.calls[0]?.messages[1]?.content).toBe(sent);
+    });
+
     it('CPF da pergunta não vai ao embedding nem ao prompt', async () => {
       llm.queueObject({ answer: null, sources: [] });
       await service.answerQuestion('meu cpf 123.456.789-09, vocês entregam no Jóquei?');
@@ -342,7 +353,7 @@ describe('KnowledgeService', () => {
       await service.search('meu cpf 123.456.789-09, oi, bom dia');
       expect(repo.queries).toHaveLength(1);
       expect(repo.queries[0]).toMatchObject({
-        question: 'meu cpf , oi, bom dia',
+        question: 'meu cpf [CPF], oi, bom dia',
         limit: CANDIDATES_PER_LIST,
       });
     });

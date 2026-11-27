@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createLogger } from '../../config/plugins/pino.config';
-import { removeCpfMentions, removeCpfs, removeLongDigitRuns } from '../../utils/cpf';
+import { removeLongDigitRuns } from '../../utils/cpf';
+import { PII_MARKER, sanitizeForLlm } from '../../utils/pii';
 import { AnswerGateway } from './answer.gateway';
 import { ANSWER_MAX_LENGTH, BROAD_ANSWER_MAX_LENGTH, checkAnswer } from './answer-checks';
 import { answerStyleOf } from './answer-style';
@@ -47,10 +48,8 @@ interface UnknownDetails {
 }
 
 function sanitizeQuestion(question: string): string | null {
-  const clean = removeLongDigitRuns(removeCpfMentions(removeCpfs(question)))
-    .trim()
-    .slice(0, MAX_QUESTION_CHARS);
-  return /[\p{L}\p{N}]/u.test(clean) ? clean : null;
+  const clean = removeLongDigitRuns(sanitizeForLlm(question)).trim().slice(0, MAX_QUESTION_CHARS);
+  return /[\p{L}\p{N}]/u.test(clean.replace(PII_MARKER, '')) ? clean : null;
 }
 
 function nameOf(error: unknown): string {

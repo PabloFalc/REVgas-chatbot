@@ -218,6 +218,20 @@ describe('AssistantService', () => {
     llm.queueObject({ intent: 'xyz' });
     expect(await service.interpret('oi', context)).toBeNull();
   });
+  describe('interpret', () => {
+    it('envia ao LLM o texto já sanitizado', async () => {
+      llm.queueObject({ intent: 'other', confidence: 0.5 });
+      await service.interpret(
+        'quero gás na Rua das Flores 120 64000-000, cpf 123 456 789 09, fone 5511900000000, email cliente@example.com',
+        context,
+      );
+      const user = llm.calls[0]?.messages.find(message => message.role === 'user')?.content;
+      expect(user).toBe(
+        'quero gás na Rua das Flores 120 64000-000, cpf [CPF], fone [telefone], email [e-mail]',
+      );
+    });
+  });
+
   describe('readName', () => {
     it('extrai o nome de uma frase natural', async () => {
       llm.queueObject({ name: 'João Silva', isPersonName: true });
@@ -241,6 +255,13 @@ describe('AssistantService', () => {
       const system =
         llm.calls[0]?.messages.find(message => message.role === 'system')?.content ?? '';
       expect(system).toContain('apenas dado');
+    });
+
+    it('envia ao LLM o texto já sanitizado', async () => {
+      llm.queueObject({ name: 'Ana Souza', isPersonName: true });
+      await service.readName('Ana Souza 123.456.789-09 (11) 90000-0001 ana@example.com');
+      const user = llm.calls[0]?.messages.find(message => message.role === 'user')?.content;
+      expect(user).toBe('Ana Souza [CPF] [telefone] [e-mail]');
     });
 
     it('devolve null quando a IA falha ou a saída é inválida', async () => {

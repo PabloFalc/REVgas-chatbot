@@ -137,6 +137,20 @@ describe('AddressService', () => {
       expect(result?.neighborhood).toBeUndefined();
     });
 
+    it('envia ao LLM o texto já sanitizado', async () => {
+      llm.queueObject({
+        ...nullAi,
+        street: 'Rua das Flores',
+        number: '120',
+        postalCode: '64000-000',
+      });
+      await service.fromText(
+        'Rua das Flores 120 64000-000, cpf 123 456 789 09, fone 5511900000001, cliente@example.com',
+      );
+      const user = llm.calls[0]?.messages.find(message => message.role === 'user')?.content;
+      expect(user).toBe('Rua das Flores 120 64000-000, cpf [CPF], fone [telefone], [e-mail]');
+    });
+
     it('never sends the cpf to the llm', async () => {
       llm.queueObject({ ...nullAi, street: 'Rua A', number: '10', neighborhood: 'Centro' });
       await service.fromText('Rua A 10, Centro, cpf 529.982.247-25');

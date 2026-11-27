@@ -19,10 +19,10 @@ export function isValidCpf(text: string): boolean {
   );
 }
 
-const CPF_PATTERN = /(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)/g;
+const CPF_PATTERN = /(?<!\d)\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s./-]?\d{2}(?!\d)/g;
 
-export function removeCpfs(text: string): string {
-  return text.replace(CPF_PATTERN, '');
+export function removeCpfs(text: string, marker = ''): string {
+  return text.replace(CPF_PATTERN, marker);
 }
 
 const DIGIT_RUN_PATTERN = /\d+(?:[\s./-]+\d+)*/g;
@@ -34,8 +34,8 @@ export function removeLongDigitRuns(text: string, minDigits = 8): string {
 const CPF_MENTION_PATTERN =
   /(?<![\p{L}\p{N}])(c\.?p\.?f\.?(?:(?:[\s:;,.-]+[^\s\d]+){0,2}?)[\s:;,.#-]*)\d+(?:[\s./-]+\d+)*/giu;
 
-export function removeCpfMentions(text: string): string {
-  return text.replace(CPF_MENTION_PATTERN, '$1');
+export function removeCpfMentions(text: string, marker = ''): string {
+  return text.replace(CPF_MENTION_PATTERN, `$1${marker}`);
 }
 
 export function hideCpfs(text: string): string {
