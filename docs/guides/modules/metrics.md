@@ -55,7 +55,7 @@ docker exec -i revgas-pg psql -U docker -d revgas -v DBNAME=revgas -v pass='senh
 
 4. Rode `pnpm metabase:up` e espere a interface responder em http://localhost:3001.
 5. Copie `docker/metabase.provision.env.example` para `docker/metabase.provision.env` e preencha e-mail e senha da conta administrativa (a primeira execução cria essa conta) e a senha do `metrics_reader` criada no passo 3. Esse arquivo também fica fora do Git. Ele é separado de `docker/metabase.env` de propósito: o compose injeta `docker/metabase.env` nos containers, e as credenciais do provisionamento não devem ir parar no ambiente do Metabase.
-6. Rode `pnpm metabase:provision`. O comando espera o `/api/health` por até 3 minutos e deixa a instância assim: administrador criado se ainda não existir, fuso dos relatórios `America/Sao_Paulo`, telemetria anônima desligada, conexão PostgreSQL "RevGás (leitura)" com o usuário `metrics_reader`, coleções Gestor e Supervisor e as quatro perguntas P0 com as variáveis `dias` e `incluir_simulados`. O SQL de cada pergunta é lido de `docs/guides/metrics/sql/` na hora da execução.
+6. Rode `pnpm metabase:provision`. O comando espera o `/api/health` por até 3 minutos e deixa a instância assim: administrador criado se ainda não existir, fuso dos relatórios `America/Sao_Paulo`, telemetria anônima desligada, conexão PostgreSQL "RevGás (leitura)" com o usuário `metrics_reader`, coleções Gestor, Supervisor e Técnico, as perguntas (quatro P0 mais as de funil, handoffs, latência, IA e RAG) com as variáveis `dias` e `incluir_simulados`, e os dashboards Gestor, Supervisor e Técnico. O SQL de cada pergunta é lido de `docs/guides/metrics/sql/` na hora da execução.
 7. Rode `pnpm metabase:stop` ao terminar. Os volumes preservam a configuração. Não remova containers ou volumes existentes.
 
 O comando pode ser repetido. Cada linha da saída diz se o item foi criado, atualizado ou ficou sem mudança, e uma segunda execução seguida deve terminar com zero criados e zero atualizados. O que alguém editar pela interface nas perguntas (SQL, variáveis, coleção, conexão) volta ao definido no repositório na próxima execução; o tipo de gráfico e o restante da visualização não são tocados.
@@ -93,7 +93,7 @@ Em servidor, `METABASE_URL` deve apontar para o endereço que o processo de depl
 
 ## Cards SQL
 
-As consultas estão em [`../metrics/sql/`](../metrics/sql/). Use o mesmo fuso horário da operação nas conexões e nos cards. Os quatro cards P0 (`gestor-*` e `supervisor-espera`) seguem as regras da subseção abaixo e são criados por `pnpm metabase:provision`.
+As consultas estão em [`../metrics/sql/`](../metrics/sql/). Use o mesmo fuso horário da operação nas conexões e nos cards. Os arquivos `gestor-*`, `supervisor-*` e `tecnico-*` são os publicados por `pnpm metabase:provision` e seguem as regras da subseção abaixo. Os demais (`funil`, `abandono`, `vendas`, `handoffs`, `rag`, `ia`, `latencia`, `operacao`) são consultas antigas, sem filtro de simulados, que não são publicadas; as versões publicadas de funil, handoffs, RAG, IA e latência são as derivadas listadas no fim da tabela.
 
 | Arquivo | Card |
 | --- | --- |
@@ -109,21 +109,32 @@ As consultas estão em [`../metrics/sql/`](../metrics/sql/). Use o mesmo fuso ho
 | `gestor-conversao.sql` | Conversão por coorte de `purchase_started`: madura (mais de 24 h) e sobre todas as intenções |
 | `gestor-abandono.sql` | Ciclos com `purchase_started` sem resultado terminal há mais de 24 h, por última etapa |
 | `supervisor-espera.sql` | Mediana e p90 da espera, em segundos, do pedido de handoff até a assunção, sem percentual de meta |
+| `gestor-funil-diario.sql` | Derivada de `funil.sql`: ciclos, resumos e vendas por dia, com `dias` e simulados |
+| `supervisor-handoffs.sql` | Derivada de `handoffs.sql`: transferências e ofertas por motivo (`sem_motivo` quando o motivo é nulo) |
+| `tecnico-latencia.sql` | Derivada de `latencia.sql`: p50 e p95 do turno, em ms, por dia |
+| `tecnico-ia.sql` | Derivada de `ia.sql`: chamadas, permitidas, bloqueadas e unidades de IA por hora e finalidade |
+| `tecnico-rag.sql` | Derivada de `rag.sql` sem a linha `total` do ROLLUP: chamadas, desconhecidas e taxa por dia e motivo |
 
 ### Cards P0 do painel
 
-Os quatro cards vão em duas coleções, criadas pelo provisionamento: Gestor (`gestor-vendas`, `gestor-conversao`, `gestor-abandono`) e Supervisor (`supervisor-espera`). Cada um usa duas variáveis, com os mesmos nomes nos quatro:
+Os cards vão em três coleções, criadas pelo provisionamento: Gestor (vendas, conversão, funil diário e abandono), Supervisor (espera e handoffs) e Técnico (latência, IA e RAG). Cada um usa duas variáveis, com os mesmos nomes em todos:
 
 - `dias`: numérica, obrigatória, padrão 30. O próprio SQL recusa valores fora de 1 a 365 com erro do Postgres (`dias deve estar entre 1 e 365, recebido N`), sem ajustar o valor. O Metabase não impede 0 ou 10000 na variável, então a trava fica no SQL.
-- `incluir_simulados`: texto, obrigatória, padrão `nao`, com lista de valores `nao` e `sim`. Com `nao` as linhas simuladas ficam de fora. Com `sim` entram também as simuladas, nas duas tabelas. Qualquer outro valor se comporta como `nao`.
+- `incluir_simulados`: texto, obrigatória, padrão `nao`, com lista de valores `nao` e `sim`. Com `nao` as linhas simuladas ficam de fora. Com `sim` entram também as simuladas, nas duas tabelas de origem. Qualquer outro valor se comporta como `nao`.
 
-A espera do supervisor mostra mediana, p90 e contagem. O percentual de meta fica de fora até a revenda aprovar o limite.
+### Dashboards
+
+O mesmo comando cria o dashboard "Gestor" (vendas, conversão, funil por dia e abandono), o "Supervisor" (espera até assumir e handoffs por motivo) e o "Técnico" (latência, IA e RAG), cada um na coleção de mesmo nome. Para abrir, entre no Metabase, vá em Collections, escolha a coleção e clique no dashboard.
+
+Cada dashboard tem os filtros "Dias" (padrão 30) e "Incluir simulados" (padrão `nao`), ligados às variáveis de todos os cards. Pedidos, valor, ticket médio, incertos, conversão e espera são números (`scalar`, uma coluna por card, reaproveitando o mesmo SQL). Funil, abandono, handoffs, IA e RAG são barras (as três últimas empilhadas por motivo) e a latência é linha. Moeda e percentuais usam vírgula decimal por configuração de coluna do card. Rodar o provisionamento de novo só corrige o que divergir.
+
+A espera do supervisor traz mediana, p90 e contagem na consulta; o dashboard mostra mediana e p90. O percentual de meta fica de fora até a revenda aprovar o limite.
 
 Limitação conhecida: o abandono depende do evento `conversation_resolved`, que ainda não tem produtor. Por isso um ciclo com `handoff_resolved` e sem venda aparece como abandono com etapa `unknown`.
 
-A fonte canônica dos quatro SQLs é o repositório de planejamento (`docs/metricas/sql/`). A cópia em `docs/guides/metrics/sql/` existe para o teste E2E e deve ficar idêntica byte a byte (`cmp`).
+A fonte canônica dos quatro SQLs P0 é o repositório de planejamento (`docs/metricas/sql/`). A cópia em `docs/guides/metrics/sql/` existe para o teste E2E e deve ficar idêntica byte a byte (`cmp`). Os cinco SQLs derivados (`gestor-funil-diario`, `supervisor-handoffs`, `tecnico-*`) nasceram neste repositório e ainda não existem no de planejamento.
 
-O teste `tests/metrics/bot-events.e2e.spec.ts` cobre os números sobre uma fixture sintética, a recusa de `dias` fora do intervalo (parâmetro vinculado e número colado no texto), o controle de simulados, a ausência de colunas de identificação nos resultados e no texto dos SQLs, e o papel restrito. Para o papel, ele cria um papel temporário com os mesmos `GRANT` de `docker/metabase/metrics-reader.sql` e confere que os quatro cards executam, que `customer_id`, `erp_sale_id` e `SELECT *` em `sale_attempts` são negados e que nenhuma outra tabela do schema `public` é legível. Tudo termina em rollback. Esse teste não substitui a conferência manual no Metabase: variáveis, valores padrão, coleções e permissões de quem vê os cards precisam ser verificados na instância real.
+O teste `tests/metrics/bot-events.e2e.spec.ts` cobre os números sobre uma fixture sintética, a recusa de `dias` fora do intervalo (parâmetro vinculado e número colado no texto), o controle de simulados (inclusive nas cinco consultas derivadas, com um caso que prova simulado fora com `nao` e dentro com `sim`), a ausência de colunas de identificação nos resultados e no texto dos SQLs, e o papel restrito. Para o papel, ele cria um papel temporário com os mesmos `GRANT` de `docker/metabase/metrics-reader.sql` e confere que os cards publicados executam, que `customer_id`, `erp_sale_id` e `SELECT *` em `sale_attempts` são negados e que nenhuma outra tabela do schema `public` é legível. Tudo termina em rollback. Esse teste não substitui a conferência manual no Metabase: variáveis, valores padrão, coleções e permissões de quem vê os cards precisam ser verificados na instância real.
 
 O funil agrupa pelo dia do primeiro evento do ciclo dentro do intervalo. Os cards consideram apenas eventos no período escolhido; ciclos cortados pela janela podem ficar incompletos. Recuperações de venda contam como eventos `sale created`; o funil deduplica por ciclo. Ofertas de handoff podem se repetir após o limiar.
 

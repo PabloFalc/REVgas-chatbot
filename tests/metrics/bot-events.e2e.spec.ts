@@ -178,7 +178,7 @@ describe('Eventos do bot (e2e)', () => {
 
   describe('SQLs P0 do painel sobre fixture sintética', () => {
     type Tx = Parameters<Parameters<NodePgDatabase<typeof schema>['transaction']>[0]>[0];
-    type Row = Record<string, number | null>;
+    type Row = Record<string, number | string | null>;
 
     const HOUR = 3_600_000;
     const ago = (hours: number) => new Date(Date.now() - hours * HOUR);
@@ -754,6 +754,213 @@ describe('Eventos do bot (e2e)', () => {
       expect(out.vazio).toEqual(out.nao);
     });
 
+    const CHART_FILES = [
+      'gestor-funil-diario.sql',
+      'tecnico-latencia.sql',
+      'tecnico-ia.sql',
+      'tecnico-rag.sql',
+      'supervisor-handoffs.sql',
+    ];
+
+    async function seedCharts(tx: Tx) {
+      const at = ago(30);
+      const cycleA = cycle();
+      const cycleB = cycle();
+      const cycleC = cycle();
+      await tx.insert(botEvents).values([
+        event({ name: 'turn', cycleId: cycleA, step: 'catalog', durationMs: 100, occurredAt: at }),
+        event({ name: 'turn', cycleId: cycleA, step: 'summary', durationMs: 300, occurredAt: at }),
+        event({ name: 'sale', cycleId: cycleA, outcome: 'created', occurredAt: at }),
+        event({ name: 'turn', cycleId: cycleB, step: 'catalog', durationMs: 200, occurredAt: at }),
+        event({
+          name: 'turn',
+          cycleId: cycleC,
+          step: 'catalog',
+          durationMs: 1000,
+          occurredAt: at,
+          isSimulated: true,
+        }),
+        event({
+          name: 'turn',
+          cycleId: cycleC,
+          step: 'summary',
+          durationMs: 9000,
+          occurredAt: at,
+          isSimulated: true,
+        }),
+        event({
+          name: 'sale',
+          cycleId: cycleC,
+          outcome: 'created',
+          occurredAt: at,
+          isSimulated: true,
+        }),
+        event({ name: 'turn', cycleId: cycle(), step: 'catalog', occurredAt: ago(24 * 400) }),
+        event({
+          name: 'ai_call',
+          outcome: 'allowed',
+          reason: 'interpret',
+          amount: 3,
+          occurredAt: at,
+        }),
+        event({
+          name: 'ai_call',
+          outcome: 'allowed',
+          reason: 'interpret',
+          amount: 4,
+          occurredAt: at,
+        }),
+        event({ name: 'ai_call', outcome: 'limited', reason: 'interpret', occurredAt: at }),
+        event({
+          name: 'ai_call',
+          outcome: 'allowed',
+          reason: 'read_name',
+          amount: 1,
+          occurredAt: at,
+        }),
+        event({
+          name: 'ai_call',
+          outcome: 'allowed',
+          reason: 'interpret',
+          amount: 100,
+          occurredAt: at,
+          isSimulated: true,
+        }),
+        event({ name: 'rag', outcome: 'answered', occurredAt: at }),
+        event({ name: 'rag', outcome: 'answered', occurredAt: at }),
+        event({ name: 'rag', outcome: 'unknown', reason: 'low_score', occurredAt: at }),
+        event({ name: 'rag', outcome: 'answered', occurredAt: at, isSimulated: true }),
+        event({ name: 'handoff', outcome: 'queued', reason: 'customer_request', occurredAt: at }),
+        event({ name: 'handoff', outcome: 'queued', reason: 'customer_request', occurredAt: at }),
+        event({ name: 'handoff_offered', occurredAt: at }),
+        event({
+          name: 'handoff',
+          outcome: 'queued',
+          reason: 'customer_request',
+          occurredAt: at,
+          isSimulated: true,
+        }),
+        event({ name: 'handoff', reason: 'customer_request', occurredAt: ago(24 * 400) }),
+      ]);
+    }
+
+    it('consultas dos gráficos excluem simulados com nao e incluem com sim', async () => {
+      const out = await isolated(async tx => {
+        const run = async (mode: string) => ({
+          funil: await query(tx, 'gestor-funil-diario.sql', 30, mode),
+          latencia: await query(tx, 'tecnico-latencia.sql', 30, mode),
+          ia: await query(tx, 'tecnico-ia.sql', 30, mode),
+          rag: await query(tx, 'tecnico-rag.sql', 30, mode),
+          handoffs: await query(tx, 'supervisor-handoffs.sql', 30, mode),
+        });
+        return { nao: await run('nao'), sim: await run('sim'), talvez: await run('talvez') };
+      }, seedCharts);
+      const total = (rows: Row[], column: string) =>
+        rows.reduce((acc, row) => acc + Number(row[column] ?? 0), 0);
+      const by = (rows: Row[], key: string, column: string) =>
+        Object.fromEntries(rows.map(row => [String(row[key]), row[column]]));
+
+      expect(out.nao.funil).toHaveLength(1);
+      expect(out.nao.funil[0]).toMatchObject({ ciclos: 2, resumos: 1, vendas: 1 });
+      expect(out.sim.funil[0]).toMatchObject({ ciclos: 3, resumos: 2, vendas: 2 });
+      expect(out.nao.latencia).toHaveLength(1);
+      expect(out.nao.latencia[0].p50_ms).toBeCloseTo(200, 6);
+      expect(out.nao.latencia[0].p95_ms).toBeCloseTo(290, 6);
+      expect(out.sim.latencia).toHaveLength(1);
+      expect(out.sim.latencia[0].p50_ms).toBeCloseTo(300, 6);
+      expect(out.sim.latencia[0].p95_ms).toBeCloseTo(7400, 6);
+
+      expect(by(out.nao.ia, 'reason', 'chamadas')).toEqual({ interpret: 3, read_name: 1 });
+      expect(by(out.nao.ia, 'reason', 'unidades_consumidas')).toEqual({
+        interpret: 7,
+        read_name: 1,
+      });
+      expect(out.nao.ia.find(row => row.reason === 'interpret')).toMatchObject({
+        permitidas: 2,
+        bloqueadas: 1,
+      });
+      expect(by(out.sim.ia, 'reason', 'chamadas')).toEqual({ interpret: 4, read_name: 1 });
+      expect(by(out.sim.ia, 'reason', 'unidades_consumidas')).toEqual({
+        interpret: 107,
+        read_name: 1,
+      });
+
+      expect(by(out.nao.rag, 'motivo', 'chamadas')).toEqual({ answered: 2, low_score: 1 });
+      expect(by(out.sim.rag, 'motivo', 'chamadas')).toEqual({ answered: 3, low_score: 1 });
+      expect(out.nao.rag.find(row => row.motivo === 'low_score')).toMatchObject({
+        desconhecidas: 1,
+        taxa_nao_sei_percentual: 100,
+      });
+      expect(total(out.nao.rag, 'chamadas')).toBe(3);
+      expect(total(out.sim.rag, 'chamadas')).toBe(4);
+      for (const mode of [out.nao, out.sim]) {
+        expect(mode.rag.map(row => row.motivo)).not.toContain('total');
+      }
+
+      expect(out.nao.handoffs).toEqual([
+        { motivo: 'customer_request', tipo: 'handoff', eventos: 2 },
+        { motivo: 'sem_motivo', tipo: 'handoff_offered', eventos: 1 },
+      ]);
+      expect(out.sim.handoffs[0]).toEqual({
+        motivo: 'customer_request',
+        tipo: 'handoff',
+        eventos: 3,
+      });
+      expect(out.talvez).toEqual(out.nao);
+    });
+
+    it('consultas dos gráficos validam dias e não expõem colunas pessoais', async () => {
+      const guarded =
+        /make_interval\(days => CASE WHEN \{\{dias\}\} BETWEEN 1 AND 365 THEN \{\{dias\}\} ELSE \('dias deve estar entre 1 e 365, recebido ' \|\| \{\{dias\}\}\)::int END\)/g;
+      const allowed = [
+        'dia',
+        'ciclos',
+        'resumos',
+        'vendas',
+        'conversao_percentual',
+        'p50_ms',
+        'p95_ms',
+        'hora',
+        'reason',
+        'chamadas',
+        'permitidas',
+        'bloqueadas',
+        'unidades_consumidas',
+        'motivo',
+        'desconhecidas',
+        'taxa_nao_sei_percentual',
+        'tipo',
+        'eventos',
+      ];
+      const forbidden =
+        /customer_id|erp_sale_id|conversation_id|handoff_id|phone|cpf|(customer|full|first|last)_?name|\bnome\b|address|endereco|\btext\b|select\s+\*|\.\*/i;
+      for (const file of CHART_FILES) {
+        const uses = code(file).match(/\{\{dias\}\}/g) ?? [];
+        const intervals = code(file).match(guarded) ?? [];
+        expect(intervals, file).toHaveLength(1);
+        expect(uses, file).toHaveLength(3);
+        expect(code(file), file).toMatch(
+          /\(is_simulated = false OR \{\{incluir_simulados\}\} = 'sim'\)/,
+        );
+        expect(code(file), file).not.toMatch(forbidden);
+      }
+      const columns = await isolated(async tx => {
+        const found = new Set<string>();
+        for (const file of CHART_FILES) {
+          const { fields } = await tx.execute(bound(file, 30));
+          for (const field of fields) found.add(field.name);
+          for (const days of [0, 366]) {
+            const error = await failure(() => tx.transaction(t => t.execute(bound(file, days))));
+            expect(error?.cause?.message, `${file} ${days}`).toContain(
+              'dias deve estar entre 1 e 365',
+            );
+          }
+        }
+        return [...found];
+      }, empty);
+      for (const column of columns) expect(allowed).toContain(column);
+    });
+
     it('não seleciona colunas de identificação pessoal', async () => {
       const allowed = [
         'pedidos_registrados',
@@ -810,7 +1017,7 @@ describe('Eventos do bot (e2e)', () => {
             await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN`));
             for (const grant of grants) await tx.execute(sql.raw(grant));
             await tx.execute(sql.raw(`SET LOCAL ROLE ${role}`));
-            for (const file of P0_FILES) {
+            for (const file of [...P0_FILES, ...CHART_FILES]) {
               await tx.execute(bound(file, 30));
             }
             const errors = [

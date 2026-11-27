@@ -1,18 +1,264 @@
 export const DATABASE_NAME = 'RevGás (leitura)';
 
-export const COLLECTIONS = ['Gestor', 'Supervisor'];
+export const COLLECTIONS = ['Gestor', 'Supervisor', 'Técnico'];
+
+const SEPARATORS = ',.';
+const BRL = {
+  number_style: 'currency',
+  currency: 'BRL',
+  currency_style: 'symbol',
+  decimals: 2,
+  number_separators: SEPARATORS,
+};
+const PERCENT = { suffix: '%', decimals: 1, number_separators: SEPARATORS };
+const SECONDS = { suffix: ' s', decimals: 1, number_separators: SEPARATORS };
+const ORDINAL = 'graph.x_axis.scale';
+const STACKED = 'stackable.stack_type';
+
+function scalar(field, columnSettings) {
+  const settings = { 'scalar.field': field };
+  if (columnSettings) settings.column_settings = { [`["name","${field}"]`]: columnSettings };
+  return { display: 'scalar', settings };
+}
 
 export const CARDS = [
-  { name: 'gestor-vendas', collection: 'Gestor' },
-  { name: 'gestor-conversao', collection: 'Gestor' },
-  { name: 'gestor-abandono', collection: 'Gestor' },
-  { name: 'supervisor-espera', collection: 'Supervisor' },
+  {
+    name: 'gestor-vendas',
+    sqlFile: 'gestor-vendas',
+    collection: 'Gestor',
+    ...scalar('pedidos_registrados'),
+  },
+  {
+    name: 'gestor-vendas-valor',
+    sqlFile: 'gestor-vendas',
+    collection: 'Gestor',
+    ...scalar('valor_registrado_brl', BRL),
+  },
+  {
+    name: 'gestor-vendas-ticket',
+    sqlFile: 'gestor-vendas',
+    collection: 'Gestor',
+    ...scalar('ticket_medio_brl', BRL),
+  },
+  {
+    name: 'gestor-vendas-incertos',
+    sqlFile: 'gestor-vendas',
+    collection: 'Gestor',
+    ...scalar('resultado_incerto'),
+  },
+  {
+    name: 'gestor-conversao',
+    sqlFile: 'gestor-conversao',
+    collection: 'Gestor',
+    ...scalar('conversao_madura_pct', PERCENT),
+  },
+  {
+    name: 'gestor-conversao-total',
+    sqlFile: 'gestor-conversao',
+    collection: 'Gestor',
+    ...scalar('conversao_total_pct', PERCENT),
+  },
+  {
+    name: 'gestor-funil-diario',
+    sqlFile: 'gestor-funil-diario',
+    collection: 'Gestor',
+    display: 'bar',
+    settings: {
+      'graph.dimensions': ['dia'],
+      'graph.metrics': ['ciclos', 'resumos', 'vendas'],
+      [ORDINAL]: 'ordinal',
+    },
+  },
+  {
+    name: 'gestor-abandono',
+    sqlFile: 'gestor-abandono',
+    collection: 'Gestor',
+    display: 'bar',
+    settings: { 'graph.dimensions': ['ultima_etapa'], 'graph.metrics': ['ciclos_abandonados'] },
+  },
+  {
+    name: 'supervisor-espera',
+    sqlFile: 'supervisor-espera',
+    collection: 'Supervisor',
+    ...scalar('espera_p50_seg', SECONDS),
+  },
+  {
+    name: 'supervisor-espera-p90',
+    sqlFile: 'supervisor-espera',
+    collection: 'Supervisor',
+    ...scalar('espera_p90_seg', SECONDS),
+  },
+  {
+    name: 'supervisor-handoffs',
+    sqlFile: 'supervisor-handoffs',
+    collection: 'Supervisor',
+    display: 'bar',
+    settings: {
+      'graph.dimensions': ['motivo', 'tipo'],
+      'graph.metrics': ['eventos'],
+      [STACKED]: 'stacked',
+    },
+  },
+  {
+    name: 'tecnico-latencia',
+    sqlFile: 'tecnico-latencia',
+    collection: 'Técnico',
+    display: 'line',
+    settings: {
+      'graph.dimensions': ['dia'],
+      'graph.metrics': ['p50_ms', 'p95_ms'],
+      [ORDINAL]: 'ordinal',
+    },
+  },
+  {
+    name: 'tecnico-ia',
+    sqlFile: 'tecnico-ia',
+    collection: 'Técnico',
+    display: 'bar',
+    settings: {
+      'graph.dimensions': ['hora', 'reason'],
+      'graph.metrics': ['chamadas'],
+      [STACKED]: 'stacked',
+    },
+  },
+  {
+    name: 'tecnico-rag',
+    sqlFile: 'tecnico-rag',
+    collection: 'Técnico',
+    display: 'bar',
+    settings: {
+      'graph.dimensions': ['dia', 'motivo'],
+      'graph.metrics': ['chamadas'],
+      [STACKED]: 'stacked',
+      [ORDINAL]: 'ordinal',
+    },
+  },
+];
+
+export const DASHBOARDS = [
+  {
+    name: 'Gestor',
+    collection: 'Gestor',
+    cards: [
+      { card: 'gestor-vendas', title: 'Pedidos registrados', col: 0, row: 0, sizeX: 6, sizeY: 3 },
+      {
+        card: 'gestor-vendas-valor',
+        title: 'Valor registrado',
+        col: 6,
+        row: 0,
+        sizeX: 6,
+        sizeY: 3,
+      },
+      { card: 'gestor-vendas-ticket', title: 'Ticket médio', col: 12, row: 0, sizeX: 6, sizeY: 3 },
+      {
+        card: 'gestor-vendas-incertos',
+        title: 'Resultado incerto',
+        col: 18,
+        row: 0,
+        sizeX: 6,
+        sizeY: 3,
+      },
+      {
+        card: 'gestor-conversao',
+        title: 'Conversão madura (intenções com mais de 24 h)',
+        col: 0,
+        row: 3,
+        sizeX: 12,
+        sizeY: 3,
+      },
+      {
+        card: 'gestor-conversao-total',
+        title: 'Conversão total',
+        col: 12,
+        row: 3,
+        sizeX: 12,
+        sizeY: 3,
+      },
+      {
+        card: 'gestor-funil-diario',
+        title: 'Funil por dia: ciclos, resumos e vendas',
+        col: 0,
+        row: 6,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        card: 'gestor-abandono',
+        title: 'Abandono por última etapa',
+        col: 0,
+        row: 14,
+        sizeX: 24,
+        sizeY: 8,
+      },
+    ],
+  },
+  {
+    name: 'Supervisor',
+    collection: 'Supervisor',
+    cards: [
+      {
+        card: 'supervisor-espera',
+        title: 'Espera até assumir (mediana)',
+        col: 0,
+        row: 0,
+        sizeX: 12,
+        sizeY: 3,
+      },
+      {
+        card: 'supervisor-espera-p90',
+        title: 'Espera até assumir (p90)',
+        col: 12,
+        row: 0,
+        sizeX: 12,
+        sizeY: 3,
+      },
+      {
+        card: 'supervisor-handoffs',
+        title: 'Handoffs por motivo',
+        col: 0,
+        row: 3,
+        sizeX: 24,
+        sizeY: 8,
+      },
+    ],
+  },
+  {
+    name: 'Técnico',
+    collection: 'Técnico',
+    cards: [
+      {
+        card: 'tecnico-latencia',
+        title: 'Latência do turno por dia (ms, p50 e p95)',
+        col: 0,
+        row: 0,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        card: 'tecnico-ia',
+        title: 'Chamadas de IA por hora e motivo',
+        col: 0,
+        row: 8,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        card: 'tecnico-rag',
+        title: 'Chamadas ao RAG por dia e motivo',
+        col: 0,
+        row: 16,
+        sizeX: 24,
+        sizeY: 8,
+      },
+    ],
+  },
 ];
 
 const VARIABLES = {
   dias: {
     id: '11111111-1111-4111-8111-111111111111',
     displayName: 'Dias',
+    sectionId: 'number',
     tagType: 'number',
     tagDefault: '30',
     parameterType: 'number/=',
@@ -21,6 +267,7 @@ const VARIABLES = {
   incluir_simulados: {
     id: '22222222-2222-4222-8222-222222222222',
     displayName: 'Incluir simulados',
+    sectionId: 'string',
     tagType: 'text',
     tagDefault: 'nao',
     parameterType: 'string/=',
@@ -82,12 +329,19 @@ export function buildParameters(sql) {
   });
 }
 
-export function buildCardPayload({ name, sql, databaseId, collectionId }) {
+export function buildCardPayload({
+  name,
+  sql,
+  databaseId,
+  collectionId,
+  display = 'table',
+  visualizationSettings = {},
+}) {
   return {
     name,
     collection_id: collectionId,
-    display: 'table',
-    visualization_settings: {},
+    display,
+    visualization_settings: visualizationSettings,
     dataset_query: {
       type: 'native',
       database: databaseId,
@@ -97,16 +351,11 @@ export function buildCardPayload({ name, sql, databaseId, collectionId }) {
   };
 }
 
-export function buildCardUpdate(payload) {
-  const { display, visualization_settings, ...update } = payload;
-  return update;
-}
-
 function firstValue(value) {
   return String(Array.isArray(value) ? value[0] : value);
 }
 
-function summarizeCard(card) {
+function summarizeCard(card, desiredSettings) {
   const query = card.dataset_query;
   const stage = query.stages?.[0];
   const sql = stage ? stage.native : query.native.query;
@@ -136,13 +385,112 @@ function summarizeCard(card) {
     sql: String(sql).trim(),
     tags,
     parameters,
+    display: card.display,
+    settings: Object.fromEntries(
+      Object.keys(desiredSettings).map(key => [key, card.visualization_settings?.[key] ?? null]),
+    ),
   };
 }
 
 export function planCard(existing, desired) {
   if (!existing) return 'create';
-  const same = JSON.stringify(summarizeCard(existing)) === JSON.stringify(summarizeCard(desired));
+  const same =
+    JSON.stringify(summarizeCard(existing, desired.visualization_settings)) ===
+    JSON.stringify(summarizeCard(desired, desired.visualization_settings));
   return same ? 'unchanged' : 'update';
+}
+
+export function buildDashboardParameters() {
+  return Object.entries(VARIABLES).map(([slug, definition]) => {
+    const parameter = {
+      id: definition.id,
+      name: definition.displayName,
+      slug,
+      type: definition.parameterType,
+      sectionId: definition.sectionId,
+      default: definition.parameterDefault,
+    };
+    if (definition.values) {
+      parameter.isMultiSelect = false;
+      parameter.values_query_type = 'list';
+      parameter.values_source_type = 'static-list';
+      parameter.values_source_config = { values: definition.values };
+    }
+    return parameter;
+  });
+}
+
+export function buildDashcardMappings(cardId, sql) {
+  return extractTemplateTagNames(sql).map(name => ({
+    card_id: cardId,
+    parameter_id: definitionOf(name).id,
+    target: ['variable', ['template-tag', name]],
+  }));
+}
+
+export function buildDashboardPayload({ name, collectionId, cards }) {
+  return {
+    name,
+    collection_id: collectionId,
+    parameters: buildDashboardParameters(),
+    dashcards: cards.map((card, index) => ({
+      id: -(index + 1),
+      card_id: card.cardId,
+      col: card.col,
+      row: card.row,
+      size_x: card.sizeX,
+      size_y: card.sizeY,
+      parameter_mappings: buildDashcardMappings(card.cardId, card.sql),
+      visualization_settings: card.title ? { 'card.title': card.title } : {},
+    })),
+  };
+}
+
+function summarizeDashboard(dashboard) {
+  const parameters = (dashboard.parameters ?? [])
+    .map(parameter => ({
+      id: parameter.id,
+      name: parameter.name,
+      slug: parameter.slug,
+      type: parameter.type,
+      default: parameter.default === undefined ? null : parameter.default,
+      values: parameter.values_source_config?.values ?? null,
+    }))
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+  const dashcards = (dashboard.dashcards ?? [])
+    .map(dashcard => ({
+      cardId: dashcard.card_id,
+      col: dashcard.col,
+      row: dashcard.row,
+      sizeX: dashcard.size_x,
+      sizeY: dashcard.size_y,
+      title: dashcard.visualization_settings?.['card.title'] ?? null,
+      mappings: (dashcard.parameter_mappings ?? [])
+        .map(mapping => `${mapping.parameter_id}=${JSON.stringify(mapping.target)}`)
+        .sort(),
+    }))
+    .sort((a, b) => a.cardId - b.cardId);
+  return { name: dashboard.name, collectionId: dashboard.collection_id, parameters, dashcards };
+}
+
+export function planDashboard(existing, desired) {
+  if (!existing) return 'create';
+  const same =
+    JSON.stringify(summarizeDashboard(existing)) === JSON.stringify(summarizeDashboard(desired));
+  return same ? 'unchanged' : 'update';
+}
+
+export function reuseDashcardIds(existing, desired) {
+  const byCard = new Map(
+    (existing?.dashcards ?? []).map(dashcard => [dashcard.card_id, dashcard.id]),
+  );
+  return {
+    ...desired,
+    dashcards: desired.dashcards.map(dashcard => ({
+      ...dashcard,
+      id: byCard.get(dashcard.card_id) ?? dashcard.id,
+    })),
+  };
 }
 
 export function buildDatabasePayload(config) {
