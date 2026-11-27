@@ -18,6 +18,7 @@
     "docker:init": "docker compose up -d",
     "docker:stop": "docker compose stop",
     "chatwoot:prepare": "docker compose --profile chatwoot run --rm chatwoot-rails bundle exec rails db:chatwoot_prepare",
+    "chatwoot:setup": "docker compose --profile chatwoot exec -T -e CW_ADMIN_PASSWORD -e CW_AGENT_EMAILS -e CW_AGENT_PASSWORD -e CW_ADMIN_EMAIL -e CW_ACCOUNT_NAME -e CW_WEBHOOK_URL chatwoot-rails bundle exec rails runner - < docker/chatwoot/setup.rb",
     "chatwoot:up": "docker compose --profile chatwoot up -d chatwoot-rails chatwoot-sidekiq",
     "chatwoot:stop": "docker compose --profile chatwoot stop chatwoot-rails chatwoot-sidekiq chatwoot-postgres chatwoot-redis",
     "metabase:up": "docker compose --profile metabase up -d metabase",
