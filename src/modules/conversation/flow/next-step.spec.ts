@@ -22,6 +22,12 @@ function stateWith(extra: Partial<OrderState>): OrderState {
   return { step: 'summary', customer: { id: 1 }, ...extra };
 }
 
+function purchaseStarts(tools: ReturnType<typeof createFakeTools>) {
+  return tools.calls.filter(
+    call => call.name === 'track' && (call.args[0] as { name: string }).name === 'purchase_started',
+  );
+}
+
 describe('nextStep', () => {
   it('sem endereço e com endereços conhecidos escolhe o endereço', async () => {
     const result = await nextStep(stateWith({ addresses: [address] }), createFakeTools());
@@ -169,6 +175,47 @@ describe('nextStep', () => {
     if (reply?.type !== 'list') throw new Error('expected list');
     expect(reply.body).toBe(msg.chooseAmbiguousProduct);
     expect(reply.sections[0].rows.map(row => row.id)).toEqual(['product:1', 'product:2']);
+  });
+  it('emite purchase_started com o segmento do cliente quando endereço e produto estão definidos', async () => {
+    const segments: { extra: Partial<OrderState>; reason: string }[] = [
+      { extra: {}, reason: 'new' },
+      { extra: { boughtProductIds: [] }, reason: 'unknown' },
+      { extra: { boughtProductIds: [1] }, reason: 'recurring' },
+    ];
+    for (const { extra, reason } of segments) {
+      const tools = createFakeTools();
+      const result = await nextStep(stateWith({ address, product, ...extra }), tools);
+      expect(purchaseStarts(tools).map(call => call.args[0])).toEqual([
+        { name: 'purchase_started', reason },
+      ]);
+      expect(result.state?.purchaseStarted).toBe(true);
+      expect(result.state?.step).toBe('chooseQuantity');
+    }
+  });
+
+  it('emite purchase_started uma única vez por ciclo', async () => {
+    const tools = createFakeTools();
+    const first = await nextStep(stateWith({ address, product, quantity: 2, payment: pix }), tools);
+    expect(first.state?.step).toBe('summary');
+    const {
+      product: _product,
+      quantity: _quantity,
+      quote: _quote,
+      ...back
+    } = first.state as OrderState;
+    const second = await nextStep({ ...back, product: { ...product, id: 2 }, quantity: 3 }, tools);
+    expect(second.state?.step).toBe('summary');
+    expect(second.state?.quote?.total).toBe(330);
+    expect(purchaseStarts(tools)).toHaveLength(1);
+  });
+
+  it('não emite purchase_started enquanto faltam endereço ou produto', async () => {
+    const tools = createFakeTools();
+    const noAddress = await nextStep(stateWith({ product }), tools);
+    const noProduct = await nextStep(stateWith({ address }), tools);
+    expect(purchaseStarts(tools)).toHaveLength(0);
+    expect(noAddress.state?.purchaseStarted).toBeUndefined();
+    expect(noProduct.state?.purchaseStarted).toBeUndefined();
   });
 });
 

@@ -17,7 +17,16 @@ function setup() {
   return { repository, db, values, where, logger };
 }
 
-afterEach(() => vi.restoreAllMocks());
+const revgasEnv = {
+  REVGAS_MODE: env.REVGAS_MODE,
+  REVGAS_API_KEY: env.REVGAS_API_KEY,
+  REVGAS_ESTABLISHMENT_ID: env.REVGAS_ESTABLISHMENT_ID,
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  Object.assign(env, revgasEnv);
+});
 
 describe('BotEventsRepository', () => {
   it('grava um evento com horário da aplicação', async () => {
@@ -26,6 +35,38 @@ describe('BotEventsRepository', () => {
     expect(values).toHaveBeenCalledWith({
       name: 'turn',
       durationMs: 12,
+      isSimulated: true,
+      occurredAt: expect.any(Date),
+    });
+  });
+
+  it('grava o modo efetivo da venda em cada evento', () => {
+    const cases = [
+      { mode: 'fake', isSimulated: true },
+      { mode: 'hybrid', isSimulated: true },
+      { mode: 'live', isSimulated: false },
+    ] as const;
+    for (const { mode, isSimulated } of cases) {
+      Object.assign(env, {
+        REVGAS_MODE: mode,
+        REVGAS_API_KEY: 'chave-de-teste',
+        REVGAS_ESTABLISHMENT_ID: 1,
+      });
+      const { repository, values } = setup();
+      repository.record({ name: 'order_cancelled' });
+      expect(values).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ isSimulated }));
+    }
+  });
+
+  it('grava o segmento de purchase_started na coluna reason sem dado pessoal', () => {
+    const { repository, values } = setup();
+    const cycleId = '6f1c1b0e-2d3c-4f4a-8a55-0d2f7a9b1c11';
+    repository.record({ name: 'purchase_started', cycleId, reason: 'recurring' });
+    expect(values).toHaveBeenCalledExactlyOnceWith({
+      name: 'purchase_started',
+      cycleId,
+      reason: 'recurring',
+      isSimulated: true,
       occurredAt: expect.any(Date),
     });
   });

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { REDIS } from 'src/infra/cache/redis.client';
@@ -128,6 +128,7 @@ describe('Eventos do bot (e2e)', () => {
             'reason',
             'durationMs',
             'amount',
+            'isSimulated',
           ].sort(),
         );
       },
@@ -150,5 +151,23 @@ describe('Eventos do bot (e2e)', () => {
     expect(whatsapp.sent.map(sent => sent.body)).toEqual(before);
     cycles.push((await conversations.loadOrder(phone))?.cycleId as string);
     insert.mockRestore();
+  });
+
+  it('classifica eventos antigos como simulados e mantém o default true', async () => {
+    const cycleId = randomUUID();
+    cycles.push(cycleId);
+    await db.execute(
+      sql`INSERT INTO bot_events (name, cycle_id) VALUES ('order_cancelled', ${cycleId}::uuid)`,
+    );
+    const [row] = await db
+      .select({ isSimulated: botEvents.isSimulated })
+      .from(botEvents)
+      .where(eq(botEvents.cycleId, cycleId));
+    expect(row?.isSimulated).toBe(true);
+    const column = await db.execute(
+      sql`SELECT is_nullable, column_default FROM information_schema.columns
+          WHERE table_name = 'bot_events' AND column_name = 'is_simulated'`,
+    );
+    expect(column.rows).toEqual([{ is_nullable: 'NO', column_default: 'true' }]);
   });
 });
