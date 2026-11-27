@@ -103,6 +103,50 @@ subir (migrações novas).
 
 ## Configurar o Chatwoot (primeira vez)
 
+O script `docker/chatwoot/setup.rb` faz toda a configuração e pode rodar quantas vezes for preciso
+(não duplica nada nem troca senha de usuário que já existe). Ele cria o administrador, a conta, a
+caixa de entrada API "WhatsApp Bot" (com o webhook e a atribuição automática desligada), o Agent Bot
+"RevGás Bot", os atendentes pedidos e remove a trava de onboarding da instalação, que senão
+redireciona o painel para `/installation/onboarding`.
+
+Do zero, com `docker/chatwoot.env` preenchido:
+
+```bash
+pnpm chatwoot:prepare
+pnpm chatwoot:up
+CW_ADMIN_PASSWORD='...' CW_AGENT_EMAILS='ana@revgas.local,bia@revgas.local' CW_AGENT_PASSWORD='...' pnpm chatwoot:setup
+```
+
+No fish, use `env CW_ADMIN_PASSWORD='...' ... pnpm chatwoot:setup`. Espere o Rails terminar de subir
+antes do `setup` (veja o passo 5 da subida). As senhas vêm do ambiente de quem chama, não ficam em
+argumento do comando `docker`.
+
+Variáveis do setup:
+
+| Variável | Padrão | Observação |
+| --- | --- | --- |
+| `CW_ADMIN_PASSWORD` | sem padrão | Obrigatória só se o administrador ainda não existe. |
+| `CW_ADMIN_EMAIL` | `admin@revgas.local` | |
+| `CW_ACCOUNT_NAME` | `RevGás Local` | |
+| `CW_WEBHOOK_URL` | `http://host.docker.internal:3100/webhooks/chatwoot` | Em produção, a URL pública do bot. |
+| `CW_AGENT_EMAILS` | vazio | Lista separada por vírgula. Cria cada atendente com papel `agent`, e-mail confirmado, e o adiciona à caixa. Vazio não cria ninguém. |
+| `CW_AGENT_PASSWORD` | sem padrão | Senha inicial dos atendentes novos; obrigatória se `CW_AGENT_EMAILS` não for vazia. |
+
+O Chatwoot exige senha com maiúscula, minúscula, número e caractere especial. Atendente que já existe
+mantém a senha e o papel atuais. Peça para cada um trocar a senha no primeiro acesso.
+
+O script imprime linhas `OUT:CHAVE=valor`. Copie-as para o `.env` do bot sem o prefixo `OUT:`
+(`CHATWOOT_MODE`, `CHATWOOT_ACCOUNT_ID`, `CHATWOOT_INBOX_ID`, `CHATWOOT_API_TOKEN`,
+`CHATWOOT_BOT_TOKEN`, `CHATWOOT_WEBHOOK_SECRET`) e reinicie o bot. Elas têm tokens: não as cole em
+chat, issue nem log. Para filtrar só as linhas, adicione `| grep '^OUT:'` ao comando.
+
+Para um deploy, rode o mesmo script no contêiner Rails de lá, com `CW_WEBHOOK_URL` apontando para o
+bot.
+
+### Configuração manual (alternativa)
+
+Sem o script, o equivalente pelo painel:
+
 1. Abra `http://localhost:3000`, crie o **administrador** e a **conta** (o cadastro público fica
    desligado: `ENABLE_ACCOUNT_SIGNUP=false`). Se o assistente de boas-vindas travar o painel, conclua
    ou pule as etapas dele.
