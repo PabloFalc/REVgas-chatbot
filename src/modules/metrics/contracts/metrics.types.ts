@@ -31,4 +31,5 @@ export type MetricEvent = Cycle &
       }
     | { name: 'order_status'; outcome: 'found' | 'none' }
     | { name: 'cpf'; outcome: 'mismatch' | 'blocked' | 'blocked_hit'; amount: number }
+    | { name: 'summary_confirmation_rejected'; reason: 'stale_revision' }
   );

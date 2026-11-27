@@ -93,6 +93,7 @@ export interface OrderState {
   payment?: PaymentOption;
   quote?: Quote;
   changeFor?: number | null;
+  revision?: number;
   saleAttemptAt?: string;
   lastInboundAt?: string;
   remindedFor?: string;
