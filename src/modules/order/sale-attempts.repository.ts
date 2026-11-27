@@ -13,7 +13,7 @@ import {
   SaleUncertainError,
 } from './contracts/order.types';
 
-const STALE_ATTEMPT_SECONDS = 60;
+export const STALE_ATTEMPT_SECONDS = 60;
 const UNCERTAIN_GUARD_HOURS = 24;
 
 type Existing = { status: SaleAttemptStatus; erpSaleId: number | null } | undefined;
@@ -59,8 +59,8 @@ export class SaleAttemptsRepository {
     return row ? (row.status as SaleAttemptStatus) : null;
   }
 
-  async sweepStale(): Promise<string[]> {
-    const rows = await this.db
+  sweepStale(): Promise<{ cycleId: string; isSimulated: boolean }[]> {
+    return this.db
       .update(saleAttempts)
       .set({ status: 'uncertain', errorKind: 'restart', updatedAt: sql`now()` })
       .where(
@@ -69,8 +69,7 @@ export class SaleAttemptsRepository {
           lt(saleAttempts.updatedAt, sql`now() - make_interval(secs => ${STALE_ATTEMPT_SECONDS})`),
         ),
       )
-      .returning({ cycleId: saleAttempts.cycleId });
-    return rows.map(row => row.cycleId);
+      .returning({ cycleId: saleAttempts.cycleId, isSimulated: saleAttempts.isSimulated });
   }
 
   private async hasRecentUncertain(attempt: SaleAttemptInput): Promise<boolean> {

@@ -173,4 +173,50 @@ describe('SaleAttemptsRepository (e2e)', () => {
     await repository.begin({ ...attempt(simulated), customerId: realCustomer, isSimulated: true });
     expect(await repository.statusOf(simulated)).toBe('pending');
   });
+
+  it('varredura marca como incerta a tentativa pendente antiga', async () => {
+    const customerId = newCustomer();
+    const orphan = newCycle();
+    const recent = newCycle();
+    const registered = newCycle();
+    await db.insert(saleAttempts).values([
+      {
+        ...attempt(orphan),
+        customerId,
+        status: 'pending',
+        updatedAt: sql`now() - interval '2 minutes'`,
+      },
+      { ...attempt(recent), customerId, status: 'pending' },
+      {
+        ...attempt(registered),
+        customerId,
+        status: 'registered',
+        erpSaleId: 5555,
+        updatedAt: sql`now() - interval '2 minutes'`,
+      },
+    ]);
+    const [recentBefore] = await rowsOf(recent);
+    const [registeredBefore] = await rowsOf(registered);
+
+    const swept = await repository.sweepStale();
+
+    expect(swept).toContainEqual({ cycleId: orphan, isSimulated: true });
+    expect(swept.map(row => row.cycleId)).not.toContain(recent);
+    expect(swept.map(row => row.cycleId)).not.toContain(registered);
+    const [orphanAfter] = await rowsOf(orphan);
+    expect(orphanAfter).toMatchObject({
+      status: 'uncertain',
+      errorKind: 'restart',
+      erpSaleId: null,
+    });
+    expect(await rowsOf(recent)).toEqual([recentBefore]);
+    expect(await rowsOf(registered)).toEqual([registeredBefore]);
+
+    const again = await repository.sweepStale();
+
+    expect(again.map(row => row.cycleId)).not.toContain(orphan);
+    expect(await rowsOf(orphan)).toEqual([orphanAfter]);
+    expect(await rowsOf(recent)).toEqual([recentBefore]);
+    expect(await rowsOf(registered)).toEqual([registeredBefore]);
+  });
 });

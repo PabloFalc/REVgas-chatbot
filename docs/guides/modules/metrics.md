@@ -26,6 +26,7 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 | `ai_call` | `allowed` ou `limited`; `interpret`, `read_name`, `address`, `question`; unidades do limite em `amount` |
 | `order_status` | `found` ou `none` |
 | `cpf` | `mismatch`, `blocked`, `blocked_hit`; tentativas em `amount` |
+| `sale_outcome_unknown` | Venda de resultado incerto: `timeout`, `server_error`, `invalid_response` ou `other`. Também sai com `other` para cada tentativa `pending` que a varredura marca como `uncertain` 60 s depois do boot |
 
 `SaleRejectedError` não carrega `kind`: recebe razão `unexpected` e outcome `rejected`. Um `blocked_hit` usa o limiar de três tentativas, pois o estado de bloqueio guarda apenas sua existência. `ai_call` mede unidades do limite local, sem tokens ou custo financeiro.
 
@@ -55,7 +56,7 @@ docker exec -i revgas-pg psql -U docker -d revgas -v DBNAME=revgas -v pass='senh
 
 A imagem OSS fica fixa em `metabase/metabase:v0.65.3.7`, a versão estável mais recente da série principal publicada até 09/11/2026. O [Docker Hub](https://hub.docker.com/r/metabase/metabase/tags?name=v0.65.3.7) informa publicação em 09/11/2026 às 21:26 UTC; `v0.65.4` foi publicada em 10/11. O perfil mantém o banco de configuração separado e desliga telemetria anônima. A interface só escuta em `127.0.0.1:3001`.
 
-O usuário `metrics_reader` tem CONNECT, USAGE no schema e SELECT apenas em `bot_events`, limite de dez conexões e timeout de 10 segundos. Não use a credencial administrativa do bot no Metabase. Permissões públicas herdadas do PostgreSQL também devem ser consideradas ao instalar em outro ambiente.
+O usuário `metrics_reader` tem CONNECT, USAGE no schema, SELECT em `bot_events` e SELECT só nas colunas analíticas de `sale_attempts` (`customer_id` e `erp_sale_id` ficam de fora), limite de dez conexões e timeout de 10 segundos. Não use a credencial administrativa do bot no Metabase. Permissões públicas herdadas do PostgreSQL também devem ser consideradas ao instalar em outro ambiente. Se o usuário já existe, rode apenas a última linha do script (o `GRANT` de `sale_attempts`) em vez do arquivo inteiro.
 
 ## Cards SQL
 
