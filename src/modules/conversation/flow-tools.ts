@@ -215,7 +215,7 @@ export class FlowToolsService {
       },
       checkpoint: save,
       requestHandoff: async request => {
-        const outcome = await this.handoff.requestHandoff(request);
+        const outcome = await this.handoff.requestHandoff({ ...request, cycleId });
         track({ name: 'handoff', reason: request.reason, outcome: outcome.status });
         return outcome;
       },

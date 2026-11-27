@@ -2,13 +2,14 @@ import { Module } from '@nestjs/common';
 import { env } from 'src/config/env';
 import { CacheModule } from 'src/infra/cache/cache.module';
 import { ChatwootModule } from 'src/integrations/chatwoot/chatwoot.module';
+import { MetricsModule } from 'src/modules/metrics/metrics.module';
 import { parseServiceHours } from 'src/utils/service-hours';
 import { DeskGateway } from './desk.gateway';
 import { HandoffRepository } from './handoff.repository';
 import { HANDOFF_CLOCK, HandoffService, SERVICE_HOURS } from './handoff.service';
 
 @Module({
-  imports: [CacheModule, ChatwootModule],
+  imports: [CacheModule, ChatwootModule, MetricsModule],
   providers: [
     HandoffService,
     HandoffRepository,

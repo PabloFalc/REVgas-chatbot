@@ -40,6 +40,7 @@ export interface HandoffRequest {
   phone: string;
   reason: HandoffReason;
   summary: HandoffOrderSummary | null;
+  cycleId?: string;
 }
 
 export type HandoffStatus = 'queued' | 'alreadyQueued' | 'active' | 'unavailable';
@@ -83,7 +84,13 @@ export interface HandoffState {
   conversationId: number;
   reason: HandoffReason | 'agent';
   since: string;
+  handoffId?: string;
+  cycleId?: string;
+  requestedAt?: string;
+  assumedAt?: string;
   lastAgentAt?: string;
+  resolvedAt?: string;
+  expiredAt?: string;
 }
 
 export interface DeskThread {

@@ -37,4 +37,9 @@ export type MetricEvent = Cycle &
         reason: 'timeout' | 'server_error' | 'invalid_response' | 'other';
         isSimulated: boolean;
       }
+    | {
+        name: 'handoff_assumed' | 'handoff_resolved' | 'handoff_expired';
+        handoffId: string;
+        durationMs: number;
+      }
   );

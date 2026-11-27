@@ -1,8 +1,11 @@
 import type { PinoLogger } from 'nestjs-pino';
 import { WhatsappRejectedError } from 'src/core/erros/whatsapp/whatsapp.errors';
 import { FakeWhatsappClient } from 'src/integrations/whatsapp/fake-whatsapp.client';
-import type { DeskEvent } from 'src/modules/handoff/contracts/handoff.types';
-import type { HandoffService } from 'src/modules/handoff/handoff.service';
+import type { DeskEvent, HandoffState } from 'src/modules/handoff/contracts/handoff.types';
+import { DeskGateway } from 'src/modules/handoff/desk.gateway';
+import type { HandoffRepository } from 'src/modules/handoff/handoff.repository';
+import { HandoffService } from 'src/modules/handoff/handoff.service';
+import type { BotEventsRepository } from 'src/modules/metrics/bot-events.repository';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConversationRepository, LockOutcome } from './conversation.repository';
 import { DeskEventsService } from './desk-events.service';
@@ -203,5 +206,63 @@ describe('DeskEventsService.handle', () => {
     await service.handle([agentEvent()]);
 
     expect(handoff.releaseDeskMessage).not.toHaveBeenCalled();
+  });
+
+  it('não limpa handoff ao resolver conversa de outro ciclo', async () => {
+    let state: HandoffState | null = {
+      status: 'active',
+      conversationId: 20,
+      reason: 'customer_request',
+      since: '2026-11-09T10:00:00.000Z',
+      requestedAt: '2026-11-09T09:50:00.000Z',
+      assumedAt: '2026-11-09T10:00:00.000Z',
+      handoffId: '0b6f6c1e-2d1c-4e53-9a43-5b1f1f3e7a10',
+    };
+    const repo = {
+      getState: vi.fn(async () => state),
+      clearState: vi.fn(async () => {
+        state = null;
+      }),
+      getThread: vi.fn(async () => ({ conversationId: 20 })),
+      clearThread: vi.fn(async () => undefined),
+    };
+    const events = { record: vi.fn() };
+    const realHandoff = new HandoffService(
+      repo as unknown as HandoffRepository,
+      new DeskGateway(null, { mode: 'off', baseUrl: '', timeoutMs: 1, inboxId: 1 }),
+      { setContext: vi.fn(), warn: vi.fn() } as unknown as PinoLogger,
+      { now: () => new Date('2026-11-09T10:10:00.000Z') },
+      [],
+      events as unknown as BotEventsRepository,
+    );
+    const withRealHandoff = new DeskEventsService(
+      {
+        withPhoneLock: async (_phone: string, work: () => Promise<unknown>) => ({
+          ran: true,
+          value: await work(),
+        }),
+      } as unknown as ConversationRepository,
+      new MessagingGateway(new FakeWhatsappClient()),
+      realHandoff,
+      { setContext: vi.fn(), debug: vi.fn(), warn: vi.fn() } as unknown as PinoLogger,
+    );
+
+    await withRealHandoff.handle([
+      { kind: 'conversationResolved', conversationId: 19, inboxId: 1, phone: PHONE },
+    ]);
+
+    expect(state).not.toBeNull();
+    expect(repo.clearState).not.toHaveBeenCalled();
+    expect(repo.clearThread).not.toHaveBeenCalled();
+    expect(events.record).not.toHaveBeenCalled();
+
+    await withRealHandoff.handle([
+      { kind: 'conversationResolved', conversationId: 20, inboxId: 1, phone: PHONE },
+    ]);
+
+    expect(state).toBeNull();
+    expect(events.record).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ name: 'handoff_resolved', durationMs: 600_000 }),
+    );
   });
 });

@@ -122,6 +122,7 @@ describe('Eventos do bot (e2e)', () => {
             'occurredAt',
             'name',
             'cycleId',
+            'handoffId',
             'prevStep',
             'step',
             'outcome',
