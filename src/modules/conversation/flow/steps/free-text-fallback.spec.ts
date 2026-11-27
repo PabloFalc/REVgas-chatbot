@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Reply } from '../../contracts/conversation.types';
 import type { FlowInput, FlowTools, OrderState, Step } from '../flow.types';
 import { offer } from '../handoff';
 import { msg } from '../messages';
@@ -63,15 +64,19 @@ describe('texto guiado da etapa quando a IA não entende', () => {
     createFakeTools({ interpret: async () => null, ...overrides });
 
   it.each([
-    ['askCpf', 'não tenho CPF', msg.invalidCpf],
-    ['confirmCpf', 'não lembro', msg.askFullCpf],
-    ['askQuantity', 'uns dois', msg.invalidQuantity],
-    ['askChangeAmount', 'não sei ainda', msg.invalidChange(110)],
-  ] as [Step, string, string][])('%s: "%s" recebe o texto da etapa', async (step, raw, guided) => {
+    ['askCpf', 'não tenho CPF', text(msg.invalidCpf)],
+    [
+      'confirmCpf',
+      'não lembro',
+      buttons(msg.askFullCpf, [{ id: 'identity:agent', title: msg.talkToAgent }]),
+    ],
+    ['askQuantity', 'uns dois', text(msg.invalidQuantity)],
+    ['askChangeAmount', 'não sei ainda', text(msg.invalidChange(110))],
+  ] as [Step, string, Reply][])('%s: "%s" recebe o texto da etapa', async (step, raw, guided) => {
     const tools = withAi();
     const state = { ...full, step };
     const out = await handlers[step]?.(state, say(raw), tools);
-    expect(out).toEqual({ state, replies: [text(guided)], misunderstood: true });
+    expect(out).toEqual({ state, replies: [guided], misunderstood: true });
     expect(tools.calls.map(call => call.name)).toContain('registerMisunderstood');
   });
 

@@ -141,7 +141,7 @@ export const msg = {
   askName: 'Qual é o seu nome completo?',
   invalidName: 'Preciso do nome completo, com nome e sobrenome. Qual é o seu nome?',
   askCpf: 'Agora seu CPF (só números):',
-  invalidCpf: 'Esse CPF não parece válido. Confira e mande de novo (só números).',
+  invalidCpf: 'Esse CPF não parece válido. Confira e mande de novo.',
   askFullCpf: 'Para sua segurança, digite seu CPF completo.',
   cpfMismatch: 'Não consegui confirmar. Confira o CPF e digite de novo.',
   identityHandoff: 'Não consegui confirmar seus dados por aqui. Vou passar para um atendente.',

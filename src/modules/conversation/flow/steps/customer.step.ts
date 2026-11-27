@@ -159,8 +159,12 @@ const handleAskCpf: HandleFn = async (state, input, tools) => {
 
 function ownerChanged(state: OrderState, tools: FlowTools): Promise<StepResult> {
   tools.track({ name: 'identity_check', outcome: 'owner_changed' });
-  const { pendingOrderStatus: _pending, ...rest } = state;
-  return askName({ ...rest, customer: {} }, tools);
+  const { cycleId, product, quantity } = state;
+  const fresh: OrderState = { step: 'askName', customer: {} };
+  if (cycleId !== undefined) fresh.cycleId = cycleId;
+  if (product !== undefined) fresh.product = product;
+  if (quantity !== undefined) fresh.quantity = quantity;
+  return askName(fresh, tools);
 }
 
 const handleConfirmCpf: HandleFn = async (state, input, tools) => {
@@ -175,7 +179,7 @@ const handleConfirmCpf: HandleFn = async (state, input, tools) => {
     if (raw !== null && hasCpfLikeDigits(raw)) {
       return { state, replies: [buttons(msg.invalidCpf, [agentOption])] };
     }
-    return freeTextOr(state, raw, tools, msg.askFullCpf);
+    return freeTextOr(state, raw, tools, buttons(msg.askFullCpf, [agentOption]));
   }
   const result = await checkCpf(input.phone, raw, tools);
   switch (result.kind) {

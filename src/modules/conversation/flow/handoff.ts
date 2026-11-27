@@ -104,14 +104,18 @@ export async function identityHandoff(
   state: OrderState | null,
   phone: string,
   tools: FlowTools,
+  keep: { state: OrderState | null; summary: HandoffOrderSummary | null } = {
+    state: null,
+    summary: handoffSummary(state),
+  },
 ): Promise<StepResult> {
   const outcome = await tools.requestHandoff({
     phone,
     reason: 'identity_failure',
-    summary: handoffSummary(state),
+    summary: keep.summary,
   });
   if (outcome.status === 'unavailable') {
-    return { state: null, replies: [text(msg.identityContactStore(tools.storePhone))] };
+    return { state: keep.state, replies: [text(msg.identityContactStore(tools.storePhone))] };
   }
-  return { state: null, replies: [text(msg.identityHandoff), queueReply(outcome)] };
+  return { state: keep.state, replies: [text(msg.identityHandoff), queueReply(outcome)] };
 }

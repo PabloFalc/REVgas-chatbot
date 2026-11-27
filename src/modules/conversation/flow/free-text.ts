@@ -271,17 +271,21 @@ export async function keepOfferedProduct(state: OrderState, tools: FlowTools): P
 
 export interface FreeTextOptions {
   whenNothingApplied?: () => Promise<StepResult>;
-  fallback?: string;
+  fallback?: string | Reply;
+}
+
+function replyOf(fallback: string | Reply): Reply {
+  return typeof fallback === 'string' ? text(fallback) : fallback;
 }
 
 async function misunderstood(
   state: OrderState,
   tools: FlowTools,
-  fallback?: string,
+  fallback?: string | Reply,
 ): Promise<StepResult> {
   const count = await tools.registerMisunderstood();
   if (count < STUCK_AFTER && fallback !== undefined) {
-    return { state, replies: [text(fallback)], misunderstood: true };
+    return { state, replies: [replyOf(fallback)], misunderstood: true };
   }
   const first = count >= STUCK_AFTER ? offer(msg.stuck) : text(msg.notUnderstood);
   const result = await repeatQuestion(state, tools, first);
@@ -345,8 +349,8 @@ export function freeTextOr(
   state: OrderState,
   raw: string | null,
   tools: FlowTools,
-  fallback: string,
+  fallback: string | Reply,
 ): Promise<StepResult> {
   if (raw !== null && shouldInterpret(raw)) return freeText(state, raw, tools, { fallback });
-  return Promise.resolve({ state, replies: [text(fallback)] });
+  return Promise.resolve({ state, replies: [replyOf(fallback)] });
 }

@@ -264,9 +264,14 @@ describe('status do pedido', () => {
     expect(latestOrderStatus).not.toHaveBeenCalled();
   });
 
-  it.each([{ cpf: undefined }, { blocked: true }])(
-    'não revela venda sem CPF ou com bloqueio: %o',
-    async condition => {
+  it.each([
+    [{ cpf: undefined }, null],
+    [{ blocked: true }, null],
+    [{ cpf: undefined }, state],
+    [{ blocked: true }, state],
+  ] as [{ cpf?: undefined; blocked?: true }, OrderState | null][])(
+    'não revela venda sem CPF ou com bloqueio: %o com estado %o',
+    async (condition, before) => {
       const latestOrderStatus = vi.fn();
       const tools = createFakeTools({
         findCustomers: async () => [
@@ -281,9 +286,28 @@ describe('status do pedido', () => {
         isBlocked: async () => 'blocked' in condition,
         latestOrderStatus,
       });
-      const result = await runFlow(null, input('status do pedido'), tools);
-      expect(bodies(result)).toContain(msg.identityContactStore(tools.storePhone));
+      const result = await runFlow(before, input('status do pedido'), tools);
+      expect(result).toEqual({
+        state: before,
+        replies: [text(msg.identityHandoff), text(msg.handoffQueued)],
+      });
+      expect(
+        tools.calls.filter(call => call.name === 'requestHandoff').map(call => call.args[0]),
+      ).toEqual([{ phone: FAKE_PHONE, reason: 'identity_failure', summary: null }]);
       expect(latestOrderStatus).not.toHaveBeenCalled();
     },
   );
+
+  it('sem CPF e sem atendimento disponível indica o contato da revenda', async () => {
+    const tools = createFakeTools({
+      findCustomers: async () => [{ id: 1, name: 'Maria', cpf: null, tagId: null }],
+      verifiedCustomer: async () => null,
+      requestHandoff: async () => ({ status: 'unavailable', open: false, nextOpening: null }),
+    });
+    const result = await runFlow(state, input('status do pedido'), tools);
+    expect(result).toEqual({
+      state,
+      replies: [text(msg.identityContactStore(tools.storePhone))],
+    });
+  });
 });

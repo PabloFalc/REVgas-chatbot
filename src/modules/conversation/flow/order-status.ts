@@ -1,7 +1,7 @@
 import type { OrderStatus } from 'src/modules/order/contracts/order.types';
 import { normalizeText } from 'src/utils/text';
 import type { FlowTools, OrderState, StepResult } from './flow.types';
-import { offer, orderStartButton } from './handoff';
+import { identityHandoff, offer, orderStartButton } from './handoff';
 import { resolveIdentity } from './identity';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
@@ -63,7 +63,7 @@ export async function orderStatus(state: OrderState | null, tools: FlowTools): P
       return answered;
     }
     case 'handoff':
-      return { state, replies: [text(msg.identityContactStore(tools.storePhone))] };
+      return identityHandoff(state, tools.phone, tools, { state, summary: null });
     case 'verified':
       return answerOrderStatus(state, identity.customer.id, tools);
     case 'ask':

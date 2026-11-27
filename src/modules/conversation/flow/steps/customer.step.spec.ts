@@ -346,6 +346,19 @@ describe('confirmCpf', () => {
     expect(result?.state?.addresses).toHaveLength(2);
   });
 
+  it('texto sem dígitos de CPF repete a orientação com o botão de atendente', async () => {
+    const tools = createFakeTools(unverified);
+    const result = await handlers.confirmCpf?.(state, say('não lembro meu documento'), tools);
+    expect(result).toEqual({
+      state,
+      replies: [buttons(msg.askFullCpf, [agent])],
+      misunderstood: true,
+    });
+    const names = tools.calls.map(call => call.name);
+    expect(names).toContain('registerMisunderstood');
+    expect(names).not.toContain('interpret');
+  });
+
   it('CPF com pontuação confere com o cadastro', async () => {
     const tools = createFakeTools(unverified);
     const result = await handlers.confirmCpf?.(state, say(`meu cpf é ${VALID_CPF}`), tools);
@@ -440,14 +453,27 @@ describe('confirmCpf', () => {
   it('número mudou de dono segue para cadastro novo sem dado anterior', async () => {
     const tools = createFakeTools(unverified);
     const p13 = { id: 1, name: 'Botijão P13' };
+    const address = {
+      street: 'Rua das Flores',
+      number: '120',
+      neighborhood: 'Centro',
+      city: 'Teresina',
+      state: 'PI',
+    };
     const asked: OrderState = {
       ...state,
+      cycleId: 'ciclo-1',
       product: p13,
+      quantity: 2,
+      address,
+      addresses: [address],
+      lastOrder: { productId: 1, quantity: 1, paymentType: 'PIX', address },
+      boughtProductIds: [1],
       pendingOrderStatus: { resumeStep: null, customer: {} },
     };
     const result = await handlers.confirmCpf?.(asked, choose('identity:owner-changed'), tools);
     expect(result).toEqual({
-      state: { step: 'askName', customer: {}, product: p13 },
+      state: { step: 'askName', customer: {}, cycleId: 'ciclo-1', product: p13, quantity: 2 },
       replies: [text(msg.askName)],
     });
     const names = tools.calls.map(call => call.name);
