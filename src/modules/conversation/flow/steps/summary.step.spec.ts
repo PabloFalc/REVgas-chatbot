@@ -281,6 +281,17 @@ describe('summary', () => {
     expect(tools.calls[1].args[0]).toEqual(order);
   });
 
+  it('não usa IA para ação de botão de confirmação', async () => {
+    const interpret = vi.fn(async (): Promise<Interpretation | null> => {
+      throw new Error('provedor indisponível');
+    });
+    const tools = createFakeTools({ interpret });
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+    expect(result?.saleId).toBe(4521);
+    expect(tools.calls.map(call => call.name)).toEqual(['checkpoint', 'createSale']);
+    expect(interpret).not.toHaveBeenCalled();
+  });
+
   it('dinheiro com troco vira observação', async () => {
     const tools = createFakeTools();
     const state = { ...base, payment: money, changeFor: 250 };
