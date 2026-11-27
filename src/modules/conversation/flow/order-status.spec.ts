@@ -56,6 +56,21 @@ describe('status do pedido', () => {
     expect(tools.calls.some(call => call.name === 'markVerified')).toBe(true);
   });
 
+  it('status pedido durante confirmCpf responde e segue o atendimento sem pedir o CPF de novo', async () => {
+    const latestOrderStatus = vi.fn(async () => ({ saleId: 8, status: 'OPEN' }));
+    const tools = createFakeTools({ verifiedCustomer: async () => null, latestOrderStatus });
+    const greeted = await runFlow(null, input('oi'), tools);
+    expect(greeted.state?.step).toBe('confirmCpf');
+    const gate = await runFlow(greeted.state, input('cadê meu pedido?'), tools);
+    expect(gate.state?.step).toBe('confirmCpf');
+    const answered = await runFlow(gate.state, input('123.456.789-09'), tools);
+    expect(bodies(answered)).toContain('Pedido nº 8: recebido');
+    expect(bodies(answered)).not.toContain(msg.askFullCpf);
+    expect(answered.state?.step).not.toBe('confirmCpf');
+    expect(answered.state?.pendingOrderStatus).toBeUndefined();
+    expect(answered.state?.customer.id).toBe(1);
+  });
+
   it('só libera histórico após CPF completo corresponder a um dos cadastros do telefone', async () => {
     const latestOrderStatus = vi.fn(async () => ({ saleId: 8, status: 'OPEN' }));
     const tools = createFakeTools({

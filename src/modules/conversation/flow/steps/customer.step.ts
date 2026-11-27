@@ -2,6 +2,7 @@ import { isValidCpf, onlyDigits, removeLongDigitRuns } from 'src/utils/cpf';
 import { normalizeText } from 'src/utils/text';
 import {
   type AskFn,
+  CPF_STEPS,
   type FlowInput,
   type FlowTools,
   type HandleFn,
@@ -187,9 +188,17 @@ const handleConfirmCpf: HandleFn = async (state, input, tools) => {
   }
   const result = await checkCpf(input.phone, raw, tools);
   switch (result.kind) {
-    case 'verified':
-      if (state.pendingOrderStatus) return answerOrderStatus(state, result.customer.id, tools);
-      return welcomeKnown({ ...state, customer: result.customer }, tools);
+    case 'verified': {
+      const { pendingOrderStatus, ...rest } = state;
+      const resumeStep = pendingOrderStatus?.resumeStep ?? null;
+      if (pendingOrderStatus && (resumeStep === null || !CPF_STEPS.includes(resumeStep))) {
+        return answerOrderStatus(state, result.customer.id, tools);
+      }
+      const welcome = await welcomeKnown({ ...rest, customer: result.customer }, tools);
+      if (!pendingOrderStatus) return welcome;
+      const status = await answerOrderStatus(null, result.customer.id, tools);
+      return { state: welcome.state, replies: [...status.replies, ...welcome.replies] };
+    }
     case 'mismatch':
       return { state, replies: [buttons(msg.cpfMismatch, [ownerChangedOption, agentOption])] };
     case 'invalid':
