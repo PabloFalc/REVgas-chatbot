@@ -120,6 +120,30 @@ describe('applyInterpretation', () => {
     expect(applied?.notes).toEqual(['3x Botijão P45']);
   });
 
+  it('informa só os campos comerciais que mudaram de fato', () => {
+    const state: OrderState = {
+      step: 'summary',
+      customer: {},
+      product: p13,
+      quantity: 2,
+      payment: pix,
+    };
+    const changedFields = (partial: Partial<Interpretation>) =>
+      applyInterpretation(state, result(partial), catalog)?.changedFields;
+    expect(changedFields({ quantity: 2 })).toEqual([]);
+    expect(changedFields({ payment: 'PIX' })).toEqual([]);
+    expect(changedFields({ products: ['Botijão P13'] })).toBeUndefined();
+    expect(changedFields({ quantity: 3 })).toEqual(['quantity']);
+    expect(changedFields({ payment: 'MONEY' })).toEqual(['payment']);
+    expect(changedFields({ products: ['Botijão P45'] })).toEqual(['product']);
+    expect(changedFields({ address: 'rua X, 10' })).toEqual(['address']);
+    expect(changedFields({ newAddress: true })).toEqual(['address']);
+    expect(changedFields({ products: ['Botijão P45'], quantity: 2, payment: 'MONEY' })).toEqual([
+      'product',
+      'payment',
+    ]);
+  });
+
   it('troca só o produto e limpa a quantidade', () => {
     const state: OrderState = { step: 'summary', customer: {}, product: p13, quantity: 2 };
     const applied = applyInterpretation(state, result({ products: ['Botijão P45'] }), catalog);

@@ -1,3 +1,4 @@
+import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
 import { SaleRejectedError } from 'src/modules/order/contracts/order.types';
 import { describe, expect, it, vi } from 'vitest';
 import { runFlow } from '../flow';
@@ -169,6 +170,77 @@ describe('summary', () => {
     );
     expect(done?.saleId).toBe(4521);
     expect(tools.calls.map(call => call.name)).toEqual(['checkpoint', 'createSale']);
+  });
+
+  describe('texto livre depois do resumo', () => {
+    const typed = (body: string): FlowInput => ({
+      phone: FAKE_PHONE,
+      content: { type: 'text', text: body },
+    });
+    const reading = (partial: Partial<Interpretation>) =>
+      createFakeTools({
+        interpret: async () => ({ intent: 'order', confidence: 0.9, ...partial }),
+      });
+    const tracked = (tools: ReturnType<typeof createFakeTools>) =>
+      tools.calls.filter(call => call.name === 'track').map(call => call.args[0]);
+
+    it('reexibe o resumo quando o texto livre altera um campo do pedido', async () => {
+      const tools = reading({ quantity: 2 });
+      const result = await handlers.summary?.(base, typed('quero 2'), tools);
+      expect(result?.state?.step).toBe('summary');
+      expect(result?.state?.quantity).toBe(2);
+      expect(result?.state?.revision).toBe(2);
+      expect(result?.replies[0]).toEqual(text(msg.summaryUpdated));
+      expect(result?.replies).toHaveLength(2);
+      const reply = result?.replies[1];
+      if (reply?.type !== 'buttons') throw new Error('expected buttons');
+      expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:2', 'summary:fix']);
+      expect(tracked(tools)).toEqual([{ name: 'summary_changed', fields: ['quantity'] }]);
+    });
+
+    it('incrementa a revisão uma vez só quando muda mais de um campo', async () => {
+      const tools = reading({ quantity: 3, payment: 'MONEY' });
+      const result = await handlers.summary?.(base, typed('3 no dinheiro'), tools);
+      expect(result?.state?.revision).toBe(2);
+      expect(tracked(tools)).toEqual([
+        { name: 'summary_changed', fields: ['quantity', 'payment'] },
+      ]);
+    });
+
+    it('botão da revisão anterior não vende depois da mudança por texto', async () => {
+      const tools = reading({ quantity: 2 });
+      const changed = await handlers.summary?.(base, typed('quero 2'), tools);
+      tools.calls.length = 0;
+      const result = await handlers.summary?.(changed?.state as OrderState, pick(CONFIRM), tools);
+      expect(tools.calls.map(call => call.name)).not.toContain('createSale');
+      expect(result?.saleId).toBeUndefined();
+      expect(result?.replies[0]).toEqual(text(msg.staleConfirmation));
+    });
+
+    it('texto que repete o mesmo valor não incrementa a revisão', async () => {
+      for (const partial of [{ quantity: 1 }, { payment: 'PIX' }]) {
+        const tools = reading(partial);
+        const result = await handlers.summary?.(base, typed('igual'), tools);
+        expect(result?.state?.revision).toBe(1);
+        expect(result?.replies[0]).not.toEqual(text(msg.summaryUpdated));
+        expect(tracked(tools)).toEqual([]);
+      }
+    });
+
+    it('texto irrelevante não incrementa a revisão nem altera o pedido', async () => {
+      const tools = reading({ intent: 'other' });
+      const result = await handlers.summary?.(base, typed('bom dia, tudo bem?'), tools);
+      expect(result?.state).toEqual(base);
+      expect(tracked(tools)).toEqual([]);
+    });
+
+    it('mudança que leva a outra pergunta sobe a revisão sem o aviso de resumo', async () => {
+      const tools = reading({ products: ['Botijão P45'] });
+      const result = await handlers.summary?.(base, typed('quero o P45'), tools);
+      expect(result?.state?.step).toBe('chooseQuantity');
+      expect(result?.state?.revision).toBe(2);
+      expect(result?.replies).not.toContainEqual(text(msg.summaryUpdated));
+    });
   });
 
   it('resumo inclui o troco quando há', () => {
