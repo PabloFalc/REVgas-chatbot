@@ -1,4 +1,5 @@
 import type { PinoLogger } from 'nestjs-pino';
+import { ChatwootError } from 'src/core/erros/chatwoot/chatwoot.errors';
 import { FakeChatwootClient } from 'src/integrations/chatwoot/fake-chatwoot.client';
 import type { BotEventsRepository } from 'src/modules/metrics/bot-events.repository';
 import { parseServiceHours, type ServiceWindow } from 'src/utils/service-hours';
@@ -127,6 +128,51 @@ describe('HandoffService', () => {
         requestedAt: NOW.toISOString(),
         handoffId: expect.stringMatching(UUID),
       });
+    });
+
+    it('mantém o handoff local quando Chatwoot falha', async () => {
+      const { service, client, states, threads, logger } = setup();
+      vi.spyOn(client, 'createMessage').mockRejectedValueOnce(
+        new ChatwootError('unavailable', 'Chatwoot fora do ar'),
+      );
+      const outcome = await service.requestHandoff({
+        phone: PHONE,
+        reason: 'customer_request',
+        summary: null,
+      });
+      expect(outcome.status).toBe('queued');
+      const [conversation] = [...client.conversations.values()];
+      expect(states.get(PHONE)).toMatchObject({
+        status: 'queued',
+        conversationId: conversation.id,
+      });
+      expect(threads.get(PHONE)).toEqual({ conversationId: conversation.id });
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ component: 'handoff', error: 'unavailable' }),
+        expect.any(String),
+      );
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
+      expect(
+        (await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null }))
+          .status,
+      ).toBe('alreadyQueued');
+    });
+
+    it('persiste queued antes de postar a nota e abrir a conversa', async () => {
+      const { service, client, states } = setup();
+      const seen: Array<string | undefined> = [];
+      const postNote = client.createMessage.bind(client);
+      vi.spyOn(client, 'createMessage').mockImplementation(async (id, input) => {
+        seen.push(states.get(PHONE)?.status);
+        return postNote(id, input);
+      });
+      const setStatus = client.setStatus.bind(client);
+      vi.spyOn(client, 'setStatus').mockImplementation(async (id, status) => {
+        seen.push(states.get(PHONE)?.status);
+        return setStatus(id, status);
+      });
+      await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+      expect(seen).toEqual(['queued', 'queued']);
     });
 
     it('segunda chamada devolve alreadyQueued sem nota nova', async () => {
@@ -444,9 +490,11 @@ describe('HandoffService', () => {
       const conversationId = states.get(PHONE)?.conversationId as number;
       expect(await service.routeFor(PHONE)).toBe('bot');
       await expect(service.markAgentMessage(PHONE, conversationId)).resolves.toEqual({
+        accepted: true,
         becameActive: true,
       });
       await expect(service.markAgentMessage(PHONE, conversationId)).resolves.toEqual({
+        accepted: true,
         becameActive: false,
       });
       expect(await service.routeFor(PHONE)).toBe('agent');
@@ -512,18 +560,55 @@ describe('HandoffService', () => {
       });
     });
 
-    it('sem estado vira active com motivo agent e guarda a thread', async () => {
-      const { service, states, threads } = setup();
-      await expect(service.markAgentMessage(PHONE, 42)).resolves.toEqual({ becameActive: true });
-      expect(states.get(PHONE)?.reason).toBe('agent');
-      expect(threads.get(PHONE)).toEqual({ conversationId: 42 });
+    it('sem estado ignora a mensagem do agente e não grava nada', async () => {
+      const { service, states, threads, events } = setup();
+      await expect(service.markAgentMessage(PHONE, 42)).resolves.toEqual({
+        accepted: false,
+        becameActive: false,
+      });
+      expect(states.size).toBe(0);
+      expect(threads.size).toBe(0);
+      expect(events.record).not.toHaveBeenCalled();
+      expect(await service.routeFor(PHONE)).toBe('bot');
     });
 
     it('com o desk desativado não grava nada', async () => {
       const { service, states, threads } = setup({ disabled: true });
-      await expect(service.markAgentMessage(PHONE, 42)).resolves.toEqual({ becameActive: false });
+      await expect(service.markAgentMessage(PHONE, 42)).resolves.toEqual({
+        accepted: false,
+        becameActive: false,
+      });
       expect(states.size).toBe(0);
       expect(threads.size).toBe(0);
+    });
+
+    it('ignora mensagem de agente em conversa diferente da do handoff', async () => {
+      const { service, states, threads, events } = setup();
+      await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+      const queued = states.get(PHONE) as HandoffState;
+      const other = queued.conversationId + 100;
+
+      await expect(service.markAgentMessage(PHONE, other)).resolves.toEqual({
+        accepted: false,
+        becameActive: false,
+      });
+      expect(states.get(PHONE)).toEqual(queued);
+      expect(threads.get(PHONE)).toEqual({ conversationId: queued.conversationId });
+      expect(events.record).not.toHaveBeenCalled();
+
+      await service.markAgentMessage(PHONE, queued.conversationId);
+      const active = states.get(PHONE) as HandoffState;
+      await expect(service.markAgentMessage(PHONE, other)).resolves.toEqual({
+        accepted: false,
+        becameActive: false,
+      });
+      expect(states.get(PHONE)).toEqual(active);
+      expect(threads.get(PHONE)).toEqual({ conversationId: queued.conversationId });
+
+      await service.endFromDesk(PHONE, queued.conversationId);
+      expect(states.has(PHONE)).toBe(false);
+      expect(threads.has(PHONE)).toBe(false);
+      expect(await service.routeFor(PHONE)).toBe('bot');
     });
 
     it('mantém o since de um active anterior', async () => {
@@ -638,7 +723,10 @@ describe('HandoffService', () => {
         since: minutesAgo(48 * 60),
         lastAgentAt: minutesAgo(24 * 60 + 1),
       });
-      await expect(service.markAgentMessage(PHONE, id)).resolves.toEqual({ becameActive: false });
+      await expect(service.markAgentMessage(PHONE, id)).resolves.toEqual({
+        accepted: true,
+        becameActive: false,
+      });
       const conversation = client.conversations.get(id);
       expect(conversation?.messages.some(message => message.content === EXPIRED_NOTE)).toBe(false);
       expect(conversation?.status).toBe('open');
@@ -658,7 +746,10 @@ describe('HandoffService', () => {
         reason: 'customer_request',
         since: minutesAgo(72 * 60 + 1),
       });
-      await expect(service.markAgentMessage(PHONE, id)).resolves.toEqual({ becameActive: true });
+      await expect(service.markAgentMessage(PHONE, id)).resolves.toEqual({
+        accepted: true,
+        becameActive: true,
+      });
       const conversation = client.conversations.get(id);
       expect(conversation?.messages.some(message => message.content === EXPIRED_NOTE)).toBe(false);
       expect(conversation?.status).toBe('open');
@@ -779,6 +870,12 @@ describe('HandoffService', () => {
         contactId: 1,
         sourceId: 's',
         status: 'open',
+      });
+      context.states.set(PHONE, {
+        status: 'queued',
+        conversationId: id,
+        reason: 'customer_request',
+        since: NOW.toISOString(),
       });
       await context.service.markAgentMessage(PHONE, id);
       return { ...context, id };
@@ -991,7 +1088,14 @@ describe('HandoffService', () => {
         sourceId: 's',
         status: 'open',
       });
+      states.set(PHONE, {
+        status: 'queued',
+        conversationId: id,
+        reason: 'customer_request',
+        since: NOW.toISOString(),
+      });
       await service.markAgentMessage(PHONE, id);
+      expect(states.get(PHONE)?.status).toBe('active');
       client.conversations.delete(id);
 
       await expect(

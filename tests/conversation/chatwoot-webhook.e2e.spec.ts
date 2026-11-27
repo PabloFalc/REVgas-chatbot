@@ -149,8 +149,14 @@ describe('Webhook do Chatwoot (e2e)', () => {
     it('mensagem humana vai para o WhatsApp e deixa o handoff ativo', async () => {
       const phone = newPhone();
       const messageId = newDeskMessageId();
+      await postCustomer('atendente', phone).expect(200);
+      await vi.waitFor(async () => expect(await handoffStatus(phone)).toBe('queued'));
+      const conversation = [...chatwoot.conversations.values()][0];
+      whatsapp.clear();
 
-      const response = await postDesk(agentMessageWebhook({ phone, content: 'Olá', messageId }));
+      const response = await postDesk(
+        agentMessageWebhook({ phone, content: 'Olá', messageId, conversationId: conversation?.id }),
+      );
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ received: true });
@@ -158,6 +164,18 @@ describe('Webhook do Chatwoot (e2e)', () => {
       expect(whatsapp.sent[0]).toMatchObject({ type: 'text', to: phone });
       expect(sentBodies()).toContain('*Maria (atendente):* Olá');
       await vi.waitFor(async () => expect(await handoffStatus(phone)).toBe('active'));
+    });
+
+    it('mensagem de agente sem handoff aberto não chega ao WhatsApp nem ativa o handoff', async () => {
+      const phone = newPhone();
+
+      await postDesk(
+        agentMessageWebhook({ phone, content: 'Olá', messageId: newDeskMessageId() }),
+      ).expect(200);
+
+      await settle();
+      expect(whatsapp.sent).toEqual([]);
+      await expect(handoffStatus(phone)).resolves.toBeNull();
     });
 
     it('nota privada e mensagem do bot não são enviadas', async () => {

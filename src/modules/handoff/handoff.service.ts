@@ -143,11 +143,6 @@ export class HandoffService {
     if (state?.status === 'queued') return outcome('alreadyQueued');
     if (state?.status === 'active') return outcome('active');
     const conversationId = await this.ensureThread(phone);
-    await this.desk.postNote(
-      conversationId,
-      hideCpfs(handoffNote(request.reason, request.summary)),
-    );
-    await this.desk.setStatus(conversationId, 'open');
     const requestedAt = this.clock.now().toISOString();
     await this.repo.saveState(phone, {
       status: 'queued',
@@ -158,6 +153,16 @@ export class HandoffService {
       handoffId: randomUUID(),
       ...(request.cycleId ? { cycleId: request.cycleId } : {}),
     });
+    try {
+      await this.desk.postNote(
+        conversationId,
+        hideCpfs(handoffNote(request.reason, request.summary)),
+      );
+      await this.desk.setStatus(conversationId, 'open');
+    } catch (error) {
+      if (isGone(error)) throw error;
+      this.warn(phone, error, 'Falha ao anotar o ticket; handoff mantido na fila');
+    }
     return outcome('queued');
   }
 
@@ -236,33 +241,31 @@ export class HandoffService {
   async markAgentMessage(
     phone: string,
     conversationId: number,
-  ): Promise<{ becameActive: boolean }> {
-    if (!this.desk.enabled) return { becameActive: false };
+  ): Promise<{ accepted: boolean; becameActive: boolean }> {
+    const ignored = { accepted: false, becameActive: false };
+    if (!this.desk.enabled) return ignored;
     const previous = await this.repo.getState(phone);
+    if (previous?.conversationId !== conversationId) return ignored;
     const now = this.clock.now().toISOString();
-    if (previous?.status === 'active') {
-      await this.repo.saveState(phone, { ...previous, conversationId, lastAgentAt: now });
+    if (previous.status === 'active') {
+      await this.repo.saveState(phone, { ...previous, lastAgentAt: now });
       await this.repo.saveThread(phone, { conversationId });
-      return { becameActive: false };
+      return { accepted: true, becameActive: false };
     }
-    const requestedAt = previous ? (previous.requestedAt ?? previous.since) : undefined;
-    const handoffId = previous?.handoffId ?? randomUUID();
+    const requestedAt = previous.requestedAt ?? previous.since;
+    const handoffId = previous.handoffId ?? randomUUID();
     await this.repo.saveState(phone, {
       ...previous,
       status: 'active',
-      conversationId,
-      reason: previous?.reason ?? 'agent',
       since: now,
       handoffId,
-      ...(requestedAt ? { requestedAt } : {}),
+      requestedAt,
       assumedAt: now,
       lastAgentAt: now,
     });
     await this.repo.saveThread(phone, { conversationId });
-    if (previous && requestedAt) {
-      this.emit('handoff_assumed', previous, handoffId, Date.parse(now) - Date.parse(requestedAt));
-    }
-    return { becameActive: true };
+    this.emit('handoff_assumed', previous, handoffId, Date.parse(now) - Date.parse(requestedAt));
+    return { accepted: true, becameActive: true };
   }
 
   async endFromDesk(phone: string, conversationId: number): Promise<void> {
