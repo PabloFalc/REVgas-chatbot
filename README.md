@@ -114,17 +114,26 @@ pnpm start:dev          # API em http://localhost:3100 — docs em /docs
 ## Imagem de produção
 
 O `Dockerfile` gera a imagem com o build, as dependências de produção (sem as de dev, então sem
-`drizzle-kit`), `drizzle/` e `knowledge/`. O contêiner sobe só a API (`node dist/main`); migrations e
-ingestão da base não rodam sozinhas. Rode cada uma uma vez, no contêiner, com as mesmas variáveis
-da API:
+`drizzle-kit`), `drizzle/` e `knowledge/`. O contêiner sobe a API (`node dist/main`) pelo
+`docker/entrypoint.sh`. Passos de um deploy:
 
-```bash
-node dist/cli/migrate.js     # aplica as migrations de drizzle/
-node dist/cli/kb-ingest.js   # indexa knowledge/base (precisa das migrations aplicadas)
-```
+1. **Migrations.** Suba o contêiner com `RUN_MIGRATIONS=true`: o entrypoint roda
+   `node dist/cli/migrate.js` antes da API e aborta o start se a migration falhar (o contêiner sai
+   com erro, sem subir a versão nova sobre um banco no meio do caminho). Sem a variável, nada roda.
+   Com mais de uma réplica, ligue a variável em uma só ou rode a migration à parte.
+2. **Ingestão da base de conhecimento (manual).** Não roda no entrypoint: chama a API de embedding
+   a cada start e, com `LLM_MODE=fake`, gravaria vetores simulados. Rode uma vez no contêiner, com as
+   mesmas variáveis da API, quando a base ou o modelo de embedding mudar (precisa das migrations):
 
-Rode as migrations antes de subir uma versão nova da API. A ingestão só é necessária quando a base
-ou o modelo de embedding mudar.
+   ```bash
+   node dist/cli/kb-ingest.js
+   ```
+
+3. **Conferir.** `GET /health` responde 200 com Postgres e Redis no ar e 503 se qualquer um cair. O
+   `HEALTHCHECK` da imagem usa essa rota.
+
+Em produção a validação de ambiente exige as variáveis da seção "Checklist de produção" de
+[environment.md](./docs/guides/conventions/environment.md).
 
 ---
 

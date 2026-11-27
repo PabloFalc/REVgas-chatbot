@@ -193,6 +193,14 @@ Usadas pelo módulo `address` quando o cliente digita o endereço sem cidade ou 
 
 ---
 
+## Variável do entrypoint da imagem Docker (não validada pelo app)
+
+| Variável | Default | Função |
+|---|---|---|
+| `RUN_MIGRATIONS` | vazio | Lida só por `docker/entrypoint.sh`, não pelo schema Zod. Com `true` (exatamente), o contêiner roda `node dist/cli/migrate.js` antes de subir a API e **aborta o start** se a migration falhar. Vazio ou qualquer outro valor não roda migration. Com várias réplicas, ligue em uma só ou rode a migration como passo separado do deploy. |
+
+---
+
 ## Variáveis do docker-compose (não validadas pelo app)
 
 O `docker-compose.yml` usa estas para subir o container do Postgres local (`revgas-pg`; o Redis é `revgas-redis`). **Não** são lidas pelo
@@ -226,6 +234,7 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 - [ ] `CORS_ORIGIN` com as origens reais do front, **sem `*`**
 - [ ] `TRUSTED_PROXY` conforme a topologia (IP/CIDR do proxy/LB; contagem de hops não é aceita)
 - [ ] `DATABASE_URL` do banco gerenciado
+- [ ] `RUN_MIGRATIONS=true` (ou migration como passo do deploy; ver [README](../../../README.md#imagem-de-produção))
 - [ ] `REDIS_PASSWORD` definido e `REDIS_TLS=true` (se gerenciado)
 - [ ] `REVGAS_API_KEY` (e `REVGAS_ESTABLISHMENT_ID`) via secrets (nunca no repo nem no front)
 - [ ] `REVGAS_MODE=hybrid` em demonstração; `live` só com `REVGAS_ALLOW_LIVE_SALES=true` e a decisão de criar vendas reais

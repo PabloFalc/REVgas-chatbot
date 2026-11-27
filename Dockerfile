@@ -26,6 +26,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/knowledge ./knowledge
 COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder --chmod=755 /app/docker/entrypoint.sh ./docker/entrypoint.sh
 
 USER app
 
@@ -36,4 +37,5 @@ ENV HOST=0.0.0.0
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://localhost:3100/health || exit 1
 
+ENTRYPOINT ["./docker/entrypoint.sh"]
 CMD ["node", "dist/main"]

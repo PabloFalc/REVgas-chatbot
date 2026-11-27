@@ -1,5 +1,6 @@
-.env
+**/.env*
 docker/*.env
+segredos/
 node_modules
 dist
 coverage
