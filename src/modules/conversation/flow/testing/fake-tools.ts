@@ -25,6 +25,7 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
     };
   };
 
+  const identities = new Map<string, number>();
   const customer = { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null };
   const addresses = [
     {
@@ -54,8 +55,15 @@ export function createFakeTools(overrides: Partial<FlowTools> = {}): FakeTools {
     },
     createCustomer: record('createCustomer', { ...customer, id: 2 }),
     customerHistory: record('customerHistory', { addresses, productIds: [2] }),
+    verifiedCustomer: async (phone: string) => {
+      calls.push({ name: 'verifiedCustomer', args: [phone] });
+      return identities.get(phone) ?? null;
+    },
     isVerified: record('isVerified', true),
-    markVerified: record('markVerified', undefined),
+    markVerified: async (phone: string, customerId: number) => {
+      calls.push({ name: 'markVerified', args: [phone, customerId] });
+      identities.set(phone, customerId);
+    },
     registerCpfMismatch: record('registerCpfMismatch', 1),
     isBlocked: record('isBlocked', false),
     addressFromCep: record('addressFromCep', { ...addresses[0], number: undefined }),

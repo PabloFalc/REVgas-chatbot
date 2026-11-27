@@ -103,8 +103,9 @@ impacto de segurança. Detalhe de implementação fica no código e nos guias de
 
 - Cliente reconhecido pelo telefone só vê endereços e pedidos depois de digitar os 3 primeiros
   dígitos do CPF. Mitiga o número de telefone que mudou de dono expondo os dados do anterior.
-- **Chave por telefone + id do cliente na RevGás**, validade de 15 dias: se o telefone passar a
-  identificar outro cliente, a verificação anterior não vale.
+- **Um vínculo por telefone** (`conversation:identity:<telefone>`, valor = id do cliente na
+  RevGás), validade de 7 dias: verificar outro cliente no mesmo telefone substitui o vínculo, e
+  se o telefone passar a identificar outro cliente a verificação anterior não vale.
 - **Bloqueio contra chute:** 3 erros em 1 h bloqueiam o telefone por 1 h (contador e bloqueio no
   Redis). Só entrada só numérica (dígitos, espaços, pontos ou traços) com exatamente 3 dígitos
   conta como tentativa; texto de pedido com letras ("2 P13") nunca conta.

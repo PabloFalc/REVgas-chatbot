@@ -16,11 +16,11 @@ import { signPayload } from 'src/integrations/whatsapp/webhook/signature';
 import { WHATSAPP_CLIENT } from 'src/integrations/whatsapp/whatsapp.client';
 import {
   ConversationRepository,
+  IDENTITY_PREFIX,
   INBOUND_PREFIX,
   LOCK_PREFIX,
   ORDER_PREFIX,
   REMINDER_SET,
-  VERIFIED_PREFIX,
 } from 'src/modules/conversation/conversation.repository';
 import { msg } from 'src/modules/conversation/flow/messages';
 import supertest from 'supertest';
@@ -111,12 +111,12 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
 
   const clearPhoneState = async () => {
     await redis.del(
-      ...phones.flatMap(phone => [`${ORDER_PREFIX}:${phone}`, `${LOCK_PREFIX}:${phone}`]),
+      ...phones.flatMap(phone => [
+        `${ORDER_PREFIX}:${phone}`,
+        `${LOCK_PREFIX}:${phone}`,
+        `${IDENTITY_PREFIX}:${phone}`,
+      ]),
     );
-    const verifiedKeys = (
-      await Promise.all(phones.map(phone => redis.keys(`${VERIFIED_PREFIX}:${phone}:*`)))
-    ).flat();
-    if (verifiedKeys.length > 0) await redis.del(...verifiedKeys);
   };
 
   const sendUntilSummary = async (phone: string) => {

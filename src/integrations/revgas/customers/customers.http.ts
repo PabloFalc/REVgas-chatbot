@@ -7,6 +7,8 @@ import {
   RevgasCustomerSchema,
 } from './customers.schemas';
 
+const CUSTOMERS_PAGE_SIZE = 100;
+
 export class CustomersHttp implements CustomersApi {
   constructor(private readonly http: RevgasHttp) {}
 
@@ -18,7 +20,7 @@ export class CustomersHttp implements CustomersApi {
     const result = await this.http.request({
       method: 'GET',
       path: '/customers',
-      query: { phone: digits },
+      query: { phone: digits, page_size: CUSTOMERS_PAGE_SIZE },
       schema: pageSchema(RevgasCustomerSchema),
     });
     return result.data;

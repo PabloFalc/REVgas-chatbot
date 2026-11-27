@@ -12,13 +12,13 @@ import { signPayload } from 'src/integrations/whatsapp/webhook/signature';
 import { WHATSAPP_CLIENT } from 'src/integrations/whatsapp/whatsapp.client';
 import {
   CPF_ATTEMPTS_PREFIX,
+  IDENTITY_PREFIX,
   INBOUND_PREFIX,
   LOCK_PREFIX,
   MISUNDERSTOOD_PREFIX,
   OFFENSE_PREFIX,
   ORDER_PREFIX,
   REMINDER_SET,
-  VERIFIED_PREFIX,
 } from 'src/modules/conversation/conversation.repository';
 import { msg } from 'src/modules/conversation/flow/messages';
 import supertest from 'supertest';
@@ -193,7 +193,7 @@ describe('Fluxo com dúvidas e proteções (e2e)', () => {
       cpf: '12345678909',
       phones: [phone],
     });
-    verifiedKeys.push(`${VERIFIED_PREFIX}:${phone}:${customer.id}`);
+    verifiedKeys.push(`${IDENTITY_PREFIX}:${phone}`);
     const sale = await revgas.sales.create({
       customer_id: customer.id,
       channel: 'WHATSAPP',

@@ -10,6 +10,7 @@ describe('CustomersHttp', () => {
     const { url } = call();
     expect(url.pathname).toBe('/v1/customers');
     expect(url.searchParams.get('phone')).toBe('5586999998888');
+    expect(url.searchParams.get('page_size')).toBe('100');
   });
 
   it('findByPhone com telefone curto ou vazio não chama a API', async () => {
