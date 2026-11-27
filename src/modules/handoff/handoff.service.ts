@@ -18,7 +18,6 @@ import {
   EMERGENCY_NOTE,
   EXPIRED_NOTE,
   handoffNote,
-  saleNote,
   WINDOW_CLOSED_NOTE,
 } from './contracts/handoff-note';
 import { DeskGateway } from './desk.gateway';
@@ -166,9 +165,10 @@ export class HandoffService {
     return outcome('queued');
   }
 
-  async routeFor(phone: string): Promise<'bot' | 'agent'> {
+  async routeFor(phone: string): Promise<'bot' | 'queued' | 'agent'> {
     const state = await this.activeState(phone);
-    return state?.status === 'active' ? 'agent' : 'bot';
+    if (!state) return 'bot';
+    return state.status === 'active' ? 'agent' : 'queued';
   }
 
   async forwardToAgent(phone: string, inbound: DeskInbound): Promise<void> {
@@ -213,12 +213,7 @@ export class HandoffService {
     for (const message of turn.botMessages) {
       await this.desk.postOutgoing(conversationId, hideCpfs(message));
     }
-    if (turn.saleId !== undefined && state?.status === 'queued') {
-      await this.desk.postNote(conversationId, saleNote(turn.saleId));
-      await this.desk.setStatus(conversationId, 'resolved');
-      await this.repo.clearState(phone);
-      await this.repo.clearThread(phone);
-    } else if (turn.ended && !state) {
+    if (turn.ended && !state) {
       await this.desk.setStatus(conversationId, 'resolved');
       await this.repo.clearThread(phone);
     }

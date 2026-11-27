@@ -226,8 +226,9 @@ export const msg = {
   wantAgentOrOrder: 'Quer falar com um atendente ou fazer um pedido?',
   emergency:
     'Se você sente cheiro de gás ou suspeita de vazamento: feche o registro do botijão, não acenda fogo nem mexa em interruptores ou tomadas, abra portas e janelas, saia do local e ligue para os Bombeiros no 193.',
-  handoffQueued: 'Já chamei um atendente. Enquanto isso, posso continuar te ajudando por aqui.',
-  handoffAlreadyQueued: 'Você já está na fila, um atendente vai te chamar.',
+  handoffQueued:
+    'Você está na fila de atendimento. Assim que um atendente estiver disponível, ele falará com você.',
+  handoffAlreadyQueued: 'Seu atendimento já está na fila. Aguarde por aqui.',
   handoffClosed: (opening: Opening | null) =>
     opening
       ? `Estamos fechados agora. Abrimos ${openingWhen(opening)}. Quando abrirmos, mande um "oi" aqui que um atendente te responde.`

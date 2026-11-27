@@ -34,7 +34,10 @@ function setup(phones = [PHONE]) {
   };
   const messaging = { send: vi.fn(async (_to: string, _reply: unknown) => undefined) };
   const flowTools = { forPhone: vi.fn(() => createFakeTools()) };
-  const handoff = { mirrorOutgoing: vi.fn(async () => undefined) };
+  const handoff = {
+    routeFor: vi.fn(async () => 'bot' as 'bot' | 'queued' | 'agent'),
+    mirrorOutgoing: vi.fn(async () => undefined),
+  };
   const events = { record: vi.fn() };
   const logger = {
     setContext: vi.fn(),
@@ -176,6 +179,48 @@ describe('ReminderScheduler.tick', () => {
       expect.objectContaining({ reason: 'creatingSale' }),
       'Lembrete ignorado',
     );
+  });
+
+  it.each(['queued', 'agent'] as const)(
+    'não envia lembrete quando existe handoff aberto (%s)',
+    async route => {
+      const { scheduler, repository, messaging, handoff, events, logger } = setup();
+      handoff.routeFor.mockResolvedValueOnce(route);
+
+      await scheduler.tick();
+
+      expect(handoff.routeFor).toHaveBeenCalledWith(PHONE);
+      expect(messaging.send).not.toHaveBeenCalled();
+      expect(events.record).not.toHaveBeenCalled();
+      expect(repository.saveOrderKeepingTtl).not.toHaveBeenCalled();
+      expect(handoff.mirrorOutgoing).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'handoff' }),
+        'Lembrete ignorado',
+      );
+    },
+  );
+
+  it('não envia lembrete quando existe handoff aberto', async () => {
+    const { scheduler, messaging, handoff } = setup();
+    handoff.routeFor.mockResolvedValueOnce('queued');
+
+    await scheduler.tick();
+
+    expect(messaging.send).not.toHaveBeenCalled();
+  });
+
+  it('falha ao consultar o handoff não envia e não impede o próximo telefone', async () => {
+    const { scheduler, messaging, handoff, events, logger } = setup([PHONE, OTHER]);
+    handoff.routeFor.mockRejectedValueOnce(new Error('redis fora'));
+
+    await expect(scheduler.tick()).resolves.toBeUndefined();
+
+    expect(messaging.send.mock.calls.some(([to]) => to === PHONE)).toBe(false);
+    expect(messaging.send.mock.calls.some(([to]) => to === OTHER)).toBe(true);
+    expect(events.record).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain(PHONE);
   });
 
   it('erro num telefone não impede o próximo', async () => {

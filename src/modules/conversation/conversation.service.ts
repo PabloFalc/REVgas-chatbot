@@ -18,6 +18,7 @@ import { WINDOW_CLOSED_CODE } from './desk-events.service';
 import { detectEmergency } from './flow/emergency';
 import { runFlow } from './flow/flow';
 import { CPF_STEPS, type OrderState, type StepResult, type ToolError } from './flow/flow.types';
+import { asksForAgent, HANDOFF_CHOICE } from './flow/handoff';
 import { msg } from './flow/messages';
 import { REMINDER_AFTER_MS } from './flow/reminder';
 import { text } from './flow/replies';
@@ -132,6 +133,10 @@ export class ConversationService {
           }
           return;
         }
+        if (context.route === 'queued') {
+          await this.waitInQueue(incoming, inbound, log);
+          return;
+        }
         const { before } = context;
         const { replies, result, cycleId } = await this.advance(incoming, before, log);
         await this.sendAll(event.from, replies, log);
@@ -161,7 +166,7 @@ export class ConversationService {
   private async loadContext(
     phone: string,
     log: object,
-  ): Promise<{ route: 'bot' | 'agent'; before: OrderState | null } | null> {
+  ): Promise<{ route: 'bot' | 'queued' | 'agent'; before: OrderState | null } | null> {
     try {
       const route = await this.handoff.routeFor(phone);
       const before = route === 'bot' ? await this.conversations.loadOrder(phone) : null;
@@ -169,6 +174,39 @@ export class ConversationService {
     } catch (error) {
       this.logger.error({ ...log, error: errorInfo(error) }, 'Falha ao ler o estado da conversa');
       return null;
+    }
+  }
+
+  private async waitInQueue(
+    incoming: IncomingMessage,
+    inbound: DeskInbound,
+    log: object,
+  ): Promise<void> {
+    const phone = incoming.from;
+    const raw = inbound.type === 'text' ? inbound.text : null;
+    const emergency = raw !== null && detectEmergency(raw);
+    const askedAgent =
+      emergency ||
+      (raw !== null && asksForAgent(raw)) ||
+      (incoming.content.type === 'choice' && incoming.content.id === HANDOFF_CHOICE);
+    const replies = [
+      ...(emergency ? [text(msg.emergency)] : []),
+      text(askedAgent ? msg.handoffAlreadyQueued : msg.handoffQueued),
+    ];
+    await this.sendAll(phone, replies, log);
+    if (emergency) await this.flagEmergency(phone, log);
+    try {
+      await this.handoff.recordTurn({
+        phone,
+        name: incoming.name,
+        inbound,
+        sensitive: isSensitiveTurn(inbound, null),
+        botMessages: replies.map(replyText),
+        newCycle: false,
+        ended: false,
+      });
+    } catch (error) {
+      this.logger.warn({ ...log, error: errorInfo(error) }, 'Falha ao espelhar a conversa');
     }
   }
 
