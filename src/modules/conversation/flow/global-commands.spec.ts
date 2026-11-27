@@ -54,11 +54,24 @@ describe('globalCommand', () => {
     expect(none).toEqual({ state: null, replies: [text(msg.cancelled)] });
   });
 
+  it('cancelar o rascunho diz que nada foi enviado', async () => {
+    const result = await globalCommand(state, say('cancelar'), createFakeTools());
+    expect(result).toEqual({ state: null, replies: [text(msg.draftDiscarded)] });
+    expect(msg.draftDiscarded).toBe(
+      'Pronto, descartei este pedido. Nada foi enviado à revenda. É só mandar mensagem quando quiser pedir.',
+    );
+  });
+
+  it('cancelar sem estado oferece atendente em vez de afirmar cancelamento', async () => {
+    const result = await globalCommand(null, say('cancelar'), createFakeTools());
+    expect(result).toEqual({ state: null, replies: [text(msg.cancelNeedsAgent)] });
+  });
+
   it.each(['cancelar', 'Cancelar', 'CANCELA', 'cancelar pedido'])(
     '%s apaga o pedido',
     async word => {
       const result = await globalCommand(state, say(word), createFakeTools());
-      expect(result).toEqual({ state: null, replies: [text(msg.cancelled)] });
+      expect(result).toEqual({ state: null, replies: [text(msg.draftDiscarded)] });
     },
   );
 

@@ -271,7 +271,7 @@ describe('summary', () => {
       saleId: 4521,
     });
     expect(msg.saleCreated(4521, 110)).toBe(
-      'Pedido nº 4521 confirmado! Total: R$ 110,00. Já estamos separando seu gás.',
+      'Pedido nº 4521 registrado na revenda. Total: R$ 110,00. Se precisar de algo, é só chamar.',
     );
     expect(tools.calls.map(c => c.name)).toEqual(['checkpoint', 'createSale']);
     expect(tools.calls[0].args[0]).toMatchObject({
@@ -362,6 +362,25 @@ describe('summary', () => {
     );
     expect(result?.state?.step).toBe('summary');
     expect(tools.calls.map(call => call.name)).not.toContain('createSale');
+  });
+});
+
+describe('mensagens de resultado', () => {
+  it('mensagens distinguem registro, instabilidade e resultado incerto', () => {
+    expect(msg.saleCreated(4521, 110)).not.toContain('separando');
+    expect(msg.saleStoreUnavailable).toBe(
+      'Estou com instabilidade para registrar pedidos agora. Seu pedido não foi enviado. Tente confirmar de novo em alguns minutos.',
+    );
+    expect(msg.saleUncertain).toBe(
+      'Não consegui confirmar se seu pedido foi registrado. Para não duplicar, não vou enviar de novo. Chamei um atendente para conferir com a revenda.',
+    );
+    expect(msg.saleUncertain).not.toContain('Nada foi cobrado');
+    expect(msg.priceChanged).toBe(
+      'O preço mudou desde o resumo. Confira os valores atualizados antes de confirmar.',
+    );
+    expect(msg.cancelNeedsAgent).toBe(
+      'Não tenho pedido em andamento aqui. Se você quer cancelar um pedido já feito, um atendente resolve isso.',
+    );
   });
 });
 
