@@ -93,10 +93,6 @@ export class ConversationRepository {
     return this.cache.get<number>({ prefix: IDENTITY_PREFIX, key: phone });
   }
 
-  async isVerified(phone: string, customerId: number): Promise<boolean> {
-    return (await this.verifiedCustomer(phone)) === customerId;
-  }
-
   async markVerified(phone: string, customerId: number): Promise<void> {
     await this.cache.set({
       prefix: IDENTITY_PREFIX,

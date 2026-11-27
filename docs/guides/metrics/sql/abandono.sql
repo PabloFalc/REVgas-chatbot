@@ -6,7 +6,7 @@ WITH eventos AS (
   ORDER BY cycle_id, occurred_at DESC, id DESC
 )
 SELECT u.step,
-  CASE WHEN u.step IN ('askName', 'askCpf', 'askCpfPrefix') THEN 'cadastro' ELSE 'pedido' END AS fase,
+  CASE WHEN u.step IN ('askName', 'askCpf', 'askCpfPrefix', 'confirmCpf') THEN 'cadastro' ELSE 'pedido' END AS fase,
   CASE WHEN EXISTS (SELECT 1 FROM eventos e WHERE e.cycle_id = u.cycle_id AND e.name = 'reminder_sent') THEN 'com lembrete' ELSE 'sem lembrete' END AS lembrete,
   count(*) AS ciclos
 FROM ultimos u

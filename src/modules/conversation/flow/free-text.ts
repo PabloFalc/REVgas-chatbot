@@ -54,7 +54,7 @@ const LETTERS = /\p{L}{2,}/u;
 const GREETING_ONLY = /^(?:(?:oi|ola|bom dia|boa tarde|boa noite|opa|eai|e ai|menu)(?:\s+|$))+$/;
 const CPF_STEP_DIGITS = 3;
 export const STUCK_AFTER = 3;
-const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askCpfPrefix'];
+const IDENTIFICATION_STEPS: Step[] = ['askName', 'askCpf', 'askCpfPrefix', 'confirmCpf'];
 const MONEY_STEPS: Step[] = ['askChangeAmount'];
 const OTHER_ADDRESS_NOTE = 'entrega em outro endereço';
 const INVITE: Interpretation = { intent: 'question', topic: 'invite', confidence: 1 };
@@ -271,17 +271,21 @@ export async function keepOfferedProduct(state: OrderState, tools: FlowTools): P
 
 export interface FreeTextOptions {
   whenNothingApplied?: () => Promise<StepResult>;
-  fallback?: string;
+  fallback?: string | Reply;
+}
+
+function replyOf(fallback: string | Reply): Reply {
+  return typeof fallback === 'string' ? text(fallback) : fallback;
 }
 
 async function misunderstood(
   state: OrderState,
   tools: FlowTools,
-  fallback?: string,
+  fallback?: string | Reply,
 ): Promise<StepResult> {
   const count = await tools.registerMisunderstood();
   if (count < STUCK_AFTER && fallback !== undefined) {
-    return { state, replies: [text(fallback)], misunderstood: true };
+    return { state, replies: [replyOf(fallback)], misunderstood: true };
   }
   const first = count >= STUCK_AFTER ? offer(msg.stuck) : text(msg.notUnderstood);
   const result = await repeatQuestion(state, tools, first);
@@ -307,6 +311,7 @@ export async function freeText(
     const answered = await routeIntent(state, fixed, spoken, tools);
     if (answered) return answered;
   }
+  if (state.step === 'confirmCpf') return misunderstood(state, tools, fallback);
   const catalog = await loadCatalog(state, tools);
   const interpreted = await tools.interpret(spoken, contextOf(catalog));
   if (!interpreted || interpreted.confidence < MIN_CONFIDENCE) {
@@ -344,8 +349,8 @@ export function freeTextOr(
   state: OrderState,
   raw: string | null,
   tools: FlowTools,
-  fallback: string,
+  fallback: string | Reply,
 ): Promise<StepResult> {
   if (raw !== null && shouldInterpret(raw)) return freeText(state, raw, tools, { fallback });
-  return Promise.resolve({ state, replies: [text(fallback)] });
+  return Promise.resolve({ state, replies: [replyOf(fallback)] });
 }

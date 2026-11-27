@@ -265,7 +265,7 @@ describe('messages de texto livre', () => {
 describe('freeText', () => {
   const paying: OrderState = {
     step: 'choosePayment',
-    customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+    customer: { id: 1, name: 'Maria da Silva', tagId: null },
     address,
     product: p13,
     quantity: 1,
@@ -283,7 +283,7 @@ describe('freeText', () => {
     const confirming: OrderState = {
       step: 'summary',
       revision: 1,
-      customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+      customer: { id: 1, name: 'Maria da Silva', tagId: null },
       addresses: [address],
       address,
       product: p13,
@@ -426,6 +426,16 @@ describe('freeText', () => {
     const sent = spy.mock.calls[0]?.[0] ?? '';
     expect(sent).not.toMatch(/123|456/);
     expect(sent).toContain('2 botijões P13');
+  });
+
+  it('não chama a IA na etapa confirmCpf', async () => {
+    const fake = tools(result({ intent: 'order', confidence: 0.9, quantity: 2 }));
+    const spy = vi.spyOn(fake, 'interpret');
+    const confirming: OrderState = { step: 'confirmCpf', customer: {} };
+    const out = await freeText(confirming, 'meu cpf é 123.456 e quero 2 botijões P13', fake);
+    expect(spy).not.toHaveBeenCalled();
+    expect(out.state?.step).toBe('confirmCpf');
+    expect(JSON.stringify(out.replies)).not.toMatch(/123|456/);
   });
 
   it('troca quantidade e pede novo endereço', async () => {

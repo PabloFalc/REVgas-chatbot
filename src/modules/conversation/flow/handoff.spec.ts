@@ -82,11 +82,8 @@ describe('handoffSummary', () => {
     expect(handoffSummary(null)).toBeNull();
   });
 
-  it('askCpfPrefix não revela nome nem CPF', () => {
-    const current: OrderState = {
-      step: 'askCpfPrefix',
-      customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123' },
-    };
+  it.each(['askCpfPrefix', 'confirmCpf'] as const)('%s não revela nome nem CPF', step => {
+    const current: OrderState = { step, customer: {} };
     const summary = handoffSummary(current);
     expect(summary).toEqual({
       stepLabel: 'Confirmação de identidade',
@@ -99,7 +96,7 @@ describe('handoffSummary', () => {
   it('resumo completo traz produto, quantidade, endereço, pagamento e total', () => {
     const current: OrderState = {
       step: 'summary',
-      customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123' },
+      customer: { id: 1, name: 'Maria da Silva' },
       product: { id: 1, name: 'Botijão P13' },
       quantity: 2,
       address: {

@@ -8,6 +8,7 @@ import { RedisService } from 'src/infra/cache/redis.service';
 import { DRIZZLE } from 'src/infra/database/drizzle-client';
 import type * as schema from 'src/infra/database/schemas';
 import { saleAttempts } from 'src/infra/database/schemas';
+import { FAKE_CUSTOMERS } from 'src/integrations/revgas/customers/customers.fixtures';
 import { FakeRevgasClient } from 'src/integrations/revgas/fake-revgas.client';
 import { REVGAS_CLIENT } from 'src/integrations/revgas/revgas.client';
 import { FakeWhatsappClient } from 'src/integrations/whatsapp/fake-whatsapp.client';
@@ -123,7 +124,8 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
     await post('oi', phone);
     await vi.waitFor(() => expect(whatsapp.sent.length).toBeGreaterThan(0));
     whatsapp.clear();
-    await post('000', phone);
+    const cpf = FAKE_CUSTOMERS.find(customer => customer.phones?.includes(phone))?.cpf ?? '';
+    await post(cpf, phone);
     await vi.waitFor(() => expect(sentBodies()).toContain('address:0'));
     whatsapp.clear();
     await postChoice('address:0', phone);

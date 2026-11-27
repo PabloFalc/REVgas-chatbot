@@ -1,5 +1,6 @@
 import type {
   HandoffOrderSummary,
+  HandoffOutcome,
   HandoffReason,
 } from 'src/modules/handoff/contracts/handoff.types';
 import { normalizeText } from 'src/utils/text';
@@ -21,6 +22,7 @@ const STEP_LABELS: Record<Step, string> = {
   askName: 'Nome do cliente',
   askCpf: 'CPF do cliente',
   askCpfPrefix: 'Confirmação de identidade',
+  confirmCpf: 'Confirmação de identidade',
   offerRepeat: 'Oferta de repetir o último pedido',
   chooseAddress: 'Escolha do endereço',
   askNewAddress: 'Novo endereço',
@@ -57,7 +59,7 @@ export function offer(body: string): Reply {
 export function handoffSummary(state: OrderState | null): HandoffOrderSummary | null {
   if (!state) return null;
   const stepLabel = STEP_LABELS[state.step];
-  if (state.step === 'askCpfPrefix') {
+  if (state.step === 'askCpfPrefix' || state.step === 'confirmCpf') {
     return { stepLabel, identityConfirmed: false, newCustomer: false };
   }
   const { customer, product, quantity, address, payment, quote } = state;
@@ -78,6 +80,13 @@ export function requestReasonFor(state: OrderState | null): HandoffReason {
   return state?.step === 'saleFailed' ? 'sale_failed' : 'customer_request';
 }
 
+function queueReply(outcome: HandoffOutcome): Reply {
+  if (outcome.status === 'queued') {
+    return text(outcome.open ? msg.handoffQueued : msg.handoffClosed(outcome.nextOpening));
+  }
+  return text(msg.handoffAlreadyQueued);
+}
+
 export async function handoff(
   state: OrderState | null,
   phone: string,
@@ -88,9 +97,31 @@ export async function handoff(
   if (outcome.status === 'unavailable') {
     return { state, replies: [text(msg.talkToStore(tools.storePhone))] };
   }
-  if (outcome.status === 'queued') {
-    const body = outcome.open ? msg.handoffQueued : msg.handoffClosed(outcome.nextOpening);
-    return { state, replies: [text(body)] };
+  return { state, replies: [queueReply(outcome)] };
+}
+
+export async function identityHandoff(
+  state: OrderState | null,
+  phone: string,
+  tools: FlowTools,
+  keep: {
+    state: OrderState | null;
+    summary: HandoffOrderSummary | null;
+    requested?: boolean;
+  } = {
+    state: null,
+    summary: handoffSummary(state),
+  },
+): Promise<StepResult> {
+  const outcome = await tools.requestHandoff({
+    phone,
+    reason: 'identity_failure',
+    summary: keep.summary,
+  });
+  if (outcome.status === 'unavailable') {
+    return { state: keep.state, replies: [text(msg.identityContactStore(tools.storePhone))] };
   }
-  return { state, replies: [text(msg.handoffAlreadyQueued)] };
+  const queued = queueReply(outcome);
+  const replies = keep.requested ? [queued] : [text(msg.identityHandoff), queued];
+  return { state: keep.state, replies };
 }

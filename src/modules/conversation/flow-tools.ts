@@ -91,11 +91,10 @@ export class FlowToolsService {
     return {
       phone,
       track,
-      findCustomer: phone => this.customers.findByPhone(phone),
+      findCustomers: phone => this.customers.findAllByPhone(phone),
       createCustomer: input => this.customers.create(input),
       customerHistory: customerId => this.customers.history(customerId),
       verifiedCustomer: phone => this.conversations.verifiedCustomer(phone),
-      isVerified: (phone, customerId) => this.conversations.isVerified(phone, customerId),
       markVerified: (phone, customerId) => this.conversations.markVerified(phone, customerId),
       registerCpfMismatch: async phone => {
         const amount = await this.conversations.registerCpfMismatch(phone);

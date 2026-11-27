@@ -1,7 +1,8 @@
 import type { OrderStatus } from 'src/modules/order/contracts/order.types';
 import { normalizeText } from 'src/utils/text';
 import type { FlowTools, OrderState, StepResult } from './flow.types';
-import { offer, orderStartButton } from './handoff';
+import { identityHandoff, offer, orderStartButton } from './handoff';
+import { resolveIdentity } from './identity';
 import { msg } from './messages';
 import { repeatQuestion } from './repeat-question';
 import { buttons, text } from './replies';
@@ -53,35 +54,30 @@ export async function answerOrderStatus(
 }
 
 export async function orderStatus(state: OrderState | null, tools: FlowTools): Promise<StepResult> {
-  const customer = await tools.findCustomer(tools.phone);
-  if (!customer) {
-    const reply = buttons(msg.noOrderForPhone, [orderStartButton()]);
-    if (!state) return { state, replies: [reply] };
-    const answered = await repeatQuestion(state, tools, reply);
-    return answered;
+  const identity = await resolveIdentity(tools.phone, tools);
+  switch (identity.kind) {
+    case 'new': {
+      const reply = buttons(msg.noOrderForPhone, [orderStartButton()]);
+      if (!state) return { state, replies: [reply] };
+      const answered = await repeatQuestion(state, tools, reply);
+      return answered;
+    }
+    case 'handoff':
+      return identityHandoff(state, tools.phone, tools, { state, summary: null });
+    case 'verified':
+      return answerOrderStatus(state, identity.customer.id, tools);
+    case 'ask':
+      return {
+        state: {
+          ...state,
+          step: 'confirmCpf',
+          customer: {},
+          pendingOrderStatus: state?.pendingOrderStatus ?? {
+            resumeStep: state?.step ?? null,
+            customer: state?.customer ?? {},
+          },
+        },
+        replies: [text(msg.askFullCpf)],
+      };
   }
-  if (!customer.cpf || (await tools.isBlocked(tools.phone))) {
-    return { state, replies: [text(msg.identityContactStore(tools.storePhone))] };
-  }
-  if (await tools.isVerified(tools.phone, customer.id)) {
-    return answerOrderStatus(state, customer.id, tools);
-  }
-  return {
-    state: {
-      ...state,
-      step: 'askCpfPrefix',
-      customer: {
-        ...state?.customer,
-        id: customer.id,
-        name: customer.name,
-        cpfPrefix: customer.cpf.slice(0, 3),
-        tagId: customer.tagId,
-      },
-      pendingOrderStatus: state?.pendingOrderStatus ?? {
-        resumeStep: state?.step ?? null,
-        customer: state?.customer ?? {},
-      },
-    },
-    replies: [text(msg.askCpfPrefix)],
-  };
 }

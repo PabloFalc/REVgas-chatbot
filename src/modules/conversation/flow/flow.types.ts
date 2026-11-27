@@ -17,6 +17,7 @@ import type {
 } from 'src/modules/catalog/contracts/catalog.types';
 import type {
   Customer,
+  CustomerCandidate,
   CustomerHistory,
   LastOrder,
   NewCustomer,
@@ -43,6 +44,7 @@ export type Step =
   | 'askName'
   | 'askCpf'
   | 'askCpfPrefix'
+  | 'confirmCpf'
   | 'offerRepeat'
   | 'chooseAddress'
   | 'askNewAddress'
@@ -61,7 +63,7 @@ export type Step =
   | 'creatingSale'
   | 'saleFailed';
 
-export const CPF_STEPS: readonly Step[] = ['askCpf', 'askCpfPrefix'];
+export const CPF_STEPS: readonly Step[] = ['askCpf', 'askCpfPrefix', 'confirmCpf'];
 
 export interface RepeatOffer {
   product: Product;
@@ -79,7 +81,6 @@ export interface OrderState {
     id?: number;
     name?: string;
     cpf?: string;
-    cpfPrefix?: string;
     tagId?: number | null;
   };
   addresses?: Address[];
@@ -128,11 +129,10 @@ export type HandleFn = (
 export interface FlowTools {
   track(event: MetricEvent): void;
   phone: string;
-  findCustomer(phone: string): Promise<Customer | null>;
+  findCustomers(phone: string): Promise<CustomerCandidate[]>;
   createCustomer(input: NewCustomer): Promise<Customer>;
   customerHistory(customerId: number): Promise<CustomerHistory>;
   verifiedCustomer(phone: string): Promise<number | null>;
-  isVerified(phone: string, customerId: number): Promise<boolean>;
   markVerified(phone: string, customerId: number): Promise<void>;
   registerCpfMismatch(phone: string): Promise<number>;
   isBlocked(phone: string): Promise<boolean>;

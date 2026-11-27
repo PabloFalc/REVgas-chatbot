@@ -42,18 +42,54 @@ describe('status do pedido', () => {
 
   it('verifica o CPF antes de consultar e responde logo após o acerto', async () => {
     const latestOrderStatus = vi.fn(async () => ({ saleId: 8, status: 'OPEN' }));
-    const tools = createFakeTools({ isVerified: async () => false, latestOrderStatus });
+    const tools = createFakeTools({ verifiedCustomer: async () => null, latestOrderStatus });
     const gate = await runFlow(null, input('cadê meu gás'), tools);
-    expect(gate.state?.step).toBe('askCpfPrefix');
-    expect(bodies(gate)).toContain(msg.askCpfPrefix);
+    expect(gate.state?.step).toBe('confirmCpf');
+    expect(bodies(gate)).toContain(msg.askFullCpf);
     expect(latestOrderStatus).not.toHaveBeenCalled();
-    const wrong = await runFlow(gate.state, input('456'), tools);
+    const wrong = await runFlow(gate.state, input('98765432100'), tools);
     expect(latestOrderStatus).not.toHaveBeenCalled();
-    expect(bodies(wrong)).toContain(msg.cpfPrefixMismatch);
-    const answered = await runFlow(gate.state, input('123'), tools);
+    expect(bodies(wrong)).toContain(msg.cpfMismatch);
+    const answered = await runFlow(gate.state, input('123.456.789-09'), tools);
     expect(answered.state).toBeNull();
     expect(bodies(answered)).toContain('Pedido nº 8: recebido');
     expect(tools.calls.some(call => call.name === 'markVerified')).toBe(true);
+  });
+
+  it('status pedido durante confirmCpf responde e segue o atendimento sem pedir o CPF de novo', async () => {
+    const latestOrderStatus = vi.fn(async () => ({ saleId: 8, status: 'OPEN' }));
+    const tools = createFakeTools({ verifiedCustomer: async () => null, latestOrderStatus });
+    const greeted = await runFlow(null, input('oi'), tools);
+    expect(greeted.state?.step).toBe('confirmCpf');
+    const gate = await runFlow(greeted.state, input('cadê meu pedido?'), tools);
+    expect(gate.state?.step).toBe('confirmCpf');
+    const answered = await runFlow(gate.state, input('123.456.789-09'), tools);
+    expect(bodies(answered)).toContain('Pedido nº 8: recebido');
+    expect(bodies(answered)).not.toContain(msg.askFullCpf);
+    expect(answered.state?.step).not.toBe('confirmCpf');
+    expect(answered.state?.pendingOrderStatus).toBeUndefined();
+    expect(answered.state?.customer.id).toBe(1);
+  });
+
+  it('só libera histórico após CPF completo corresponder a um dos cadastros do telefone', async () => {
+    const latestOrderStatus = vi.fn(async () => ({ saleId: 8, status: 'OPEN' }));
+    const tools = createFakeTools({
+      verifiedCustomer: async () => null,
+      findCustomers: async () => [
+        { id: 1, name: 'Maria da Silva', cpf: '12345678909', tagId: null },
+        { id: 2, name: 'João Souza', cpf: '98765432100', tagId: null },
+      ],
+      latestOrderStatus,
+    });
+    const gate = await runFlow(null, input('status do pedido'), tools);
+    const outsider = await runFlow(gate.state, input('529.982.247-25'), tools);
+    expect(latestOrderStatus).not.toHaveBeenCalled();
+    expect(bodies(outsider)).not.toContain('Pedido');
+    const owner = await runFlow(gate.state, input('987.654.321-00'), tools);
+    expect(latestOrderStatus).toHaveBeenCalledOnce();
+    expect(latestOrderStatus).toHaveBeenCalledWith(2, expect.any(Date));
+    expect(bodies(owner)).toContain('Pedido nº 8');
+    expect(tools.calls.some(call => call.name === 'customerHistory')).toBe(false);
   });
 
   it('telefone desconhecido recebe texto fixo e botão sem consultar vendas', async () => {
@@ -150,7 +186,7 @@ describe('status do pedido', () => {
         tools,
       );
       expect(original.state?.productOptions).toEqual(originalProducts);
-      if (!knownCustomer) tools.findCustomer = async () => null;
+      if (!knownCustomer) tools.findCustomers = async () => [];
 
       const repeated = await runFlow(original.state, input('status do pedido'), tools);
       expect(repeated.state?.productOptions).toEqual(newProducts);
@@ -179,11 +215,11 @@ describe('status do pedido', () => {
 
   it('retoma o pedido intacto após renovar a verificação vencida', async () => {
     const tools = createFakeTools({
-      isVerified: async () => false,
+      verifiedCustomer: async () => null,
       latestOrderStatus: async () => ({ saleId: 8, status: 'OPEN' }),
     });
     const gate = await runFlow(state, input('status do pedido'), tools);
-    const result = await runFlow(gate.state, input('123'), tools);
+    const result = await runFlow(gate.state, input('123.456.789-09'), tools);
     expect(result.state).toEqual(state);
     expect(bodies(result)).toContain('Pedido nº 8');
     expect(bodies(result)).toContain('qty:');
@@ -193,7 +229,7 @@ describe('status do pedido', () => {
     const gate = await runFlow(
       state,
       input('status do pedido'),
-      createFakeTools({ isVerified: async () => false }),
+      createFakeTools({ verifiedCustomer: async () => null }),
     );
     const result = await runFlow(
       gate.state,
@@ -234,32 +270,59 @@ describe('status do pedido', () => {
   it('encaminha intenção da IA pelo mesmo gate', async () => {
     const latestOrderStatus = vi.fn();
     const tools = createFakeTools({
-      isVerified: async () => false,
+      verifiedCustomer: async () => null,
       interpret: async () => ({ intent: 'order_status', confidence: 1 }),
       latestOrderStatus,
     });
     const result = await runFlow(state, input('pode consultar o que comprei ontem?'), tools);
-    expect(result.state?.step).toBe('askCpfPrefix');
+    expect(result.state?.step).toBe('confirmCpf');
     expect(latestOrderStatus).not.toHaveBeenCalled();
   });
 
-  it.each([{ cpf: undefined }, { blocked: true }])(
-    'não revela venda sem CPF ou com bloqueio: %o',
-    async condition => {
+  it.each([
+    [{ cpf: undefined }, null],
+    [{ blocked: true }, null],
+    [{ cpf: undefined }, state],
+    [{ blocked: true }, state],
+  ] as [{ cpf?: undefined; blocked?: true }, OrderState | null][])(
+    'não revela venda sem CPF ou com bloqueio: %o com estado %o',
+    async (condition, before) => {
       const latestOrderStatus = vi.fn();
       const tools = createFakeTools({
-        findCustomer: async () => ({
-          id: 1,
-          name: 'Maria',
-          cpf: 'blocked' in condition ? '12345678909' : null,
-          tagId: null,
-        }),
+        findCustomers: async () => [
+          {
+            id: 1,
+            name: 'Maria',
+            cpf: 'blocked' in condition ? '12345678909' : null,
+            tagId: null,
+          },
+        ],
+        verifiedCustomer: async () => null,
         isBlocked: async () => 'blocked' in condition,
         latestOrderStatus,
       });
-      const result = await runFlow(null, input('status do pedido'), tools);
-      expect(bodies(result)).toContain(msg.identityContactStore(tools.storePhone));
+      const result = await runFlow(before, input('status do pedido'), tools);
+      expect(result).toEqual({
+        state: before,
+        replies: [text(msg.identityHandoff), text(msg.handoffQueued)],
+      });
+      expect(
+        tools.calls.filter(call => call.name === 'requestHandoff').map(call => call.args[0]),
+      ).toEqual([{ phone: FAKE_PHONE, reason: 'identity_failure', summary: null }]);
       expect(latestOrderStatus).not.toHaveBeenCalled();
     },
   );
+
+  it('sem CPF e sem atendimento disponível indica o contato da revenda', async () => {
+    const tools = createFakeTools({
+      findCustomers: async () => [{ id: 1, name: 'Maria', cpf: null, tagId: null }],
+      verifiedCustomer: async () => null,
+      requestHandoff: async () => ({ status: 'unavailable', open: false, nextOpening: null }),
+    });
+    const result = await runFlow(state, input('status do pedido'), tools);
+    expect(result).toEqual({
+      state,
+      replies: [text(msg.identityContactStore(tools.storePhone))],
+    });
+  });
 });

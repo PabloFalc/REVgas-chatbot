@@ -39,7 +39,7 @@ describe('runFlow', () => {
 
   it('erro numa ferramenta sem pedido em andamento devolve indisponível', async () => {
     const tools = createFakeTools({
-      findCustomer: async () => {
+      findCustomers: async () => {
         throw new Error('RevGás fora do ar');
       },
     });
@@ -49,12 +49,12 @@ describe('runFlow', () => {
 
   it('erro de ferramenta alcançado por um handler devolve indisponível e mantém o estado', async () => {
     handlers.askName = async (_state, input, tools) => {
-      await tools.findCustomer(input.phone);
+      await tools.findCustomers(input.phone);
       return { state: null, replies: [] };
     };
     const state: OrderState = { step: 'askName', customer: {} };
     const tools = createFakeTools({
-      findCustomer: async () => {
+      findCustomers: async () => {
         throw new Error('RevGás fora do ar');
       },
     });
@@ -73,7 +73,7 @@ describe('runFlow', () => {
   it('avisa o callback com o ToolError quando uma ferramenta falha', async () => {
     const boom = new Error('RevGás fora do ar');
     const tools = createFakeTools({
-      findCustomer: async () => {
+      findCustomers: async () => {
         throw boom;
       },
     });
@@ -178,6 +178,7 @@ const ALL_STEPS: Step[] = [
   'askName',
   'askCpf',
   'askCpfPrefix',
+  'confirmCpf',
   'chooseAddress',
   'askNewAddress',
   'askAddressField',
@@ -670,7 +671,7 @@ describe('texto livre no meio do pedido', () => {
   const credit = { type: 'CARTAO_DE_CREDITO', label: 'Cartão de crédito' };
   const paying: OrderState = {
     step: 'choosePayment',
-    customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+    customer: { id: 1, name: 'Maria da Silva', tagId: null },
     address: {
       street: 'Rua das Flores',
       number: '120',
@@ -828,20 +829,20 @@ describe('identidade antes dos dados do cliente', () => {
     for (const secret of secrets) expect(sent).not.toContain(secret);
   };
 
-  it('não mostra nome nem endereço até os 3 dígitos serem confirmados', async () => {
-    const tools = createFakeTools({ isVerified: async () => false });
+  it('não mostra nome nem endereço até o CPF completo ser confirmado', async () => {
+    const tools = createFakeTools({ verifiedCustomer: async () => null });
     const first = await runFlow(null, hello, tools);
     expectHidden(first);
-    expect(first.state?.step).toBe('askCpfPrefix');
+    expect(first.state?.step).toBe('confirmCpf');
 
-    const wrong = await runFlow(first.state, say('999'), tools);
+    const wrong = await runFlow(first.state, say('98765432100'), tools);
     expectHidden(wrong);
 
     const order = await runFlow(wrong.state, say('quero 1 botijão P13'), tools);
     expectHidden(order);
     expect(tools.calls.map(call => call.name)).not.toContain('customerHistory');
 
-    const right = await runFlow(order.state, say('123'), tools);
+    const right = await runFlow(order.state, say('123.456.789-09'), tools);
     expect(JSON.stringify(right.replies)).toContain('Maria');
   });
 });

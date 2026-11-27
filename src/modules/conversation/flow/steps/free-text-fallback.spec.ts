@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import type { Reply } from '../../contracts/conversation.types';
 import type { FlowInput, FlowTools, OrderState, Step } from '../flow.types';
 import { offer } from '../handoff';
 import { msg } from '../messages';
-import { text } from '../replies';
+import { buttons, text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
 import { handlers } from './index';
 
@@ -24,7 +25,7 @@ const money = { type: 'MONEY', label: 'Dinheiro' };
 
 const full: OrderState = {
   step: 'summary',
-  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', tagId: null },
   addresses: [address],
   address,
   product: p13,
@@ -63,15 +64,19 @@ describe('texto guiado da etapa quando a IA não entende', () => {
     createFakeTools({ interpret: async () => null, ...overrides });
 
   it.each([
-    ['askCpf', 'não tenho CPF', msg.invalidCpf],
-    ['askCpfPrefix', 'não lembro', msg.cpfPrefixFormat],
-    ['askQuantity', 'uns dois', msg.invalidQuantity],
-    ['askChangeAmount', 'não sei ainda', msg.invalidChange(110)],
-  ] as [Step, string, string][])('%s: "%s" recebe o texto da etapa', async (step, raw, guided) => {
+    ['askCpf', 'não tenho CPF', text(msg.invalidCpf)],
+    [
+      'confirmCpf',
+      'não lembro',
+      buttons(msg.askFullCpf, [{ id: 'identity:agent', title: msg.talkToAgent }]),
+    ],
+    ['askQuantity', 'uns dois', text(msg.invalidQuantity)],
+    ['askChangeAmount', 'não sei ainda', text(msg.invalidChange(110))],
+  ] as [Step, string, Reply][])('%s: "%s" recebe o texto da etapa', async (step, raw, guided) => {
     const tools = withAi();
     const state = { ...full, step };
     const out = await handlers[step]?.(state, say(raw), tools);
-    expect(out).toEqual({ state, replies: [text(guided)], misunderstood: true });
+    expect(out).toEqual({ state, replies: [guided], misunderstood: true });
     expect(tools.calls.map(call => call.name)).toContain('registerMisunderstood');
   });
 
@@ -157,19 +162,21 @@ describe('fallback de texto livre nas etapas', () => {
     expect(interpretCalls(fake)).toHaveLength(1);
   });
 
-  it('askCpfPrefix', async () => {
-    const valid = await run('askCpfPrefix', '123');
+  it('confirmCpf', async () => {
+    const valid = await run('confirmCpf', '123.456.789-09');
     expect(interpretCalls(valid.fake)).toHaveLength(0);
 
-    for (const bad of ['12345678909', 'meu cpf é 123.456.789-00']) {
-      const { fake, out } = await run('askCpfPrefix', bad);
-      expect(out?.replies).toEqual([text(msg.cpfPrefixFormat)]);
+    for (const bad of ['111.222.333-44', 'meu cpf é 123.456.789-00']) {
+      const { fake, out } = await run('confirmCpf', bad);
+      expect(out?.replies).toEqual([
+        buttons(msg.invalidCpf, [{ id: 'identity:agent', title: msg.talkToAgent }]),
+      ]);
       expect(interpretCalls(fake)).toHaveLength(0);
     }
 
-    const { fake, out } = await run('askCpfPrefix', 'quero no pix');
-    expect(interpretCalls(fake)).toHaveLength(1);
-    expect(out?.state?.step).toBe('askCpfPrefix');
+    const { fake, out } = await run('confirmCpf', 'quero no pix');
+    expect(interpretCalls(fake)).toHaveLength(0);
+    expect(out?.state?.step).toBe('confirmCpf');
   });
 
   it.each([

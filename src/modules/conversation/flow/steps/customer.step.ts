@@ -2,10 +2,10 @@ import { isValidCpf, onlyDigits, removeLongDigitRuns } from 'src/utils/cpf';
 import { normalizeText } from 'src/utils/text';
 import {
   type AskFn,
+  CPF_STEPS,
   type FlowInput,
   type FlowTools,
   type HandleFn,
-  MAX_CPF_ATTEMPTS,
   type OrderState,
   type Step,
   type StepResult,
@@ -17,17 +17,18 @@ import {
   keepOfferedProduct,
   looksLikeOrder,
 } from '../free-text';
+import { handoffSummary, identityHandoff } from '../handoff';
+import { checkCpf, resolveIdentity } from '../identity';
 import { textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
 import { answerOrderStatus } from '../order-status';
-import { text } from '../replies';
+import { buttons, text } from '../replies';
 import { offerOrNext } from './repeat.step';
 
 const MAX_NAME_LENGTH = 100;
 const MAX_NAME_TEXT = 200;
 const CPF_LIKE_DIGITS = 9;
-const CPF_PREFIX_LENGTH = 3;
 
 function hasCpfLikeDigits(raw: string): boolean {
   return removeLongDigitRuns(raw, CPF_LIKE_DIGITS) !== raw;
@@ -90,8 +91,14 @@ export async function welcomeKnown(state: OrderState, tools: FlowTools): Promise
   };
 }
 
-function contactStore(tools: FlowTools): StepResult {
-  return { state: null, replies: [text(msg.identityContactStore(tools.storePhone))] };
+const OWNER_CHANGED_CHOICE = 'identity:owner-changed';
+const IDENTITY_AGENT_CHOICE = 'identity:agent';
+
+const agentOption = { id: IDENTITY_AGENT_CHOICE, title: msg.talkToAgent };
+const ownerChangedOption = { id: OWNER_CHANGED_CHOICE, title: msg.ownerChanged };
+
+function askIdentity(state: OrderState): StepResult {
+  return { state: { ...state, step: 'confirmCpf', customer: {} }, replies: [text(msg.askFullCpf)] };
 }
 
 export async function start(
@@ -99,29 +106,20 @@ export async function start(
   tools: FlowTools,
   seed: Partial<OrderState> = {},
 ): Promise<StepResult> {
-  const customer = await tools.findCustomer(input.phone);
-  if (!customer) {
-    return {
-      state: { step: 'askName', customer: {}, ...seed },
-      replies: [text(greeting(msg.welcomeNew, tools))],
-    };
+  const identity = await resolveIdentity(input.phone, tools);
+  switch (identity.kind) {
+    case 'new':
+      return {
+        state: { step: 'askName', customer: {}, ...seed },
+        replies: [text(greeting(msg.welcomeNew, tools))],
+      };
+    case 'handoff':
+      return identityHandoff(null, input.phone, tools);
+    case 'verified':
+      return welcomeKnown({ step: 'confirmCpf', ...seed, customer: identity.customer }, tools);
+    case 'ask':
+      return askIdentity({ step: 'confirmCpf', customer: {}, ...seed });
   }
-
-  if (!customer.cpf) return contactStore(tools);
-  if (await tools.isBlocked(input.phone)) return contactStore(tools);
-
-  const state: OrderState = {
-    step: 'askCpfPrefix',
-    customer: {
-      id: customer.id,
-      name: customer.name,
-      cpfPrefix: customer.cpf.slice(0, CPF_PREFIX_LENGTH),
-      tagId: customer.tagId,
-    },
-    ...seed,
-  };
-  if (await tools.isVerified(input.phone, customer.id)) return welcomeKnown(state, tools);
-  return { state, replies: [text(msg.askCpfPrefix)] };
 }
 
 const askName: AskFn = async state => ({
@@ -134,10 +132,7 @@ const askCpf: AskFn = async state => ({
   replies: [text(msg.askCpf)],
 });
 
-const askCpfPrefix: AskFn = async state => ({
-  state: { ...state, step: 'askCpfPrefix' },
-  replies: [text(msg.askCpfPrefix)],
-});
+const confirmCpf: AskFn = async state => askIdentity(state);
 
 const handleAskName: HandleFn = async (state, input, tools) => {
   const raw = textOf(input);
@@ -163,44 +158,70 @@ const handleAskCpf: HandleFn = async (state, input, tools) => {
   return nextStep({ ...state, customer: { ...state.customer, cpf: onlyDigits(raw) } }, tools);
 };
 
-const STANDALONE_PREFIX = /\b\d{3}\b/g;
-const NUMERIC_ONLY = /^[\d\s.-]+$/;
-
-function prefixAttempt(raw: string | null): string | null {
-  if (raw === null || !NUMERIC_ONLY.test(raw)) return null;
-  const digits = onlyDigits(raw);
-  return digits.length === CPF_PREFIX_LENGTH ? digits : null;
+function ownerChanged(state: OrderState, tools: FlowTools): Promise<StepResult> {
+  tools.track({ name: 'identity_check', outcome: 'owner_changed' });
+  const { cycleId, product, quantity } = state;
+  const fresh: OrderState = { step: 'askName', customer: {} };
+  if (cycleId !== undefined) fresh.cycleId = cycleId;
+  if (product !== undefined) fresh.product = product;
+  if (quantity !== undefined) fresh.quantity = quantity;
+  return askName(fresh, tools);
 }
 
-const handleAskCpfPrefix: HandleFn = async (state, input, tools) => {
-  const { id, cpfPrefix } = state.customer;
-  if (id === undefined || !cpfPrefix) return contactStore(tools);
+const handleConfirmCpf: HandleFn = async (state, input, tools) => {
+  if (input.content.type === 'choice') {
+    if (input.content.id === OWNER_CHANGED_CHOICE) return ownerChanged(state, tools);
+    if (input.content.id === IDENTITY_AGENT_CHOICE) {
+      return identityHandoff(state, input.phone, tools, {
+        state: null,
+        summary: handoffSummary(state),
+        requested: true,
+      });
+    }
+  }
   const raw = textOf(input);
-  const digits = prefixAttempt(raw);
-  if (digits === null) {
+  if (raw === null || !isValidCpf(raw)) {
     if (raw !== null && hasCpfLikeDigits(raw)) {
-      return { state, replies: [text(msg.cpfPrefixFormat)] };
+      return { state, replies: [buttons(msg.invalidCpf, [agentOption])] };
     }
-    const rest = raw?.replace(STANDALONE_PREFIX, '').trim() ?? '';
-    if (!rest) return { state, replies: [text(msg.cpfPrefixFormat)] };
-    return freeTextOr(state, rest, tools, msg.cpfPrefixFormat);
+    return freeTextOr(state, raw, tools, buttons(msg.askFullCpf, [agentOption]));
   }
-  if (digits === cpfPrefix) {
-    await tools.markVerified(input.phone, id);
-    if (state.pendingOrderStatus) {
-      return answerOrderStatus(state, id, tools);
+  const result = await checkCpf(input.phone, raw, tools);
+  switch (result.kind) {
+    case 'verified': {
+      const { pendingOrderStatus, ...rest } = state;
+      const resumeStep = pendingOrderStatus?.resumeStep ?? null;
+      if (pendingOrderStatus && (resumeStep === null || !CPF_STEPS.includes(resumeStep))) {
+        return answerOrderStatus(state, result.customer.id, tools);
+      }
+      const welcome = await welcomeKnown({ ...rest, customer: result.customer }, tools);
+      if (!pendingOrderStatus) return welcome;
+      const status = await answerOrderStatus(null, result.customer.id, tools);
+      return { state: welcome.state, replies: [...status.replies, ...welcome.replies] };
     }
-    return welcomeKnown(state, tools);
+    case 'mismatch':
+      return { state, replies: [buttons(msg.cpfMismatch, [ownerChangedOption, agentOption])] };
+    case 'invalid':
+      return { state, replies: [buttons(msg.invalidCpf, [agentOption])] };
+    case 'new':
+    case 'ask':
+    case 'handoff':
+      return identityHandoff(state, input.phone, tools);
   }
-  const attempts = await tools.registerCpfMismatch(input.phone);
-  if (attempts >= MAX_CPF_ATTEMPTS) return contactStore(tools);
-  return { state, replies: [text(msg.cpfPrefixMismatch)] };
 };
 
-export const asks: Partial<Record<Step, AskFn>> = { askName, askCpf, askCpfPrefix };
+const handleAskCpfPrefix: HandleFn = async (_state, input, tools) => start(input, tools);
+
+export const asks: Partial<Record<Step, AskFn>> = {
+  askName,
+  askCpf,
+  askCpfPrefix: confirmCpf,
+  confirmCpf,
+};
 
 export const handlers: Partial<Record<Step, HandleFn>> = {
   askName: handleAskName,
   askCpf: handleAskCpf,
   askCpfPrefix: handleAskCpfPrefix,
+  confirmCpf: handleConfirmCpf,
 };

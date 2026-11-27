@@ -93,7 +93,7 @@ describe('Eventos do bot (e2e)', () => {
     expect(cycleId).toBeTruthy();
     cycles.push(cycleId as string);
     for (const [value, choice] of [
-      ['000', false],
+      [FAKE_CUSTOMERS[0].cpf ?? '', false],
       ['address:0', true],
       ['product:900000101', true],
       ['qty:1', true],

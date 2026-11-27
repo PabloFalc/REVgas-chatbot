@@ -47,9 +47,9 @@ describe('reminderFor', () => {
     ).toBeNull();
   });
 
-  it('lembra também em askCpfPrefix e saleFailed', async () => {
-    const prefix = await reminderFor(idle({ step: 'askCpfPrefix' }), createFakeTools());
-    expect(prefix?.replies).toEqual([text(msg.reminder), text(msg.askCpfPrefix)]);
+  it('lembra também em confirmCpf e saleFailed', async () => {
+    const identity = await reminderFor(idle({ step: 'confirmCpf' }), createFakeTools());
+    expect(identity?.replies).toEqual([text(msg.reminder), text(msg.askFullCpf)]);
 
     const failed = await reminderFor(idle({ step: 'saleFailed' }), createFakeTools());
     expect(failed?.replies[0]).toEqual(text(msg.reminder));

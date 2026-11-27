@@ -42,7 +42,7 @@ const base: OrderState = {
   step: 'summary',
   revision: 1,
   purchaseStarted: true,
-  customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
+  customer: { id: 1, name: 'Maria da Silva', tagId: null },
   addresses: [address],
   address,
   product: { id: 1, name: 'Botijão P13' },
