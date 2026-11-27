@@ -109,6 +109,23 @@ describe('nextStep', () => {
     expect(result.replies[0]).toEqual(text(msg.noPriceForPayment));
   });
 
+  it('forma que deixou de ter preço sai das opções reapresentadas', async () => {
+    const tools = createFakeTools({
+      quote: async (_customer, _productId, paymentType, quantity) =>
+        paymentType === 'PIX' ? null : { unitPrice: 110, total: 110 * quantity },
+    });
+    const result = await nextStep(
+      stateWith({ address, product, quantity: 1, payment: pix }),
+      tools,
+    );
+    expect(result.state?.payment).toBeUndefined();
+    expect(result.state?.quote).toBeUndefined();
+    expect(result.state?.paymentOptions?.map(option => option.type)).toEqual([
+      'MONEY',
+      'CARTAO_DE_CREDITO',
+    ]);
+  });
+
   it('dinheiro sem troco informado pergunta o troco', async () => {
     const result = await nextStep(
       stateWith({ address, product, quantity: 1, payment: money }),

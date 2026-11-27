@@ -22,6 +22,7 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 | `handoff_assumed`, `handoff_resolved`, `handoff_expired` | `handoff_id` aleatório do ciclo humano e duração em ms: fila até a primeira mensagem humana, atendimento até a resolução, ou tempo desde o pedido até a expiração. Sem telefone, conversa Chatwoot nem mensagem |
 | `handoff_offered` | `stuck` após três incompreensões ou `offense` após duas ofensas |
 | `quantity_limit` | `max` ou `stock` |
+| `payment_options_unavailable` | `amount` com a quantidade de formas listadas sem preço elegível; sem dados do cliente |
 | `emergency` | `agent_route` quando há emergência na rota humana |
 | `rag` | `answered` ou `unknown`; `no_match`, `not_in_sources`, `rejected`, `unavailable`; duração em ms |
 | `ai_call` | `allowed` ou `limited`; `interpret`, `read_name`, `address`, `question`; unidades do limite em `amount` |

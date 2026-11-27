@@ -120,6 +120,39 @@ describe('runFlow', () => {
     expect(result.replies).toEqual([text(msg.unavailable)]);
   });
 
+  it('mantém estado anterior ao falhar a consulta de preço', async () => {
+    const state: OrderState = {
+      step: 'choosePayment',
+      customer: { id: 1, tagId: null },
+      address: {
+        street: 'Rua das Flores',
+        number: '120',
+        neighborhood: 'Centro',
+        city: 'Teresina',
+        state: 'PI',
+      },
+      product: { id: 1, name: 'Botijão P13' },
+      quantity: 2,
+      purchaseStarted: true,
+      paymentOptions: [{ type: 'PIX', label: 'Pix' }],
+    };
+    const snapshot = structuredClone(state);
+    const tools = createFakeTools({
+      quote: async () => {
+        throw new Error('RevGás fora do ar');
+      },
+    });
+    const result = await runFlow(
+      state,
+      { phone: FAKE_PHONE, content: { type: 'choice', id: 'pay:PIX', title: 'Pix' } },
+      tools,
+    );
+    expect(result.state).toBe(state);
+    expect(state).toEqual(snapshot);
+    expect(result.replies).toEqual([text(msg.unavailable)]);
+    expect(tools.calls.map(call => call.name)).not.toContain('createSale');
+  });
+
   it('escolha de produto durante choosePayment repete o pagamento sem mudar o estado', async () => {
     const options = [
       { type: 'PIX', label: 'Pix' },
