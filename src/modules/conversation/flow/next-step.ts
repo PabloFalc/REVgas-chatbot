@@ -6,7 +6,7 @@ import {
   type Step,
   type StepResult,
 } from './flow.types';
-import { offer } from './handoff';
+import { handoffReply, handoffSummary } from './handoff';
 import { msg } from './messages';
 import { text } from './replies';
 import { asks } from './steps/registry';
@@ -26,6 +26,23 @@ function withoutQuantity(state: OrderState): OrderState {
 async function checkQuantity(state: OrderState, tools: FlowTools): Promise<StepResult | null> {
   const { product, quantity } = state;
   if (!product || quantity === undefined) return null;
+  if (quantity > MAX_QUANTITY) {
+    tools.track({ name: 'quantity_limit', reason: 'max' });
+    const held: OrderState = {
+      ...withoutQuantity(state),
+      step: 'chooseQuantity',
+      requestedQuantity: quantity,
+    };
+    const outcome = await tools.requestHandoff({
+      phone: tools.phone,
+      reason: 'quantity_limit',
+      summary: handoffSummary(held),
+    });
+    const replies = [text(msg.quantityAboveMax), handoffReply(outcome, tools)];
+    if (outcome.status !== 'unavailable') return { state: held, replies };
+    const result = await goTo(held, 'chooseQuantity', tools);
+    return { state: result.state, replies: [...replies, ...result.replies] };
+  }
   const stock = product.stock;
   if (stock !== undefined && quantity > stock) {
     tools.track({ name: 'quantity_limit', reason: 'stock' });
@@ -34,11 +51,6 @@ async function checkQuantity(state: OrderState, tools: FlowTools): Promise<StepR
       state: result.state,
       replies: [text(msg.stockLimit(stock, product.name)), ...result.replies],
     };
-  }
-  if (quantity > MAX_QUANTITY) {
-    tools.track({ name: 'quantity_limit', reason: 'max' });
-    const result = await goTo(withoutQuantity(state), 'chooseQuantity', tools);
-    return { state: result.state, replies: [offer(msg.quantityAboveMax), ...result.replies] };
   }
   return null;
 }

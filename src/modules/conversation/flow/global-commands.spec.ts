@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FlowInput, OrderState } from './flow.types';
 import { globalCommand } from './global-commands';
-import { handoffButton, offer, orderStartButton } from './handoff';
+import { cancellationButton, handoffButton, offer, orderStartButton } from './handoff';
 import { msg } from './messages';
 import { buttons, text } from './replies';
 import { asks } from './steps';
@@ -88,7 +88,58 @@ describe('globalCommand', () => {
 
   it('cancelar sem estado oferece atendente em vez de afirmar cancelamento', async () => {
     const result = await globalCommand(null, say('cancelar'), createFakeTools());
-    expect(result).toEqual({ state: null, replies: [text(msg.cancelNeedsAgent)] });
+    expect(result).toEqual({
+      state: null,
+      replies: [buttons(msg.cancelNeedsAgent, [cancellationButton()])],
+    });
+  });
+
+  it('encaminha cancelamento de venda registrada sem chamar cancelamento ERP', async () => {
+    const tools = createFakeTools();
+    const offered = await globalCommand(null, say('cancelar'), tools);
+    const reply = offered?.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    const tap: FlowInput = {
+      phone: FAKE_PHONE,
+      content: { type: 'choice', id: reply.buttons[0].id },
+    };
+    const result = await globalCommand(null, tap, tools);
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.cancellationForwarded), text(msg.handoffQueued)],
+    });
+    expect(tools.calls).toEqual([
+      {
+        name: 'requestHandoff',
+        args: [{ phone: FAKE_PHONE, reason: 'sale_cancellation', summary: null }],
+      },
+    ]);
+
+    const offline = createFakeTools({
+      requestHandoff: async () => ({ status: 'unavailable', open: true, nextOpening: null }),
+    });
+    const fallback = await globalCommand(null, tap, offline);
+    expect(fallback).toEqual({ state: null, replies: [text(msg.talkToStore('86999990000'))] });
+  });
+
+  it('botão antigo de cancelar pedido sem estado oferece atendente em vez de saudação', async () => {
+    const tap: FlowInput = { phone: FAKE_PHONE, content: { type: 'choice', id: 'summary:cancel' } };
+    const result = await globalCommand(null, tap, createFakeTools());
+    expect(result).toEqual({
+      state: null,
+      replies: [buttons(msg.cancelNeedsAgent, [cancellationButton()])],
+    });
+  });
+
+  it('botão antigo de cancelamento com rascunho em andamento não abre atendimento', async () => {
+    const tools = createFakeTools();
+    const tap: FlowInput = {
+      phone: FAKE_PHONE,
+      content: { type: 'choice', id: 'handoff:cancellation' },
+    };
+    const result = await globalCommand(state, tap, tools);
+    expect(result).toBeNull();
+    expect(tools.calls).toEqual([]);
   });
 
   it.each(['cancelar', 'Cancelar', 'CANCELA', 'cancelar pedido'])(

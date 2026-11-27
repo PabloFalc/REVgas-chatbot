@@ -34,7 +34,8 @@ describe('runFlow', () => {
       { ...hello, content: { type: 'text', text: 'cancelar' } },
       createFakeTools(),
     );
-    expect(result).toEqual({ state: null, replies: [text(msg.cancelNeedsAgent)] });
+    expect(result?.state).toBeNull();
+    expect(result?.replies[0]).toMatchObject({ type: 'buttons', body: msg.cancelNeedsAgent });
   });
 
   it('erro numa ferramenta sem pedido em andamento devolve indisponível', async () => {
@@ -370,14 +371,17 @@ describe('cadastro sob runFlow', () => {
     },
   });
 
-  it('CpfTakenError do createCustomer encerra com a mensagem de CPF já cadastrado', async () => {
+  it('CpfTakenError do createCustomer encerra com handoff de identidade neutro', async () => {
     const tools = createFakeTools({
       createCustomer: async () => {
         throw new CpfTakenError();
       },
     });
     const result = await runFlow(confirming(), pick('address:ok'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.cpfTaken(tools.storePhone))] });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.identityHandoff), text(msg.handoffQueued)],
+    });
   });
 
   it('falha ao listar produtos depois de criar o cadastro não recria o cliente na próxima mensagem', async () => {

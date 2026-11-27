@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_QUANTITY, type OrderState } from './flow.types';
-import { HANDOFF_CHOICE, offer } from './handoff';
 import { msg } from './messages';
 import { nextStep } from './next-step';
 import { text } from './replies';
@@ -68,24 +67,67 @@ describe('nextStep', () => {
     expect(result.replies[0]).toEqual(text(msg.stockLimit(3, limited.name)));
   });
 
-  it('quantidade acima do máximo oferece atendente e volta à quantidade', async () => {
+  it('preserva quantidade original acima do limite no handoff', async () => {
+    const tools = createFakeTools();
     const result = await nextStep(
       stateWith({
         address,
         product,
-        quantity: MAX_QUANTITY + 1,
+        quantity: MAX_QUANTITY + 5,
         payment: pix,
-        quote: { unitPrice: 110, total: 1210 },
+        quote: { unitPrice: 110, total: 1650 },
       }),
-      createFakeTools(),
+      tools,
+    );
+    expect(result.replies).toEqual([text(msg.quantityAboveMax), text(msg.handoffQueued)]);
+    expect(result.state).toMatchObject({ step: 'chooseQuantity', requestedQuantity: 15 });
+    expect(result.state?.quantity).toBeUndefined();
+    expect(result.state?.quote).toBeUndefined();
+    const requests = tools.calls.filter(call => call.name === 'requestHandoff');
+    expect(requests).toHaveLength(1);
+    expect(requests[0].args[0]).toMatchObject({
+      reason: 'quantity_limit',
+      summary: { product: product.name, quantity: 15 },
+    });
+    expect(tools.calls.map(call => call.name)).not.toContain('quote');
+    expect(tools.calls.map(call => call.name)).not.toContain('createSale');
+  });
+
+  it('quantidade acima do limite e do estoque abre handoff de limite', async () => {
+    const tools = createFakeTools();
+    const result = await nextStep(
+      stateWith({ address, product: { ...product, stock: 100 }, quantity: 500, payment: pix }),
+      tools,
+    );
+    expect(result.state?.requestedQuantity).toBe(500);
+    expect(result.replies).toEqual([text(msg.quantityAboveMax), text(msg.handoffQueued)]);
+    expect(tools.calls).toContainEqual({
+      name: 'track',
+      args: [{ name: 'quantity_limit', reason: 'max' }],
+    });
+    const requests = tools.calls.filter(call => call.name === 'requestHandoff');
+    expect(requests[0].args[0]).toMatchObject({ reason: 'quantity_limit' });
+  });
+
+  it('não reduz silenciosamente quantidade maior que o limite', async () => {
+    const tools = createFakeTools({
+      requestHandoff: async () => ({ status: 'unavailable', open: true, nextOpening: null }),
+    });
+    const result = await nextStep(
+      stateWith({ address, product, quantity: MAX_QUANTITY + 1, payment: pix }),
+      tools,
     );
     expect(result.state?.step).toBe('chooseQuantity');
     expect(result.state?.quantity).toBeUndefined();
-    expect(result.state?.quote).toBeUndefined();
-    expect(result.replies[0]).toEqual(offer(msg.quantityAboveMax));
-    const reply = result.replies[0];
-    if (reply?.type !== 'buttons') throw new Error('expected buttons');
-    expect(reply.buttons.map(button => button.id)).toEqual([HANDOFF_CHOICE]);
+    expect(result.state?.requestedQuantity).toBe(MAX_QUANTITY + 1);
+    expect(result.state?.payment).toEqual(pix);
+    expect(result.replies[0]).toEqual(text(msg.quantityAboveMax));
+    expect(result.replies[1]).toEqual(text(msg.talkToStore(tools.storePhone)));
+    expect(result.replies).not.toContainEqual(text(msg.handoffQueued));
+    const question = result.replies[2];
+    if (question?.type !== 'buttons') throw new Error('expected buttons');
+    expect(question.body).toBe(msg.chooseQuantity(product));
+    expect(tools.calls.map(call => call.name)).not.toContain('quote');
   });
 
   it('com tudo escolhido calcula o preço e vai ao resumo', async () => {

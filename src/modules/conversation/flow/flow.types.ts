@@ -96,6 +96,7 @@ export interface OrderState {
   product?: Product;
   purchaseStarted?: true;
   quantity?: number;
+  requestedQuantity?: number;
   paymentOptions?: PaymentOption[];
   payment?: PaymentOption;
   quote?: Quote;

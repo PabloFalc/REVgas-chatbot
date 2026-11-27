@@ -49,7 +49,7 @@ O estado do pedido (`OrderState.step`) vive no Redis por 15 min. Os valores de `
 | `choosePayment` | Formas de pagamento com preço para o produto e o cliente (≤ 3 em botões) | Botão / lista (`pay:<TYPE>`) |
 | `askNeedsChange` | Dinheiro: precisa de troco? | Botão (`change:no\|yes`) |
 | `askChangeAmount` | Dinheiro: troco para quanto (acima do total; um valor só, "200 300" não vale) | Texto numérico |
-| `summary` | Itens, endereço, pagamento e total vindo da API | Botão (`summary:confirm\|fix`) |
+| `summary` | Itens, endereço, pagamento e total vindo da API | Botão (`summary:confirm\|fix\|cancel`) |
 | `chooseCorrection` | O que corrigir | Botão (`fix:product\|address\|payment`) |
 | `creatingSale` | Cria a venda (único POST, sem retry automático) | — |
 | `saleFailed` | Falha ao criar: avisa e oferece "Tentar de novo" | Botão (`retry:sale`) |
@@ -58,11 +58,11 @@ Ao concluir, o estado é apagado e o bot envia o número da venda. O status pode
 
 ### Cadastro de cliente novo
 
-O CPF é pedido em `askCpf`, mas o cliente só é criado na RevGás quando confirma o endereço (`confirmAddress`, em `flow/steps/address.step.ts`). O CPF fica no estado só até esse ponto e é apagado logo depois do cadastro; o estado não guarda CPF de cliente conhecido. Se a RevGás diz que o CPF já tem cadastro com outro telefone, a conversa termina com o telefone da revenda (`cpfTaken`) e o estado é apagado; o bot não pede outro CPF. Se a RevGás rejeita o cadastro por outro motivo, volta a `askName`.
+O CPF é pedido em `askCpf`, mas o cliente só é criado na RevGás quando confirma o endereço (`confirmAddress`, em `flow/steps/address.step.ts`). O CPF fica no estado só até esse ponto e é apagado logo depois do cadastro; o estado não guarda CPF de cliente conhecido. Se a RevGás diz que o CPF já tem cadastro com outro telefone, o bot abre handoff com motivo `identity_failure` e responde só a mensagem neutra de identidade (`identityHandoff`), sem dizer que o CPF já existe; a nota vai sem pedido nem dados do cliente. Sem canal humano, envia o telefone da revenda (`identityContactStore`). Nos dois casos o estado é apagado e o bot não pede outro CPF. Se a RevGás rejeita o cadastro por outro motivo, volta a `askName`.
 
 ### Limite de quantidade
 
-A quantidade vai de 1 a 10 (`MAX_QUANTITY`) e nunca passa do estoque do produto. A checagem fica num ponto só, em `nextStep` (`flow/next-step.ts`), então vale para botão, texto digitado, texto livre da IA e repetir pedido. Acima do estoque, o bot informa o limite e volta a `chooseQuantity`. Acima de 10, avisa que pedidos maiores são atendidos por um atendente, oferece o botão "Falar com atendente" e volta a `chooseQuantity`. Decisão de 2026-11-23.
+A quantidade vai de 1 a 10 (`MAX_QUANTITY`) e nunca passa do estoque do produto. A checagem fica num ponto só, em `nextStep` (`flow/next-step.ts`), então vale para botão, texto digitado, texto livre da IA e repetir pedido. Acima do estoque, o bot informa o limite e volta a `chooseQuantity`. Acima de 10, avisa que pedidos maiores são atendidos por um atendente e abre handoff com motivo `quantity_limit`; a quantidade pedida fica em `requestedQuantity` e vai na nota, sem reduzir nem vender. Sem canal humano, manda o telefone da revenda e volta a `chooseQuantity`. Decisão de 2026-11-23, revista na T-HAND-06.
 
 ### Mensagens simultâneas e trava por telefone
 
@@ -83,8 +83,7 @@ escolhido e o fluxo retoma dali.
 
 Valem em qualquer etapa (`global-commands.ts`), nesta ordem: **emergência de gás** (ver
 [Emergência de gás](#emergência-de-gás)), que vem antes de tudo; **palavrão** no texto (ver
-[Palavrões](#palavrões)) recebe a resposta de ofensa e a pergunta da etapa; `cancelar` apaga o estado
-(bloqueado em `creatingSale`); `atendente`/`humano`/`falar com alguem` e o botão "Falar com atendente" (id `handoff:request`) pedem o handoff **direto** (ver [Handoff para atendente](#handoff-para-atendente));
+[Palavrões](#palavrões)) recebe a resposta de ofensa e a pergunta da etapa; `cancelar` descarta o rascunho (bloqueado em `creatingSale`); sem estado, oferece o botão "Falar com atendente" (`handoff:cancellation`), que abre handoff `sale_cancellation` (o bot nunca cancela venda no ERP); `atendente`/`humano`/`falar com alguem` e o botão "Falar com atendente" (id `handoff:request`) pedem o handoff **direto** (ver [Handoff para atendente](#handoff-para-atendente));
 o botão "Fazer pedido" (id `order:start`) inicia o pedido (sem estado) ou repete a pergunta da etapa (com estado);
 `desconto`/`promoção` responde que o preço é o da tabela e repete a pergunta; mensagem que não é
 texto/botão/lista (áudio, imagem) pede texto e repete a pergunta. O estado não muda, exceto no cancelar.
@@ -187,7 +186,7 @@ telefone, separado do pedido (que expira em 15 min).
 | `queued` | Ninguém responde ainda; o bot só avisa que está na fila | Pedido de atendente ou falha da venda | 1ª mensagem humana → `active`; conversa resolvida no Chatwoot ou 72 h → nenhum |
 | `active` | Atendente; o bot só repassa ao Chatwoot | 1ª mensagem humana | Conversa resolvida no Chatwoot ou 24 h sem mensagem do atendente → nenhum |
 
-- **Quem entra na fila direto:** só pedido claro. As palavras `atendente`, `humano` e `falar com alguem` (`asksForAgent` em `flow/handoff.ts`), o toque no botão "Falar com atendente" (`handoff:request`, inclusive o da etapa `saleFailed`) e a emergência de gás. Quando **só a IA** acha que o cliente pediu atendente (intenção `handoff`), o bot **não** transfere: oferece o botão e repete a pergunta da etapa, sem mudar o estado. Decisão do usuário (2026-11-15), depois que "não quero tirar minhas dúvidas" em `askNeedsChange` foi lido como pedido de atendente e o cliente entrou na fila.
+- **Quem entra na fila direto:** só pedido claro. As palavras `atendente`, `humano` e `falar com alguem` (`asksForAgent` em `flow/handoff.ts`), o toque no botão "Falar com atendente" (`handoff:request`, inclusive o da etapa `saleFailed`), a emergência de gás e as exceções comerciais: venda rejeitada pela RevGás (`sale_rejected`), quantidade acima de 10 (`quantity_limit`) e pedido de cancelamento sem rascunho (`sale_cancellation`). Quando **só a IA** acha que o cliente pediu atendente (intenção `handoff`), o bot **não** transfere: oferece o botão e repete a pergunta da etapa, sem mudar o estado. Decisão do usuário (2026-11-15), depois que "não quero tirar minhas dúvidas" em `askNeedsChange` foi lido como pedido de atendente e o cliente entrou na fila.
 - **Entrada na fila:** nota interna com o resumo (motivo, etapa, produto, quantidade, endereço, pagamento, total, nome; nunca CPF). Antes da verificação de identidade a nota não leva nome, endereço nem pedido. A resposta ao cliente é só o texto do handoff ("Você está na fila de atendimento...", "Seu atendimento já está na fila..."); fora do horário (`SERVICE_HOURS`) o bot diz quando abre e pede que o cliente mande "oi" quando abrirmos.
 - **Em `queued`** o bot não segue o fluxo do pedido: não lê nem altera o pedido, não chama a IA e não cria venda. Qualquer mensagem (texto, botão ou não suportada) recebe só o aviso de fila, e é espelhada no Chatwoot; quem pede atendente de novo recebe "Seu atendimento já está na fila", sem outro ticket nem nota. O lembrete de 10 min também não é enviado em `queued` nem em `active`. A emergência de gás continua valendo (ver [Emergência de gás](#emergência-de-gás)).
 - **Em `active`** o pedido e o lembrete são apagados; mensagens do cliente vão só ao Chatwoot (não suportadas viram `[cliente enviou áudio]`); as do atendente chegam como `*Maria (atendente):* ...`. Mensagem de vazamento não recebe o texto de segurança: vai ao atendente com uma nota interna de emergência (ver [Emergência de gás](#emergência-de-gás)).
@@ -291,5 +290,6 @@ Com `REVGAS_MODE=live` os textos são os normais.
 
 - O diagrama não mostra o atalho "repetir último pedido" nem a saída da verificação (telefone da revenda); eles só aparecem no texto.
 - "Corrigir" abre `chooseCorrection` (produto, endereço ou pagamento); só o campo escolhido é limpo e `nextStep` retoma dali.
+- "Cancelar pedido" no resumo (`summary:cancel`) descarta só o rascunho, que ainda não foi enviado à RevGás.
 - O passo 8 envia só o número da venda. A API não tem tempo estimado nem webhook de status comercial; status e entregador (`deliverer_name`, `delivered_at`) dá para ler consultando a venda, pela consulta de status (F05).
 - O preço vem dos acordos da RevGás e pode depender da forma de pagamento. Se depender, o passo 4 mostra no máximo um preço de referência e o total definitivo só sai no passo 6, depois do pagamento.

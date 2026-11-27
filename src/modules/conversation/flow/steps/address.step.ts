@@ -17,6 +17,7 @@ import {
   ToolError,
 } from '../flow.types';
 import { freeText, keepOfferedProduct } from '../free-text';
+import { identityHandoff } from '../handoff';
 import { choiceOf, textOf } from '../input';
 import { msg } from '../messages';
 import { nextStep } from '../next-step';
@@ -199,7 +200,7 @@ const handleConfirmAddress: HandleFn = async (state, input, tools) => {
     } catch (error) {
       const cause = error instanceof ToolError ? error.cause : error;
       if (cause instanceof CpfTakenError) {
-        return { state: null, replies: [text(msg.cpfTaken(tools.storePhone))] };
+        return identityHandoff(state, input.phone, tools, { state: null, summary: null });
       }
       if (cause instanceof CustomerRejectedError) {
         return {
