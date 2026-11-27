@@ -134,6 +134,34 @@ describe('HttpChatwootClient', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ status: 'open' });
   });
 
+  it('setLabels envia as etiquetas com o api token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ payload: ['emergency'] }));
+    await make(fetchMock).setLabels(11, ['emergency']);
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${root}/conversations/11/labels`);
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(headerOf(fetchMock)).toBe('api-token');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ labels: ['emergency'] });
+  });
+
+  it('setPriority envia a prioridade com o api token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
+    await make(fetchMock).setPriority(11, 'urgent');
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${root}/conversations/11/toggle_priority`);
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(headerOf(fetchMock)).toBe('api-token');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ priority: 'urgent' });
+  });
+
+  it('setLabels e setPriority mapeiam 422 para rejected', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response('x', { status: 422 }));
+    await expect(make(fetchMock).setLabels(1, ['a'])).rejects.toMatchObject({ kind: 'rejected' });
+    await expect(make(fetchMock).setPriority(1, 'high')).rejects.toMatchObject({
+      kind: 'rejected',
+    });
+  });
+
   it('500 em POST vira unavailable sem repetir', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('x', { status: 500 }));
     await expect(

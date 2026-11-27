@@ -2,6 +2,8 @@ export const CHATWOOT_CLIENT = Symbol('CHATWOOT_CLIENT');
 
 export type ConversationStatus = 'open' | 'pending' | 'resolved';
 
+export type ConversationPriority = 'urgent' | 'high' | 'medium' | 'low';
+
 export interface ChatwootContact {
   id: number;
   identifier: string | null;
@@ -27,4 +29,6 @@ export interface ChatwootClient {
     input: { content: string; type: 'incoming' | 'outgoing'; private?: boolean },
   ): Promise<{ id: number }>;
   setStatus(conversationId: number, status: ConversationStatus): Promise<void>;
+  setLabels(conversationId: number, labels: string[]): Promise<void>;
+  setPriority(conversationId: number, priority: ConversationPriority): Promise<void>;
 }

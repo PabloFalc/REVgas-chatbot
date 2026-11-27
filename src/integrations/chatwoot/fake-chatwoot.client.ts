@@ -1,5 +1,10 @@
 import { ChatwootError } from '../../core/erros/chatwoot/chatwoot.errors';
-import type { ChatwootClient, ChatwootContact, ConversationStatus } from './chatwoot.client';
+import type {
+  ChatwootClient,
+  ChatwootContact,
+  ConversationPriority,
+  ConversationStatus,
+} from './chatwoot.client';
 
 export interface FakeChatwootMessage {
   id: number;
@@ -12,6 +17,8 @@ export interface FakeChatwootConversation {
   id: number;
   contactId: number;
   status: ConversationStatus;
+  labels: string[];
+  priority: ConversationPriority | null;
   messages: FakeChatwootMessage[];
 }
 
@@ -79,6 +86,8 @@ export class FakeChatwootClient implements ChatwootClient {
       id,
       contactId: input.contactId,
       status: input.status,
+      labels: [],
+      priority: null,
       messages: [],
     });
     return { id };
@@ -103,6 +112,16 @@ export class FakeChatwootClient implements ChatwootClient {
   async setStatus(conversationId: number, status: ConversationStatus): Promise<void> {
     this.maybeFail();
     this.conversation(conversationId).status = status;
+  }
+
+  async setLabels(conversationId: number, labels: string[]): Promise<void> {
+    this.maybeFail();
+    this.conversation(conversationId).labels = [...labels];
+  }
+
+  async setPriority(conversationId: number, priority: ConversationPriority): Promise<void> {
+    this.maybeFail();
+    this.conversation(conversationId).priority = priority;
   }
 
   private conversation(id: number): FakeChatwootConversation {

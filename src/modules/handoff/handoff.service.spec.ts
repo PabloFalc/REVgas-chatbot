@@ -158,6 +158,74 @@ describe('HandoffService', () => {
       ).toBe('alreadyQueued');
     });
 
+    it('marca handoff com etiqueta e prioridade configuradas', async () => {
+      const cases = [
+        { reason: 'emergency', labels: ['emergency'], priority: 'urgent' },
+        { reason: 'sale_failed', labels: ['sale-failure'], priority: 'high' },
+        { reason: 'sale_cancellation', labels: ['sale-cancellation'], priority: 'high' },
+        { reason: 'quantity_limit', labels: ['needs-review'], priority: null },
+        { reason: 'customer_request', labels: ['customer-request'], priority: null },
+      ] as const;
+      for (const { reason, labels, priority } of cases) {
+        const { service, client } = setup();
+        await service.requestHandoff({ phone: PHONE, reason, summary: null });
+        const [conversation] = [...client.conversations.values()];
+        expect(conversation.labels).toEqual(labels);
+        expect(conversation.priority).toBe(priority);
+        expect(conversation.status).toBe('open');
+      }
+    });
+
+    it('mantém o handoff na fila quando etiqueta e prioridade são recusadas', async () => {
+      const { service, client, states, logger } = setup();
+      vi.spyOn(client, 'setLabels').mockRejectedValueOnce(
+        new ChatwootError('rejected', 'Etiqueta recusada', 422),
+      );
+      vi.spyOn(client, 'setPriority').mockRejectedValueOnce(
+        new ChatwootError('rejected', 'Prioridade recusada', 422),
+      );
+      const outcome = await service.requestHandoff({
+        phone: PHONE,
+        reason: 'emergency',
+        summary: null,
+      });
+      expect(outcome.status).toBe('queued');
+      const [conversation] = [...client.conversations.values()];
+      expect(conversation.status).toBe('open');
+      expect(states.get(PHONE)).toMatchObject({ status: 'queued', reason: 'emergency' });
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ component: 'handoff', error: 'rejected' }),
+        expect.any(String),
+      );
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
+    });
+
+    it('falha da etiqueta não impede a prioridade', async () => {
+      const { service, client } = setup();
+      vi.spyOn(client, 'setLabels').mockRejectedValueOnce(
+        new ChatwootError('unavailable', 'Chatwoot fora do ar'),
+      );
+      await service.requestHandoff({ phone: PHONE, reason: 'emergency', summary: null });
+      const [conversation] = [...client.conversations.values()];
+      expect(conversation.priority).toBe('urgent');
+    });
+
+    it('não anota nem afirma ticket quando a conversa não abre', async () => {
+      const { service, client, states } = setup();
+      const setLabels = vi.spyOn(client, 'setLabels');
+      const setPriority = vi.spyOn(client, 'setPriority');
+      client.failNext();
+      const outcome = await service.requestHandoff({
+        phone: PHONE,
+        reason: 'emergency',
+        summary: null,
+      });
+      expect(outcome.status).toBe('unavailable');
+      expect(states.size).toBe(0);
+      expect(setLabels).not.toHaveBeenCalled();
+      expect(setPriority).not.toHaveBeenCalled();
+    });
+
     it('persiste queued antes de postar a nota e abrir a conversa', async () => {
       const { service, client, states } = setup();
       const seen: Array<string | undefined> = [];
