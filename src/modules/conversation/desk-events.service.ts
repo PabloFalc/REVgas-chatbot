@@ -78,9 +78,19 @@ export class DeskEventsService {
   }
 
   private async relayAgentMessage(phone: string, event: AgentMessage): Promise<void> {
-    const { becameActive } = await this.handoff.markAgentMessage(phone, event.conversationId);
+    const { accepted, becameActive } = await this.handoff.markAgentMessage(
+      phone,
+      event.conversationId,
+    );
+    if (!accepted) {
+      this.logger.debug(
+        { component: 'desk-events', kind: event.kind },
+        'Mensagem de agente ignorada: sem handoff correspondente',
+      );
+      return;
+    }
     if (becameActive) {
-      await this.dropOrder(phone);
+      await this.pauseReminder(phone);
     }
     const text = truncate(
       `*${event.agentName} (atendente):* ${event.content}`,
@@ -97,9 +107,8 @@ export class DeskEventsService {
     }
   }
 
-  private async dropOrder(phone: string): Promise<void> {
+  private async pauseReminder(phone: string): Promise<void> {
     try {
-      await this.conversations.clearOrder(phone);
       await this.conversations.cancelReminder(phone);
     } catch (error) {
       this.logger.warn(
@@ -108,7 +117,7 @@ export class DeskEventsService {
           phone: maskPhone(phone),
           error: error instanceof Error ? error.name : 'unknown',
         },
-        'Falha ao apagar o pedido ao assumir o atendimento',
+        'Falha ao cancelar o lembrete ao assumir o atendimento',
       );
     }
   }

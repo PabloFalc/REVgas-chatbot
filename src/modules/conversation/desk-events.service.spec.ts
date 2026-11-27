@@ -52,7 +52,7 @@ function setup(whatsapp = new FakeWhatsappClient()) {
     releaseDeskMessage: vi.fn(async (id: number) => {
       claimed.delete(id);
     }),
-    markAgentMessage: vi.fn(async () => ({ becameActive: true })),
+    markAgentMessage: vi.fn(async () => ({ accepted: true, becameActive: true })),
     endFromDesk: vi.fn(async () => undefined),
     noteWindowClosed: vi.fn(async () => undefined),
   };
@@ -73,15 +73,13 @@ function setup(whatsapp = new FakeWhatsappClient()) {
 }
 
 describe('DeskEventsService.handle', () => {
-  it('mensagem humana apaga o pedido dentro do lock e repassa ao WhatsApp', async () => {
+  it('mensagem humana é repassada ao WhatsApp dentro do lock', async () => {
     const { service, conversations, whatsapp, order } = setup();
 
     await service.handle([agentEvent()]);
 
-    expect(order).toEqual(['lock', 'clearOrder']);
+    expect(order).toEqual(['lock']);
     expect(conversations.withPhoneLock).toHaveBeenCalledWith(PHONE, expect.any(Function));
-    expect(conversations.clearOrder).toHaveBeenCalledWith(PHONE);
-    expect(conversations.cancelReminder).toHaveBeenCalledWith(PHONE);
     expect(whatsapp.sent).toHaveLength(1);
     expect(whatsapp.sent[0]).toMatchObject({
       type: 'text',
@@ -90,16 +88,42 @@ describe('DeskEventsService.handle', () => {
     });
   });
 
-  it('falha ao apagar o pedido não impede o repasse e vai para o log sem o telefone cru', async () => {
+  it('preserva o rascunho quando o agente assume o atendimento', async () => {
+    const { service, conversations, whatsapp } = setup();
+
+    await service.handle([agentEvent()]);
+
+    expect(conversations.cancelReminder).toHaveBeenCalledWith(PHONE);
+    expect(conversations.clearOrder).not.toHaveBeenCalled();
+    expect(whatsapp.sent).toHaveLength(1);
+  });
+
+  it('ignora mensagem de agente sem handoff aberto', async () => {
+    const { service, handoff, conversations, whatsapp, logger } = setup();
+    handoff.markAgentMessage.mockResolvedValue({ accepted: false, becameActive: false });
+
+    await service.handle([agentEvent()]);
+
+    expect(whatsapp.sent).toEqual([]);
+    expect(conversations.clearOrder).not.toHaveBeenCalled();
+    expect(conversations.cancelReminder).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      { component: 'desk-events', kind: 'agentMessage' },
+      'Mensagem de agente ignorada: sem handoff correspondente',
+    );
+    expect(JSON.stringify(logger.debug.mock.calls)).not.toContain(PHONE);
+  });
+
+  it('falha ao cancelar o lembrete não impede o repasse e vai para o log sem o telefone cru', async () => {
     const { service, conversations, whatsapp, logger } = setup();
-    conversations.clearOrder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    conversations.cancelReminder.mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     await service.handle([agentEvent()]);
 
     expect(whatsapp.sent).toHaveLength(1);
     expect(logger.warn).toHaveBeenCalledWith(
       { component: 'desk-events', phone: '*******1234', error: 'Error' },
-      'Falha ao apagar o pedido ao assumir o atendimento',
+      'Falha ao cancelar o lembrete ao assumir o atendimento',
     );
   });
 
@@ -111,13 +135,21 @@ describe('DeskEventsService.handle', () => {
     expect(whatsapp.sent).toHaveLength(1);
   });
 
-  it('já ativo não apaga o pedido, mas envia', async () => {
+  it('não duplica a transição de assunção para evento repetido', async () => {
+    const { service, handoff, conversations } = setup();
+
+    await service.handle([agentEvent(), agentEvent()]);
+
+    expect(handoff.markAgentMessage).toHaveBeenCalledOnce();
+    expect(conversations.cancelReminder).toHaveBeenCalledOnce();
+  });
+
+  it('já ativo não cancela o lembrete, mas envia', async () => {
     const { service, handoff, conversations, whatsapp } = setup();
-    handoff.markAgentMessage.mockResolvedValue({ becameActive: false });
+    handoff.markAgentMessage.mockResolvedValue({ accepted: true, becameActive: false });
 
     await service.handle([agentEvent()]);
 
-    expect(conversations.clearOrder).not.toHaveBeenCalled();
     expect(conversations.cancelReminder).not.toHaveBeenCalled();
     expect(whatsapp.sent).toHaveLength(1);
   });
@@ -182,7 +214,7 @@ describe('DeskEventsService.handle', () => {
     await service.handle([agentEvent()]);
 
     expect(whatsapp.sent).toEqual([]);
-    expect(conversations.clearOrder).not.toHaveBeenCalled();
+    expect(conversations.cancelReminder).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
       { component: 'desk-events', kind: 'agentMessage', phone: '*******1234' },
       'Lock do telefone não liberou a tempo; evento não processado',
