@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { ChatwootError } from 'src/core/erros/chatwoot/chatwoot.errors';
-import type { BotEventsRepository } from 'src/modules/metrics/bot-events.repository';
+import { BotEventsRepository } from 'src/modules/metrics/bot-events.repository';
 import { hideCpfs } from 'src/utils/cpf';
 import { maskPhone } from 'src/utils/mask';
 import { isOpenAt, nextOpening, type ServiceWindow } from 'src/utils/service-hours';
@@ -98,7 +98,7 @@ export class HandoffService {
     private readonly logger: PinoLogger,
     @Optional() @Inject(HANDOFF_CLOCK) clock?: HandoffClock,
     @Optional() @Inject(SERVICE_HOURS) hours?: ServiceWindow[],
-    @Optional() private readonly events?: BotEventsRepository,
+    private readonly events?: BotEventsRepository,
   ) {
     this.clock = clock ?? { now: () => new Date() };
     this.hours = hours ?? [];
