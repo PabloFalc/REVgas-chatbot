@@ -22,7 +22,7 @@ Package manager is **pnpm** — use it for everything.
 | Integration checks | `pnpm revgas:check` · `pnpm llm:check` · `pnpm rag:check` |
 | Knowledge base | `pnpm kb:ingest` (embeds `knowledge/base`; needs the migrations applied) |
 | Local Chatwoot (Docker profile) | `pnpm chatwoot:prepare` · `pnpm chatwoot:up` · `pnpm chatwoot:stop` |
-| Local metrics (Docker profile) | `pnpm metabase:up` · `pnpm metabase:stop` |
+| Local metrics (Docker profile) | `pnpm metabase:up` · `pnpm metabase:provision` · `pnpm metabase:stop` |
 | Terminal chat simulator (instead of `start:dev`) | `pnpm chat` · `pnpm chat --phone 5586988887777 --revgas hybrid` |
 
 **Commits:** `git commit` directly, conventional commits (`feat:`, `fix:`, `chore:`…).
