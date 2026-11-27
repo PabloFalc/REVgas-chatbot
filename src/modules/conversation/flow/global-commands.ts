@@ -50,7 +50,11 @@ export async function globalCommand(
     return handoff(state, input.phone, requestReasonFor(state), tools);
   }
 
-  if (input.content.type === 'choice' && input.content.id === CANCELLATION_CHOICE) {
+  if (!state && input.content.type === 'choice' && input.content.id === 'summary:cancel') {
+    return { state: null, replies: [buttons(msg.cancelNeedsAgent, [cancellationButton()])] };
+  }
+
+  if (!state && input.content.type === 'choice' && input.content.id === CANCELLATION_CHOICE) {
     const outcome = await tools.requestHandoff({
       phone: input.phone,
       reason: 'sale_cancellation',

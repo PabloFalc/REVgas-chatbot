@@ -93,6 +93,22 @@ describe('nextStep', () => {
     expect(tools.calls.map(call => call.name)).not.toContain('createSale');
   });
 
+  it('quantidade acima do limite e do estoque abre handoff de limite', async () => {
+    const tools = createFakeTools();
+    const result = await nextStep(
+      stateWith({ address, product: { ...product, stock: 100 }, quantity: 500, payment: pix }),
+      tools,
+    );
+    expect(result.state?.requestedQuantity).toBe(500);
+    expect(result.replies).toEqual([text(msg.quantityAboveMax), text(msg.handoffQueued)]);
+    expect(tools.calls).toContainEqual({
+      name: 'track',
+      args: [{ name: 'quantity_limit', reason: 'max' }],
+    });
+    const requests = tools.calls.filter(call => call.name === 'requestHandoff');
+    expect(requests[0].args[0]).toMatchObject({ reason: 'quantity_limit' });
+  });
+
   it('não reduz silenciosamente quantidade maior que o limite', async () => {
     const tools = createFakeTools({
       requestHandoff: async () => ({ status: 'unavailable', open: true, nextOpening: null }),

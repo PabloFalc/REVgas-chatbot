@@ -122,6 +122,26 @@ describe('globalCommand', () => {
     expect(fallback).toEqual({ state: null, replies: [text(msg.talkToStore('86999990000'))] });
   });
 
+  it('botão antigo de cancelar pedido sem estado oferece atendente em vez de saudação', async () => {
+    const tap: FlowInput = { phone: FAKE_PHONE, content: { type: 'choice', id: 'summary:cancel' } };
+    const result = await globalCommand(null, tap, createFakeTools());
+    expect(result).toEqual({
+      state: null,
+      replies: [buttons(msg.cancelNeedsAgent, [cancellationButton()])],
+    });
+  });
+
+  it('botão antigo de cancelamento com rascunho em andamento não abre atendimento', async () => {
+    const tools = createFakeTools();
+    const tap: FlowInput = {
+      phone: FAKE_PHONE,
+      content: { type: 'choice', id: 'handoff:cancellation' },
+    };
+    const result = await globalCommand(state, tap, tools);
+    expect(result).toBeNull();
+    expect(tools.calls).toEqual([]);
+  });
+
   it.each(['cancelar', 'Cancelar', 'CANCELA', 'cancelar pedido'])(
     '%s apaga o pedido',
     async word => {
