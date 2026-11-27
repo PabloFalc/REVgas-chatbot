@@ -352,6 +352,26 @@ describe('freeText', () => {
     expect(called(fake, 'registerMisunderstood')).toBe(1);
   });
 
+  it('usa fallback quando provedor de IA falha', async () => {
+    const summary: OrderState = {
+      step: 'summary',
+      customer: { id: 1, name: 'Maria da Silva', tagId: null },
+      address,
+      product: p13,
+      quantity: 1,
+      payment: pix,
+      quote: { unitPrice: 110, total: 110 },
+    };
+    const fake = tools(null);
+    const out = await freeText(summary, 'pode confirmar o pedido', fake);
+    expect(out.state).toMatchObject(summary);
+    expect(out.saleId).toBeUndefined();
+    expect(out.misunderstood).toBe(true);
+    expect(out.replies[0]).toEqual(text(msg.notUnderstood));
+    expect(called(fake, 'createSale')).toBe(0);
+    expect(called(fake, 'quote')).toBe(0);
+  });
+
   it('confiança baixa repete a pergunta', async () => {
     const out = await freeText(paying, 'blá', tools(result({ confidence: 0.5, quantity: 5 })));
     expect(out.replies).toEqual([text(msg.notUnderstood), paymentButtons]);
