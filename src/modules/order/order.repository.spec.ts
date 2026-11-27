@@ -64,9 +64,18 @@ describe('OrderRepository', () => {
         customer_id: 7,
         observation: 'Portão azul',
         channel: 'WHATSAPP',
+        origin: 'INTEGRATION',
+        option: 'NORMAL',
         products: [{ product_id: 3, quantity: 2, value: 100, product_description: 'Gás P13' }],
         payments: [{ payment_type: 'PIX', value: 200 }],
       });
+    });
+
+    it('corpo da venda envia origin e option', async () => {
+      const { repository, create } = build();
+      await repository.createSale(order);
+      const input = (create.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      expect(input).toMatchObject({ origin: 'INTEGRATION', option: 'NORMAL' });
     });
 
     it('omits the observation when absent', async () => {

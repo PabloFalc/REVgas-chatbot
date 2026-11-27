@@ -16,6 +16,7 @@ const saleInput = (overrides: Partial<RevgasSaleInput> = {}): RevgasSaleInput =>
   neighborhood: 'Centro',
   city: 'Teresina',
   state_federation: 'PI',
+  option: 'NORMAL',
   products: [{ product_id: FAKE_PRODUCTS[0].id, quantity: 2, value: 125 }],
   payments: [{ payment_type: 'PIX', value: 250 }],
   ...overrides,

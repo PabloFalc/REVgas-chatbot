@@ -152,6 +152,7 @@ describe('CustomerRepository', () => {
       neighborhood: 'Fátima',
       city: 'Teresina',
       state_federation: 'PI',
+      option: 'NORMAL' as const,
       payments: [{ payment_type: 'CASH', value: 100 }],
     };
 

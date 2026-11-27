@@ -24,6 +24,7 @@ describe('FakeRevgasClient', () => {
       neighborhood: 'Centro',
       city: 'Teresina',
       state_federation: 'PI',
+      option: 'NORMAL',
       products: [{ product_id: FAKE_PRODUCTS[0].id, quantity: 1, value: 100 }],
       payments: [{ payment_type: 'PIX', value: 100 }],
     });
@@ -40,6 +41,7 @@ describe('FakeRevgasClient', () => {
       neighborhood: 'Centro',
       city: 'Teresina',
       state_federation: 'PI',
+      option: 'NORMAL',
       customer_id: FAKE_CUSTOMERS[0].id,
       products: [{ product_id: FAKE_PRODUCTS[0].id, quantity: 1, value: 100 }],
       payments: [{ payment_type: 'PIX', value: 100 }],

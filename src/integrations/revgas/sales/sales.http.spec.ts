@@ -9,6 +9,7 @@ const validSale = {
   neighborhood: 'Centro',
   city: 'Teresina',
   state_federation: 'PI',
+  option: 'NORMAL' as const,
   products: [{ product_id: 1, quantity: 1, value: 100 }],
   payments: [{ payment_type: 'PIX', value: 100 }],
 };

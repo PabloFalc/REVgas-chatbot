@@ -6,6 +6,8 @@ import { parseBrasiliaTimestamp } from 'src/utils/parse-brasilia-timestamp';
 import { type OrderStatus, type SaleOrder, SaleRejectedError } from './contracts/order.types';
 
 const CHANNEL = 'WHATSAPP';
+const ORIGIN = 'INTEGRATION';
+const OPTION = 'NORMAL';
 const MAX_RECENT_SALE_PAGES = 5;
 const TOLERANCE_MS = 60_000;
 const SAO_PAULO_DATE = new Intl.DateTimeFormat('en-CA', {
@@ -33,6 +35,8 @@ export class OrderRepository {
         customer_id: order.customerId,
         ...(order.observation ? { observation: order.observation } : {}),
         channel: CHANNEL,
+        origin: ORIGIN,
+        option: OPTION,
         products: [
           {
             product_id: order.productId,
