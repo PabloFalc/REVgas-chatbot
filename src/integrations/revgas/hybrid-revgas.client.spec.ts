@@ -29,6 +29,7 @@ const saleInput = {
   neighborhood: 'Centro',
   city: 'Teresina',
   state_federation: 'PI',
+  option: 'NORMAL' as const,
   products: [{ product_id: FAKE_PRODUCTS[0].id, quantity: 1, value: 100 }],
   payments: [{ payment_type: 'PIX', value: 100 }],
 };

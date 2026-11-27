@@ -11,6 +11,7 @@ const address = {
 
 const saleInput = {
   ...address,
+  option: 'NORMAL',
   products: [{ product_id: 1, quantity: 1, value: 100 }],
   payments: [{ payment_type: 'PIX', value: 100 }],
 };

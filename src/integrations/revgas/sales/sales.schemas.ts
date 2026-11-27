@@ -67,6 +67,7 @@ export const RevgasSaleInputSchema = z.object({
   observation: z.string().optional(),
   channel: z.string().default('WHATSAPP'),
   origin: z.enum(['ENTREGA', 'REVGAS', 'INTEGRATION']).optional(),
+  option: z.enum(['INDOOR', 'OUTDOOR', 'NORMAL']),
   broadcast: z.enum(['OLD_SALE', 'NEW_SALE', 'NONE']).optional(),
   products: z
     .array(
