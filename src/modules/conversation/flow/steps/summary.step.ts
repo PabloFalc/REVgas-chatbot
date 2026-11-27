@@ -184,11 +184,31 @@ async function submitSale(state: OrderState, tools: FlowTools): Promise<StepResu
   }
 }
 
+async function confirmWithFreshQuote(state: OrderState, tools: FlowTools): Promise<StepResult> {
+  const fresh = await tools.quote(
+    { id: state.customer.id, tagId: state.customer.tagId },
+    state.product?.id ?? 0,
+    state.payment?.type ?? '',
+    state.quantity ?? 0,
+  );
+  if (!fresh) {
+    const { payment: _payment, quote: _quote, changeFor: _changeFor, ...rest } = state;
+    const result = await nextStep({ ...rest, revision: nextRevision(state) }, tools);
+    return { ...result, replies: [text(msg.noPriceForPayment), ...result.replies] };
+  }
+  if (fresh.unitPrice === state.quote?.unitPrice && fresh.total === state.quote?.total) {
+    return submitSale(state, tools);
+  }
+  const { changeFor: _changeFor, ...rest } = state;
+  const result = await nextStep({ ...rest, quote: fresh, revision: nextRevision(state) }, tools);
+  return { ...result, replies: [text(msg.priceChanged), ...result.replies] };
+}
+
 const handleSummary: HandleFn = async (state, input, tools) => {
   const choice = choiceOf(input, 'summary');
   if (choice?.startsWith('confirm')) {
     if (state.revision !== undefined && confirmedRevision(choice) === state.revision) {
-      return submitSale(state, tools);
+      return confirmWithFreshQuote(state, tools);
     }
     tools.track({ name: 'summary_confirmation_rejected', reason: 'stale_revision' });
     const current = await summary(state, tools);

@@ -206,7 +206,7 @@ describe('summary', () => {
       tools,
     );
     expect(done?.saleId).toBe(4521);
-    expect(tools.calls.map(call => call.name)).toEqual(['checkpoint', 'createSale']);
+    expect(tools.calls.map(call => call.name)).toEqual(['quote', 'checkpoint', 'createSale']);
   });
 
   describe('texto livre depois do resumo', () => {
@@ -310,12 +310,79 @@ describe('summary', () => {
     expect(msg.saleCreated(4521, 110)).toBe(
       'Pedido nº 4521 registrado na revenda. Total: R$ 110,00. Se precisar de algo, é só chamar.',
     );
-    expect(tools.calls.map(c => c.name)).toEqual(['checkpoint', 'createSale']);
-    expect(tools.calls[0].args[0]).toMatchObject({
+    expect(tools.calls.map(c => c.name)).toEqual(['quote', 'checkpoint', 'createSale']);
+    expect(tools.calls[1].args[0]).toMatchObject({
       step: 'creatingSale',
       saleAttemptAt: FAKE_NOW.toISOString(),
     });
-    expect(tools.calls[1].args[0]).toEqual(order);
+    expect(tools.calls[2].args[0]).toEqual(order);
+  });
+
+  it('mesmo preço no confirmar cria a venda', async () => {
+    const tools = createFakeTools({ quote: async () => ({ unitPrice: 110, total: 110 }) });
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+    expect(result?.saleId).toBe(4521);
+    expect(callNames(tools.calls)).toEqual(['checkpoint', 'createSale']);
+  });
+
+  describe('recotação ao confirmar', () => {
+    const changed = { unitPrice: 120, total: 120 };
+
+    it('preço diferente no confirmar reexibe o resumo sem criar venda', async () => {
+      const tools = createFakeTools({ quote: async () => changed });
+      const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+      expect(callNames(tools.calls)).toEqual([]);
+      expect(result?.saleId).toBeUndefined();
+      expect(result?.state).toMatchObject({ step: 'summary', quote: changed, revision: 2 });
+      expect(result?.replies[0]).toEqual(text(msg.priceChanged));
+      const reply = result?.replies[1];
+      if (reply?.type !== 'buttons') throw new Error('expected buttons');
+      expect(reply.body).toBe(msg.summary({ ...base, quote: changed }));
+      expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:2', 'summary:fix']);
+    });
+
+    it('preço diferente em dinheiro descarta o troco e pergunta de novo', async () => {
+      const tools = createFakeTools({ quote: async () => changed });
+      const state: OrderState = { ...base, payment: money, changeFor: 150 };
+      const result = await handlers.summary?.(state, pick(CONFIRM), tools);
+      expect(callNames(tools.calls)).toEqual([]);
+      expect(result?.state?.step).toBe('askNeedsChange');
+      expect(result?.state?.changeFor).toBeUndefined();
+      expect(result?.replies[0]).toEqual(text(msg.priceChanged));
+    });
+
+    it('só o preço unitário diferente também reexibe o resumo', async () => {
+      const tools = createFakeTools({ quote: async () => ({ unitPrice: 100, total: 110 }) });
+      const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+      expect(callNames(tools.calls)).toEqual([]);
+      expect(result?.replies[0]).toEqual(text(msg.priceChanged));
+    });
+
+    it('cotação nula invalida o pagamento e não cria venda', async () => {
+      const tools = createFakeTools({ quote: async () => null });
+      const state: OrderState = { ...base, payment: money, changeFor: 150 };
+      const result = await handlers.summary?.(state, pick(CONFIRM), tools);
+      expect(callNames(tools.calls)).not.toContain('createSale');
+      expect(callNames(tools.calls)).not.toContain('checkpoint');
+      expect(result?.state?.step).toBe('choosePayment');
+      expect(result?.state?.payment).toBeUndefined();
+      expect(result?.state?.quote).toBeUndefined();
+      expect(result?.state?.changeFor).toBeUndefined();
+      expect(result?.replies[0]).toEqual(text(msg.noPriceForPayment));
+    });
+
+    it('erro na cotação mantém o estado anterior e não cria venda', async () => {
+      const tools = createFakeTools({
+        quote: async () => {
+          throw new Error('erp fora');
+        },
+      });
+      const onToolError = vi.fn();
+      const result = await runFlow(base, pick(CONFIRM), tools, onToolError);
+      expect(onToolError).toHaveBeenCalledOnce();
+      expect(result.state).toEqual(base);
+      expect(callNames(tools.calls)).toEqual([]);
+    });
   });
 
   it('não usa IA para ação de botão de confirmação', async () => {
@@ -325,7 +392,7 @@ describe('summary', () => {
     const tools = createFakeTools({ interpret });
     const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result?.saleId).toBe(4521);
-    expect(tools.calls.map(call => call.name)).toEqual(['checkpoint', 'createSale']);
+    expect(tools.calls.map(call => call.name)).toEqual(['quote', 'checkpoint', 'createSale']);
     expect(interpret).not.toHaveBeenCalled();
   });
 
@@ -333,7 +400,7 @@ describe('summary', () => {
     const tools = createFakeTools();
     const state = { ...base, payment: money, changeFor: 250 };
     await handlers.summary?.(state, pick(CONFIRM), tools);
-    expect(tools.calls[1].args[0]).toMatchObject({
+    expect(tools.calls[2].args[0]).toMatchObject({
       paymentType: 'MONEY',
       observation: 'Troco para R$ 250,00',
     });
@@ -356,7 +423,7 @@ describe('summary', () => {
       replies: [text(msg.saleStoreUnavailable)],
     });
     expect(createSale).toHaveBeenCalledOnce();
-    expect(callNames(tools.calls)).toEqual(['checkpoint']);
+    expect(callNames(tools.calls)).toEqual(['quote', 'checkpoint']);
   });
 
   it('confirmação repetida do ciclo devolve o número sem criar outra venda', async () => {
