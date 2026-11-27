@@ -202,14 +202,14 @@ O estado fica no Redis, por telefone, separado do pedido (que expira em 15 min).
   etc. Mensagem de vazamento ou cheiro de gás também não recebe resposta do bot (decisão do usuário,
   2026-11-10): ela é repassada e o bot deixa a nota interna "Emergência: cliente relatou possível
   vazamento de gás" (`HandoffService.flagEmergency`).
-- **Emergência em `queued`:** o cliente recebe o texto de segurança e "Você já está na fila...", e a
+- **Emergência em `queued`:** o cliente recebe o texto de segurança e "Seu atendimento já está na fila...", e a
   conversa ganha a mesma nota interna de emergência.
 - **Mensagem do atendente → WhatsApp:** `*Maria (atendente):* texto`. Notas internas não vão ao
   cliente. Se a Meta recusar por janela de 24 h (código 131047), o bot deixa uma nota avisando. A
   recusa chega tanto na resposta do envio quanto, de forma assíncrona, como status `failed` do
   webhook do WhatsApp; nos dois casos a nota vai para a conversa em `queued` ou `active`.
-- **Venda criada pelo bot em `queued`:** resolve a conversa com a nota "Venda #N criada pelo bot,
-  saiu da fila." e apaga o estado. "Cancelar" não tira o cliente da fila.
+- **Mensagem do cliente em `queued`:** o bot não segue o fluxo do pedido nem manda lembrete; só
+  responde que o cliente está na fila e espelha a mensagem. "Cancelar" não tira o cliente da fila.
 - **Expiração:** preguiçosa, conferida quando o cliente escreve ou o handoff é consultado (sem
   varredura). Ao expirar: nota "Handoff expirado, o bot voltou a atender.", conversa resolvida
   (melhor esforço) e estado apagado.

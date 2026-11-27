@@ -4,7 +4,6 @@ import {
   EXPIRED_NOTE,
   handoffNote,
   REASON_LABELS,
-  saleNote,
   WINDOW_CLOSED_NOTE,
 } from './handoff-note';
 
@@ -100,7 +99,6 @@ describe('handoffNote', () => {
   it('textos fixos', () => {
     expect(REASON_LABELS.sale_failed).toBe('Falha ao registrar a venda na RevGás');
     expect(REASON_LABELS.emergency).toBe('Emergência: cliente relatou possível vazamento de gás');
-    expect(saleNote(123)).toBe('Venda #123 criada pelo bot, saiu da fila.');
     expect(EMERGENCY_NOTE).toBe('Emergência: cliente relatou possível vazamento de gás');
     expect(EXPIRED_NOTE).toBe('Handoff expirado, o bot voltou a atender.');
     expect(WINDOW_CLOSED_NOTE).toBe(

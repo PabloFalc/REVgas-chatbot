@@ -53,7 +53,7 @@ function setup(whatsapp = new FakeWhatsappClient()) {
   };
   const flowTools = { forPhone: vi.fn(() => createFakeTools()) };
   const handoff = {
-    routeFor: vi.fn(async () => 'bot' as 'bot' | 'agent'),
+    routeFor: vi.fn(async () => 'bot' as 'bot' | 'queued' | 'agent'),
     forwardToAgent: vi.fn(async () => undefined),
     flagEmergency: vi.fn(async () => undefined),
     recordTurn: vi.fn(async () => undefined),
@@ -617,6 +617,92 @@ describe('ConversationService lembrete', () => {
     expect(repository.clearOrder).toHaveBeenCalledWith('5586999991234');
     expect(repository.cancelReminder).toHaveBeenCalledWith('5586999991234');
     expect(repository.scheduleReminder).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConversationService fila de atendimento', () => {
+  it('não roteia para o fluxo comercial enquanto o handoff está na fila', async () => {
+    const { service, repository, flowTools, handoff } = setup();
+    handoff.routeFor.mockResolvedValueOnce('queued');
+
+    await service.handle(parseWebhook(textWebhook('quero 2 botijões', 'wamid.Q1')));
+
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(flowTools.forPhone).not.toHaveBeenCalled();
+    expect(repository.loadOrder).not.toHaveBeenCalled();
+    expect(repository.saveOrder).not.toHaveBeenCalled();
+    expect(repository.clearOrder).not.toHaveBeenCalled();
+    expect(repository.scheduleReminder).not.toHaveBeenCalled();
+    expect(repository.cancelReminder).not.toHaveBeenCalled();
+    expect(handoff.forwardToAgent).not.toHaveBeenCalled();
+  });
+
+  it('responde apenas a mensagem de espera durante handoff queued', async () => {
+    const { service, whatsapp, handoff } = setup();
+    handoff.routeFor.mockResolvedValueOnce('queued');
+
+    await service.handle(parseWebhook(textWebhook('12345678909', 'wamid.Q2')));
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.handoffQueued);
+    expect(handoff.recordTurn).toHaveBeenCalledExactlyOnceWith({
+      phone: '5586999991234',
+      name: 'Cliente Teste',
+      inbound: { type: 'text', text: '12345678909' },
+      sensitive: true,
+      botMessages: [msg.handoffQueued],
+      newCycle: false,
+      ended: false,
+    });
+  });
+
+  it('pedir atendente de novo na fila responde que já está na fila', async () => {
+    const { service, whatsapp, handoff } = setup();
+    handoff.routeFor.mockResolvedValueOnce('queued');
+
+    await service.handle(parseWebhook(textWebhook('quero falar com um atendente', 'wamid.Q3')));
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.handoffAlreadyQueued);
+    expect(runFlowMock).not.toHaveBeenCalled();
+  });
+
+  it('emergência na fila responde a instrução de segurança, deixa a nota e não chama o fluxo', async () => {
+    const { service, whatsapp, handoff } = setup();
+    handoff.routeFor.mockResolvedValueOnce('queued');
+
+    await service.handle(parseWebhook(textWebhook('tem cheiro de gás aqui', 'wamid.Q4')));
+
+    expect(whatsapp.sent).toHaveLength(2);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.emergency);
+    expect(JSON.stringify(whatsapp.sent[1].body)).toContain(msg.handoffAlreadyQueued);
+    expect(handoff.flagEmergency).toHaveBeenCalledWith('5586999991234');
+    expect(runFlowMock).not.toHaveBeenCalled();
+  });
+
+  it('botão e mensagem não suportada na fila recebem só a espera', async () => {
+    const { service, whatsapp, handoff } = setup();
+    handoff.routeFor.mockResolvedValue('queued');
+
+    await service.handle(
+      parseWebhook(
+        webhookPayload({
+          messages: [
+            {
+              from: '5586999991234',
+              id: 'wamid.Q5',
+              timestamp: '1760000000',
+              type: 'image',
+              image: { id: 'media-1' },
+            },
+          ],
+        }),
+      ),
+    );
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.handoffQueued);
+    expect(runFlowMock).not.toHaveBeenCalled();
   });
 });
 

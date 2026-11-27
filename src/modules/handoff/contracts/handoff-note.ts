@@ -19,10 +19,6 @@ export const EXPIRED_NOTE = 'Handoff expirado, o bot voltou a atender.';
 export const WINDOW_CLOSED_NOTE =
   'O cliente está fora da janela de 24 h do WhatsApp: ele precisa mandar uma mensagem antes de você responder.';
 
-export function saleNote(saleId: number): string {
-  return `Venda #${saleId} criada pelo bot, saiu da fila.`;
-}
-
 const IDENTITY_UNCONFIRMED_LINE =
   'Identidade não confirmada: confirme com o cliente antes de passar dados do pedido.';
 

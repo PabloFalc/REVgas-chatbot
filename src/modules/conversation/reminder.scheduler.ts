@@ -14,7 +14,7 @@ import { replyText } from './reply-text';
 
 const TICK_INTERVAL_MS = 30_000;
 
-type SkipReason = 'expired' | 'busy' | 'answered' | 'creatingSale';
+type SkipReason = 'expired' | 'busy' | 'answered' | 'creatingSale' | 'handoff';
 
 function errorInfo(error: unknown) {
   if (error instanceof WhatsappError) {
@@ -82,6 +82,7 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   private async remind(phone: string): Promise<void> {
+    if ((await this.handoff.routeFor(phone)) !== 'bot') return this.skipped(phone, 'handoff');
     const state = await this.conversations.loadOrder(phone);
     if (!state) return this.skipped(phone, 'expired');
     if (state.step === 'creatingSale') return this.skipped(phone, 'creatingSale');

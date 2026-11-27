@@ -424,16 +424,15 @@ describe('HandoffService', () => {
       expect(threads.size).toBe(0);
     });
 
-    it('venda criada na fila resolve a conversa e apaga estado e thread', async () => {
+    it('venda concluída pelo bot não resolve nem apaga o handoff na fila', async () => {
       const { service, client, states, threads } = setup();
       await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
       await service.recordTurn(turn({ botMessages: ['Pedido criado'], ended: true, saleId: 4521 }));
       const [conversation] = [...client.conversations.values()];
-      const notes = conversation.messages.filter(message => message.private);
-      expect(notes.at(-1)?.content).toBe('Venda #4521 criada pelo bot, saiu da fila.');
-      expect(conversation.status).toBe('resolved');
-      expect(states.size).toBe(0);
-      expect(threads.size).toBe(0);
+      expect(conversation.messages.some(message => message.content.includes('#4521'))).toBe(false);
+      expect(conversation.status).toBe('open');
+      expect(states.get(PHONE)?.status).toBe('queued');
+      expect(threads.size).toBe(1);
     });
 
     it('ended sem handoff resolve e esquece a thread', async () => {
@@ -488,7 +487,7 @@ describe('HandoffService', () => {
       const { service, states } = setup();
       await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
       const conversationId = states.get(PHONE)?.conversationId as number;
-      expect(await service.routeFor(PHONE)).toBe('bot');
+      expect(await service.routeFor(PHONE)).toBe('queued');
       await expect(service.markAgentMessage(PHONE, conversationId)).resolves.toEqual({
         accepted: true,
         becameActive: true,
