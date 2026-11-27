@@ -2,6 +2,7 @@ import {
   CpfTakenError,
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
+import { handoffNote } from 'src/modules/handoff/contracts/handoff-note';
 import { describe, expect, it, vi } from 'vitest';
 import { type FlowInput, type OrderState, ToolError } from '../flow.types';
 import { msg } from '../messages';
@@ -249,14 +250,41 @@ describe('confirmAddress', () => {
     expect(result?.state?.address).toEqual(a3);
   });
 
-  it('CPF já cadastrado encerra a conversa', async () => {
-    const tools = createFakeTools({
-      createCustomer: async () => {
-        throw new ToolError(new CpfTakenError());
-      },
-    });
+  it('CPF já cadastrado abre handoff com mensagem neutra', async () => {
+    const createCustomer = async () => {
+      throw new ToolError(new CpfTakenError());
+    };
+    const tools = createFakeTools({ createCustomer });
     const result = await handlers.confirmAddress?.(newCustomer, pick('address:ok'), tools);
-    expect(result).toEqual({ state: null, replies: [text(msg.cpfTaken(tools.storePhone))] });
+    expect(result).toEqual({
+      state: null,
+      replies: [text(msg.identityHandoff), text(msg.handoffQueued)],
+    });
+    const requests = tools.calls.filter(call => call.name === 'requestHandoff');
+    expect(requests).toEqual([
+      {
+        name: 'requestHandoff',
+        args: [{ phone: FAKE_PHONE, reason: 'identity_failure', summary: null }],
+      },
+    ]);
+    const note = handoffNote('identity_failure', null);
+    const said = JSON.stringify(result?.replies);
+    for (const leaked of ['12345678909', '123.456', 'Joana', 'Rua das Flores']) {
+      expect(said).not.toContain(leaked);
+      expect(note).not.toContain(leaked);
+    }
+    expect(said).not.toMatch(/cadastr|outro telefone|já tem/i);
+
+    const offline = createFakeTools({
+      createCustomer,
+      requestHandoff: async () => ({ status: 'unavailable', open: true, nextOpening: null }),
+    });
+    const fallback = await handlers.confirmAddress?.(newCustomer, pick('address:ok'), offline);
+    expect(fallback).toEqual({
+      state: null,
+      replies: [text(msg.identityContactStore(offline.storePhone))],
+    });
+    expect(JSON.stringify(fallback?.replies)).not.toMatch(/fila|cadastr|outro telefone/i);
   });
 
   it('CPF já cadastrado também é reconhecido sem o ToolError', async () => {

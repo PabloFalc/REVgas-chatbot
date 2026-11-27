@@ -148,8 +148,6 @@ export const msg = {
   ownerChanged: 'Número mudou de dono',
   identityContactStore: (phone?: string) =>
     `Não consegui confirmar seus dados por aqui. ${storeContact(phone)}`,
-  cpfTaken: (phone?: string) =>
-    `Esse CPF já tem cadastro com outro telefone. ${storeContact(phone)}`,
   registerFailed:
     'Não consegui concluir seu cadastro. Confira seus dados e vamos tentar de novo.\nQual é o seu nome completo?',
   chooseAddress: 'Para onde vai o gás?',
