@@ -2,6 +2,7 @@ import {
   RevgasUnauthorizedError,
   RevgasUnavailableError,
 } from 'src/core/erros/revgas/revgas.errors';
+import type { Interpretation } from 'src/modules/assistant/contracts/assistant.types';
 import type { HandoffRequest } from 'src/modules/handoff/contracts/handoff.types';
 import {
   SaleAlreadyRegisteredError,
@@ -32,11 +33,15 @@ const address = {
   state: 'PI',
 };
 
+const CONFIRM = 'summary:confirm:1';
+
 const pix = { type: 'PIX', label: 'Pix' };
 const money = { type: 'MONEY', label: 'Dinheiro' };
 
 const base: OrderState = {
   step: 'summary',
+  revision: 1,
+  purchaseStarted: true,
   customer: { id: 1, name: 'Maria da Silva', cpfPrefix: '123', tagId: null },
   addresses: [address],
   address,
@@ -88,7 +93,191 @@ describe('summary', () => {
     const reply = result?.replies[0];
     if (reply?.type !== 'buttons') throw new Error('expected buttons');
     expect(reply.body).toBe(msg.summary(base));
-    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm', 'summary:fix']);
+    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:1', 'summary:fix']);
+  });
+
+  it('primeiro resumo de um estado sem revisão começa na revisão 1', async () => {
+    const { revision: _revision, ...legacy } = base;
+    const result = await asks.summary?.(legacy, createFakeTools());
+    const reply = result?.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(result?.state?.revision).toBe(1);
+    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:1', 'summary:fix']);
+  });
+
+  it('reexibir o resumo sem mudança mantém a revisão', async () => {
+    const result = await asks.summary?.({ ...base, revision: 4 }, createFakeTools());
+    const reply = result?.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(result?.state?.revision).toBe(4);
+    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:4', 'summary:fix']);
+  });
+
+  it('ignora confirmação com revisão anterior', async () => {
+    const tools = createFakeTools();
+    const shown = await asks.summary?.(base, tools);
+    const oldButton = shown?.replies[0].type === 'buttons' ? shown.replies[0].buttons[0].id : '';
+    expect(oldButton).toBe('summary:confirm:1');
+
+    const fixing = await handlers.summary?.(shown?.state as OrderState, pick('summary:fix'), tools);
+    const choosing = await handlers.chooseCorrection?.(
+      fixing?.state as OrderState,
+      pick('fix:address'),
+      tools,
+    );
+    const next = await handlers.chooseAddress?.(
+      choosing?.state as OrderState,
+      pick('address:0'),
+      tools,
+    );
+    expect(next?.state?.step).toBe('summary');
+    expect(next?.state?.revision).toBe(2);
+
+    tools.calls.length = 0;
+    const result = await handlers.summary?.(next?.state as OrderState, pick(oldButton), tools);
+    expect(result?.state).toEqual(next?.state);
+    expect(result?.replies[0]).toEqual(text(msg.staleConfirmation));
+    const reply = result?.replies[1];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:2', 'summary:fix']);
+  });
+
+  it('não cria venda quando recebe confirmação antiga', async () => {
+    const stale = [
+      'summary:confirm',
+      'summary:confirm:',
+      'summary:confirm:0',
+      'summary:confirm:2',
+      'summary:confirm:01',
+      'summary:confirm:-1',
+      'summary:confirm:1.5',
+      'summary:confirm:1:2',
+      'summary:confirm:abc',
+      'summary:confirm:99999999999999999999',
+    ];
+    for (const id of stale) {
+      const tools = createFakeTools();
+      const result = await handlers.summary?.(base, pick(id), tools);
+      expect(
+        tools.calls.map(call => call.name),
+        id,
+      ).toEqual(['track']);
+      expect(tools.calls[0].args[0], id).toEqual({
+        name: 'summary_confirmation_rejected',
+        reason: 'stale_revision',
+      });
+      expect(result?.saleId, id).toBeUndefined();
+      expect(result?.state, id).toEqual(base);
+      expect(result?.replies[0], id).toEqual(text(msg.staleConfirmation));
+    }
+  });
+
+  it('estado antigo sem revisão não aceita botão e reexibe com a revisão 1', async () => {
+    const { revision: _revision, ...legacy } = base;
+    for (const id of ['summary:confirm', 'summary:confirm:1']) {
+      const tools = createFakeTools();
+      const result = await handlers.summary?.(legacy, pick(id), tools);
+      expect(
+        tools.calls.map(call => call.name),
+        id,
+      ).toEqual(['track']);
+      expect(result?.state?.revision, id).toBe(1);
+      expect(result?.replies[0], id).toEqual(text(msg.staleConfirmation));
+    }
+  });
+
+  it('corrigir incrementa a revisão e confirmar com o botão novo vende', async () => {
+    const tools = createFakeTools();
+    const fixing = await handlers.summary?.(base, pick('summary:fix'), tools);
+    const choosing = await handlers.chooseCorrection?.(
+      fixing?.state as OrderState,
+      pick('fix:address'),
+      tools,
+    );
+    const next = await handlers.chooseAddress?.(
+      choosing?.state as OrderState,
+      pick('address:0'),
+      tools,
+    );
+    tools.calls.length = 0;
+    const done = await handlers.summary?.(
+      next?.state as OrderState,
+      pick('summary:confirm:2'),
+      tools,
+    );
+    expect(done?.saleId).toBe(4521);
+    expect(tools.calls.map(call => call.name)).toEqual(['checkpoint', 'createSale']);
+  });
+
+  describe('texto livre depois do resumo', () => {
+    const typed = (body: string): FlowInput => ({
+      phone: FAKE_PHONE,
+      content: { type: 'text', text: body },
+    });
+    const reading = (partial: Partial<Interpretation>) =>
+      createFakeTools({
+        interpret: async () => ({ intent: 'order', confidence: 0.9, ...partial }),
+      });
+    const tracked = (tools: ReturnType<typeof createFakeTools>) =>
+      tools.calls.filter(call => call.name === 'track').map(call => call.args[0]);
+
+    it('reexibe o resumo quando o texto livre altera um campo do pedido', async () => {
+      const tools = reading({ quantity: 2 });
+      const result = await handlers.summary?.(base, typed('quero 2'), tools);
+      expect(result?.state?.step).toBe('summary');
+      expect(result?.state?.quantity).toBe(2);
+      expect(result?.state?.revision).toBe(2);
+      expect(result?.replies[0]).toEqual(text(msg.summaryUpdated));
+      expect(result?.replies).toHaveLength(2);
+      const reply = result?.replies[1];
+      if (reply?.type !== 'buttons') throw new Error('expected buttons');
+      expect(reply.buttons.map(b => b.id)).toEqual(['summary:confirm:2', 'summary:fix']);
+      expect(tracked(tools)).toEqual([{ name: 'summary_changed', fields: ['quantity'] }]);
+    });
+
+    it('incrementa a revisão uma vez só quando muda mais de um campo', async () => {
+      const tools = reading({ quantity: 3, payment: 'MONEY' });
+      const result = await handlers.summary?.(base, typed('3 no dinheiro'), tools);
+      expect(result?.state?.revision).toBe(2);
+      expect(tracked(tools)).toEqual([
+        { name: 'summary_changed', fields: ['quantity', 'payment'] },
+      ]);
+    });
+
+    it('botão da revisão anterior não vende depois da mudança por texto', async () => {
+      const tools = reading({ quantity: 2 });
+      const changed = await handlers.summary?.(base, typed('quero 2'), tools);
+      tools.calls.length = 0;
+      const result = await handlers.summary?.(changed?.state as OrderState, pick(CONFIRM), tools);
+      expect(tools.calls.map(call => call.name)).not.toContain('createSale');
+      expect(result?.saleId).toBeUndefined();
+      expect(result?.replies[0]).toEqual(text(msg.staleConfirmation));
+    });
+
+    it('texto que repete o mesmo valor não incrementa a revisão', async () => {
+      for (const partial of [{ quantity: 1 }, { payment: 'PIX' }]) {
+        const tools = reading(partial);
+        const result = await handlers.summary?.(base, typed('igual'), tools);
+        expect(result?.state?.revision).toBe(1);
+        expect(result?.replies[0]).not.toEqual(text(msg.summaryUpdated));
+        expect(tracked(tools)).toEqual([]);
+      }
+    });
+
+    it('texto irrelevante não incrementa a revisão nem altera o pedido', async () => {
+      const tools = reading({ intent: 'other' });
+      const result = await handlers.summary?.(base, typed('bom dia, tudo bem?'), tools);
+      expect(result?.state).toEqual(base);
+      expect(tracked(tools)).toEqual([]);
+    });
+
+    it('mudança que leva a outra pergunta sobe a revisão sem o aviso de resumo', async () => {
+      const tools = reading({ products: ['Botijão P45'] });
+      const result = await handlers.summary?.(base, typed('quero o P45'), tools);
+      expect(result?.state?.step).toBe('chooseQuantity');
+      expect(result?.state?.revision).toBe(2);
+      expect(result?.replies).not.toContainEqual(text(msg.summaryUpdated));
+    });
   });
 
   it('resumo inclui o troco quando há', () => {
@@ -98,7 +287,7 @@ describe('summary', () => {
 
   it('em demonstração a confirmação diz que nenhum gás será entregue', async () => {
     const tools = createFakeTools({ demo: true });
-    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result).toEqual({
       state: null,
       replies: [
@@ -112,7 +301,7 @@ describe('summary', () => {
 
   it('confirmar salva o checkpoint antes de criar a venda e encerra', async () => {
     const tools = createFakeTools();
-    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result).toEqual({
       state: null,
       replies: [text(msg.saleCreated(4521, 110))],
@@ -129,10 +318,21 @@ describe('summary', () => {
     expect(tools.calls[1].args[0]).toEqual(order);
   });
 
+  it('não usa IA para ação de botão de confirmação', async () => {
+    const interpret = vi.fn(async (): Promise<Interpretation | null> => {
+      throw new Error('provedor indisponível');
+    });
+    const tools = createFakeTools({ interpret });
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
+    expect(result?.saleId).toBe(4521);
+    expect(tools.calls.map(call => call.name)).toEqual(['checkpoint', 'createSale']);
+    expect(interpret).not.toHaveBeenCalled();
+  });
+
   it('dinheiro com troco vira observação', async () => {
     const tools = createFakeTools();
     const state = { ...base, payment: money, changeFor: 250 };
-    await handlers.summary?.(state, pick('summary:confirm'), tools);
+    await handlers.summary?.(state, pick(CONFIRM), tools);
     expect(tools.calls[1].args[0]).toMatchObject({
       paymentType: 'MONEY',
       observation: 'Troco para R$ 250,00',
@@ -141,11 +341,7 @@ describe('summary', () => {
 
   it('sem troco não há observação', async () => {
     const tools = createFakeTools();
-    await handlers.summary?.(
-      { ...base, payment: money, changeFor: null },
-      pick('summary:confirm'),
-      tools,
-    );
+    await handlers.summary?.({ ...base, payment: money, changeFor: null }, pick(CONFIRM), tools);
     expect(tools.calls[1].args[0]).not.toHaveProperty('observation');
   });
 
@@ -154,7 +350,7 @@ describe('summary', () => {
       throw new ToolError(new SaleAttemptStoreError('fora'));
     });
     const tools = createFakeTools({ createSale });
-    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result).toEqual({
       state: { ...base, step: 'summary' },
       replies: [text(msg.saleStoreUnavailable)],
@@ -168,7 +364,7 @@ describe('summary', () => {
       throw new ToolError(new SaleAlreadyRegisteredError(777));
     });
     const tools = createFakeTools({ createSale });
-    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result).toEqual({
       state: null,
       replies: [text(msg.saleCreated(777, 110))],
@@ -184,7 +380,7 @@ describe('summary', () => {
       throw new ToolError(new SaleUncertainError('pendente'));
     });
     const tools = createFakeTools({ createSale });
-    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result?.state).toMatchObject({
       step: 'creatingSale',
       saleAttemptAt: FAKE_NOW.toISOString(),
@@ -203,7 +399,7 @@ describe('summary', () => {
       throw new ToolError(new RevgasUnavailableError('Muitas requisições', 429));
     });
     const tools = createFakeTools({ createSale, saleAttemptStatus: async () => status });
-    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result?.state?.step).toBe('creatingSale');
     expect(result?.replies).toEqual([text(msg.saleUncertain)]);
     expectNoRetryButton(result?.replies ?? []);
@@ -230,7 +426,7 @@ describe('summary', () => {
       },
       saleAttemptStatus: async () => status,
     });
-    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result?.state).toMatchObject({
       step: 'saleFailed',
       saleAttemptAt: FAKE_NOW.toISOString(),
@@ -259,7 +455,7 @@ describe('summary', () => {
         throw new ToolError(new SaleRejectedError('invalid'));
       },
     });
-    const result = await handlers.summary?.(base, pick('summary:confirm'), tools);
+    const result = await handlers.summary?.(base, pick(CONFIRM), tools);
     expect(result).toEqual({ state: null, replies: [text(msg.saleRejected(tools.storePhone))] });
     expect(result?.replies.some(reply => reply.type === 'buttons')).toBe(false);
   });
@@ -270,7 +466,7 @@ describe('summary', () => {
         throw new TypeError('bug');
       },
     });
-    await expect(handlers.summary?.(base, pick('summary:confirm'), tools)).rejects.toThrow('bug');
+    await expect(handlers.summary?.(base, pick(CONFIRM), tools)).rejects.toThrow('bug');
   });
 
   it('corrigir abre as opções de correção', async () => {
@@ -346,6 +542,7 @@ describe('chooseCorrection', () => {
   it('entrada inesperada repete as opções', async () => {
     const result = await handlers.chooseCorrection?.(state, pick('x:y'), createFakeTools());
     expect(result?.state?.step).toBe('chooseCorrection');
+    expect(result?.state?.revision).toBe(1);
   });
 
   it('total 220, troco 250, produto corrigido para quantidade 2 (total 440) volta a perguntar o troco', async () => {
@@ -489,7 +686,7 @@ describe('creatingSale', () => {
   it('qualquer entrada responde que está em andamento e não cria venda', async () => {
     const saleAttemptStatus = vi.fn(pending);
     const tools = createFakeTools({ saleAttemptStatus });
-    const confirm = await handlers.creatingSale?.(state, pick('summary:confirm'), tools);
+    const confirm = await handlers.creatingSale?.(state, pick(CONFIRM), tools);
     const retry = await handlers.creatingSale?.(state, pick('retry:sale'), tools);
     expect(confirm).toEqual({ state, replies: [text(msg.saleInProgress)] });
     expect(retry).toEqual({ state, replies: [text(msg.saleInProgress)] });

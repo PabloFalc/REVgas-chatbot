@@ -178,7 +178,10 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
     if (!cycleId) throw new Error('Pedido sem ciclo');
     cycles.push(cycleId);
     const saleCount = (await revgas.sales.list()).pagination.total_count;
-    await Promise.all([postChoice('summary:confirm', PHONE), postChoice('summary:confirm', PHONE)]);
+    await Promise.all([
+      postChoice('summary:confirm:1', PHONE),
+      postChoice('summary:confirm:1', PHONE),
+    ]);
 
     await vi.waitFor(async () =>
       expect((await revgas.sales.list()).pagination.total_count).toBe(saleCount + 1),
@@ -203,7 +206,7 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
   it('uma confirmação posterior à venda não cria outra venda', async () => {
     await sendUntilSummary(SEQUENTIAL_PHONE);
     const saleCount = (await revgas.sales.list()).pagination.total_count;
-    await postChoice('summary:confirm', SEQUENTIAL_PHONE);
+    await postChoice('summary:confirm:1', SEQUENTIAL_PHONE);
     await vi.waitFor(async () =>
       expect((await revgas.sales.list()).pagination.total_count).toBe(saleCount + 1),
     );
@@ -219,7 +222,7 @@ describe('Concorrência de venda e scripts Redis (e2e)', () => {
       ).toHaveLength(1),
     );
     whatsapp.clear();
-    await postChoice('summary:confirm', SEQUENTIAL_PHONE);
+    await postChoice('summary:confirm:1', SEQUENTIAL_PHONE);
 
     await vi.waitFor(() => expect(whatsapp.sent.length).toBeGreaterThan(0));
     expect((await revgas.sales.list()).pagination.total_count).toBe(afterSale);
