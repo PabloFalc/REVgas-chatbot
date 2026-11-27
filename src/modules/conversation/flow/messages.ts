@@ -177,6 +177,8 @@ export const msg = {
   quantityAboveMax: `Pedidos acima de ${MAX_QUANTITY} unidades são atendidos por um atendente.`,
   choosePayment: 'Como você vai pagar?',
   viewPayments: 'Ver formas',
+  noPaymentOption:
+    'Não encontrei uma forma de pagamento disponível para este pedido. Você pode revisar ou falar com um atendente.',
   noPriceForPayment: 'Não temos preço para essa forma de pagamento. Escolha outra.',
   askNeedsChange: (total: number) => `Total: ${formatMoney(total)}. Vai precisar de troco?`,
   noChangeNeeded: 'Não preciso',

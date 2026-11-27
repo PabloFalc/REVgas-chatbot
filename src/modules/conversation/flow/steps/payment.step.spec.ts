@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FlowInput, OrderState } from '../flow.types';
+import { HANDOFF_CHOICE, offer } from '../handoff';
 import { msg } from '../messages';
 import { text } from '../replies';
 import { createFakeTools, FAKE_PHONE } from '../testing/fake-tools';
@@ -66,10 +67,37 @@ describe('choosePayment', () => {
     expect(spy).toHaveBeenCalledWith({ id: 1, tagId: null }, 1, 'PIX', 2);
   });
 
-  it('nenhuma forma com preço avisa a instabilidade e mantém o estado', async () => {
+  it('oferece atendente quando não há pagamento elegível', async () => {
     const tools = createFakeTools({ quote: async () => null });
     const result = await asks.choosePayment?.(base, tools);
-    expect(result).toEqual({ state: base, replies: [text(msg.unavailable)] });
+    expect(result).toEqual({ state: base, replies: [offer(msg.noPaymentOption)] });
+    const reply = result?.replies[0];
+    if (reply?.type !== 'buttons') throw new Error('expected buttons');
+    expect(reply.buttons.map(b => b.id)).toEqual([HANDOFF_CHOICE]);
+    expect(tools.calls).toContainEqual({
+      name: 'track',
+      args: [{ name: 'payment_options_unavailable', amount: 3 }],
+    });
+  });
+
+  it('oferece atendente quando a lista de formas vem vazia', async () => {
+    const tools = createFakeTools({ listPaymentOptions: async () => [] });
+    const result = await asks.choosePayment?.(base, tools);
+    expect(result).toEqual({ state: base, replies: [offer(msg.noPaymentOption)] });
+    expect(tools.calls).toContainEqual({
+      name: 'track',
+      args: [{ name: 'payment_options_unavailable', amount: 0 }],
+    });
+  });
+
+  it('não cria venda quando opções de pagamento estão vazias', async () => {
+    const tools = createFakeTools({ listPaymentOptions: async () => [] });
+    const result = await asks.choosePayment?.(base, tools);
+    expect(result?.state?.step).toBe('choosePayment');
+    expect(result?.state?.payment).toBeUndefined();
+    expect(result?.state?.quote).toBeUndefined();
+    expect(result?.state?.paymentOptions).toBeUndefined();
+    expect(tools.calls.map(call => call.name)).not.toContain('createSale');
   });
 
   it('sem produto escolhido mostra todas as formas, sem cotar', async () => {

@@ -19,6 +19,7 @@ export type MetricEvent = Cycle &
     | { name: 'handoff'; outcome: HandoffStatus; reason: HandoffReason }
     | { name: 'handoff_offered'; reason: 'stuck' | 'offense' }
     | { name: 'quantity_limit'; reason: 'max' | 'stock' }
+    | { name: 'payment_options_unavailable'; amount: number }
     | { name: 'emergency'; reason: 'agent_route' }
     | {
         name: 'rag';
