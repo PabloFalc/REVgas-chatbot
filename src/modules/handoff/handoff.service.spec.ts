@@ -1,4 +1,5 @@
 import type { PinoLogger } from 'nestjs-pino';
+import { ChatwootError } from 'src/core/erros/chatwoot/chatwoot.errors';
 import { FakeChatwootClient } from 'src/integrations/chatwoot/fake-chatwoot.client';
 import type { BotEventsRepository } from 'src/modules/metrics/bot-events.repository';
 import { parseServiceHours, type ServiceWindow } from 'src/utils/service-hours';
@@ -127,6 +128,51 @@ describe('HandoffService', () => {
         requestedAt: NOW.toISOString(),
         handoffId: expect.stringMatching(UUID),
       });
+    });
+
+    it('mantém o handoff local quando Chatwoot falha', async () => {
+      const { service, client, states, threads, logger } = setup();
+      vi.spyOn(client, 'createMessage').mockRejectedValueOnce(
+        new ChatwootError('unavailable', 'Chatwoot fora do ar'),
+      );
+      const outcome = await service.requestHandoff({
+        phone: PHONE,
+        reason: 'customer_request',
+        summary: null,
+      });
+      expect(outcome.status).toBe('queued');
+      const [conversation] = [...client.conversations.values()];
+      expect(states.get(PHONE)).toMatchObject({
+        status: 'queued',
+        conversationId: conversation.id,
+      });
+      expect(threads.get(PHONE)).toEqual({ conversationId: conversation.id });
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ component: 'handoff', error: 'unavailable' }),
+        expect.any(String),
+      );
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(PHONE);
+      expect(
+        (await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null }))
+          .status,
+      ).toBe('alreadyQueued');
+    });
+
+    it('persiste queued antes de postar a nota e abrir a conversa', async () => {
+      const { service, client, states } = setup();
+      const seen: Array<string | undefined> = [];
+      const postNote = client.createMessage.bind(client);
+      vi.spyOn(client, 'createMessage').mockImplementation(async (id, input) => {
+        seen.push(states.get(PHONE)?.status);
+        return postNote(id, input);
+      });
+      const setStatus = client.setStatus.bind(client);
+      vi.spyOn(client, 'setStatus').mockImplementation(async (id, status) => {
+        seen.push(states.get(PHONE)?.status);
+        return setStatus(id, status);
+      });
+      await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+      expect(seen).toEqual(['queued', 'queued']);
     });
 
     it('segunda chamada devolve alreadyQueued sem nota nova', async () => {
