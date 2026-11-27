@@ -6,7 +6,7 @@ export const checkDocument: ApiDocParams = {
   summary: 'Health',
   statusCode: 200,
   description:
-    'Rota de checagem da saúde da api; 200 OK = tudo ok;  200 DEGRADED = Redis ou memória falhou; 503 UNAVALIBLE = Banco de dados falou ou está indisponível. O detalhe por subsistema (checks) só é retornado fora de produção.',
+    'Rota de checagem da saúde da api; 200 OK = tudo ok;  200 DEGRADED = memória falhou; 503 UNAVAILABLE = Redis ou banco de dados falhou ou está indisponível. O detalhe por subsistema (checks) só é retornado fora de produção.',
   response: {
     200: healthSchema,
     503: httpReplySchema

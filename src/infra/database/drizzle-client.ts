@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { env } from '../../config/env';
@@ -12,6 +13,10 @@ const pool = new Pool({
   idleTimeoutMillis: env.DB_IDLE_TIMEOUT_MS,
   connectionTimeoutMillis: env.DB_CONNECTION_TIMEOUT_MS,
   statement_timeout: env.DB_STATEMENT_TIMEOUT_MS,
+});
+
+pool.on('error', error => {
+  new Logger('Database').error(error.message);
 });
 
 // ! Client do drizzle
