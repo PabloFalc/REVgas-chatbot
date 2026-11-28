@@ -263,6 +263,7 @@ describe('Eventos do bot (e2e)', () => {
       totalCents?: number;
       productCode?: string;
       paymentMethodCode?: string;
+      errorKind?: string;
       customerSegment?: string;
       isSimulated?: boolean;
       createdAt?: Date;
@@ -275,6 +276,7 @@ describe('Eventos do bot (e2e)', () => {
       productCode: a.productCode ?? 'P13',
       paymentMethodCode: a.paymentMethodCode ?? 'PIX',
       customerSegment: a.customerSegment ?? 'unknown',
+      errorKind: a.errorKind ?? null,
       isSimulated: a.isSimulated ?? false,
       customerId: 1,
       createdAt: (a.createdAt ?? ago(72)).toISOString(),
@@ -291,6 +293,15 @@ describe('Eventos do bot (e2e)', () => {
     const registered = [...automatic, ...human];
     const handoffs = [randomUUID(), randomUUID()];
 
+    const utcDay = (daysBack: number, hour: number) => {
+      const now = new Date();
+      return new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysBack, hour),
+      );
+    };
+    const registeredHours = [14, 14, 14, 14, 18, 18, 18];
+    const abandonedHours = [10, 10];
+
     const profile = [
       ['P13', 'PIX', 'new'],
       ['P13', 'PIX', 'new'],
@@ -303,10 +314,21 @@ describe('Eventos do bot (e2e)', () => {
 
     async function seedFixture(tx: Tx) {
       const events: Event[] = [];
-      for (const cycleId of registered) {
+      for (const [index, cycleId] of registered.entries()) {
         events.push(
-          event({ name: 'purchase_started', cycleId, reason: 'new', occurredAt: ago(72) }),
-          event({ name: 'turn', cycleId, step: 'summary', occurredAt: ago(71) }),
+          event({
+            name: 'purchase_started',
+            cycleId,
+            reason: 'new',
+            occurredAt: utcDay(3, registeredHours[index]),
+          }),
+          event({
+            name: 'turn',
+            cycleId,
+            step: 'summary',
+            durationMs: 400,
+            occurredAt: ago(71),
+          }),
           event({
             name: 'sale',
             cycleId,
@@ -345,12 +367,18 @@ describe('Eventos do bot (e2e)', () => {
       }
       for (const [index, cycleId] of abandoned.entries()) {
         events.push(
-          event({ name: 'purchase_started', cycleId, reason: 'unknown', occurredAt: ago(60) }),
+          event({
+            name: 'purchase_started',
+            cycleId,
+            reason: 'unknown',
+            occurredAt: utcDay(5, abandonedHours[index]),
+          }),
           event({
             name: 'turn',
             cycleId,
             prevStep: 'chooseAddress',
             step: index === 0 ? 'catalog' : 'payment',
+            durationMs: 400,
             occurredAt: ago(50),
           }),
         );
@@ -362,7 +390,49 @@ describe('Eventos do bot (e2e)', () => {
           reason: 'unknown',
           occurredAt: ago(2),
         }),
-        event({ name: 'turn', cycleId: pending, step: 'summary', occurredAt: ago(1.5) }),
+        event({
+          name: 'turn',
+          cycleId: pending,
+          step: 'summary',
+          durationMs: 400,
+          occurredAt: ago(1.5),
+        }),
+        event({
+          name: 'ai_call',
+          outcome: 'allowed',
+          reason: 'interpret',
+          amount: 1,
+          occurredAt: ago(71),
+        }),
+        event({
+          name: 'ai_call',
+          outcome: 'allowed',
+          reason: 'question',
+          amount: 1,
+          occurredAt: ago(71),
+        }),
+        event({
+          name: 'ai_call',
+          outcome: 'allowed',
+          reason: 'address',
+          amount: 1,
+          occurredAt: ago(50),
+        }),
+        event({
+          name: 'ai_call',
+          outcome: 'limited',
+          reason: 'interpret',
+          amount: 1,
+          occurredAt: ago(50),
+        }),
+        event({
+          name: 'ai_call',
+          outcome: 'limited',
+          reason: 'interpret',
+          amount: 1,
+          occurredAt: ago(50),
+          isSimulated: true,
+        }),
         event({
           name: 'sale_outcome_unknown',
           cycleId: pending,
@@ -413,7 +483,12 @@ describe('Eventos do bot (e2e)', () => {
         }),
       );
       attempts.push(
-        attempt({ cycleId: pending, status: 'uncertain', createdAt: ago(1) }),
+        attempt({
+          cycleId: pending,
+          status: 'uncertain',
+          errorKind: 'timeout',
+          createdAt: ago(1),
+        }),
         attempt({
           cycleId: simulatedCycle,
           status: 'registered',
@@ -585,13 +660,28 @@ describe('Eventos do bot (e2e)', () => {
       'supervisor-espera.sql',
     ];
 
+    const P1_FILES = [
+      'gestor-recompra.sql',
+      'gestor-pico.sql',
+      'gestor-mix.sql',
+      'supervisor-expirados.sql',
+      'tecnico-erp.sql',
+      'tecnico-latencia-ia.sql',
+      'supervisor-fila.sql',
+      'supervisor-resolucao.sql',
+    ];
+    const CARD_FILES = [...P0_FILES, ...P1_FILES];
+
     it('aceita apenas períodos entre 1 e 365 dias', async () => {
       const guarded =
         /make_interval\(days => CASE WHEN \{\{dias\}\} BETWEEN 1 AND 365 THEN \{\{dias\}\} ELSE \('dias deve estar entre 1 e 365, recebido ' \|\| \{\{dias\}\}\)::int END\)/g;
-      for (const file of P0_FILES) {
+      for (const file of CARD_FILES) {
         const uses = code(file).match(/\{\{dias\}\}/g) ?? [];
         const intervals = code(file).match(guarded) ?? [];
         expect(intervals.length).toBeGreaterThan(0);
+        expect(code(file), file).toMatch(
+          /is_simulated = false OR \{\{incluir_simulados\}\} = 'sim'/,
+        );
         expect(uses).toHaveLength(intervals.length * 3);
         expect(code(file).match(/make_interval/g)).toHaveLength(intervals.length);
         expect(code(file)).not.toMatch(/\{\{dias\}\}\s*(day|days)\b|interval\s+'[^']*\{\{/i);
@@ -620,7 +710,7 @@ describe('Eventos do bot (e2e)', () => {
         vinculado: (file: string, days: number) => bound(file, days),
         literal: (file: string, days: number) => pasted(file, days),
       };
-      for (const file of P0_FILES) {
+      for (const file of CARD_FILES) {
         for (const [form, build] of Object.entries(forms)) {
           await isolated(async tx => {
             for (const days of [1, 30, 365]) {
@@ -642,7 +732,11 @@ describe('Eventos do bot (e2e)', () => {
     it('não usa bot_events como fonte de vendas financeiras', async () => {
       expect(code('gestor-vendas.sql')).not.toMatch(/bot_events/i);
       expect(code('gestor-vendas.sql')).toMatch(/FROM\s+sale_attempts/i);
-      const [row] = await isolated(async tx => {
+      for (const file of ['gestor-recompra.sql', 'gestor-mix.sql', 'tecnico-erp.sql']) {
+        expect(code(file), file).not.toMatch(/bot_events/i);
+        expect(code(file), file).toMatch(/FROM\s+sale_attempts/i);
+      }
+      const [row, mix, recompra] = await isolated(async tx => {
         await tx.insert(botEvents).values(
           Array.from({ length: 5 }, () =>
             event({
@@ -655,9 +749,16 @@ describe('Eventos do bot (e2e)', () => {
             }),
           ),
         );
-        return query(tx, 'gestor-vendas.sql');
+        return [
+          (await query(tx, 'gestor-vendas.sql'))[0],
+          await query(tx, 'gestor-mix.sql'),
+          (await query(tx, 'gestor-recompra.sql'))[0],
+        ] as const;
       });
       expect(row).toMatchObject({ pedidos_registrados: 7, valor_registrado_brl: 980 });
+      expect(mix.reduce((acc, line) => acc + Number(line.pedidos), 0)).toBe(7);
+      expect(mix.reduce((acc, line) => acc + Number(line.valor_brl), 0)).toBe(980);
+      expect(recompra).toMatchObject({ pedidos_recorrentes: 4, pedidos_novos: 3 });
     });
 
     it('inclui simulações somente quando o modo é pedido explicitamente', async () => {
@@ -978,12 +1079,39 @@ describe('Eventos do bot (e2e)', () => {
         'espera_p50_seg',
         'espera_p90_seg',
         'handoffs_assumidos',
+        'pedidos_recorrentes',
+        'pedidos_novos',
+        'pedidos_sem_segmento',
+        'recompra_pct',
+        'hora_utc',
+        'intencoes',
+        'product_code',
+        'payment_method_code',
+        'pedidos',
+        'valor_brl',
+        'motivo',
+        'expirados',
+        'pedidos_transferidos',
+        'duracao_expiracao_p50_seg',
+        'status',
+        'error_kind',
+        'tentativas',
+        'dia_utc',
+        'turno_p50_ms',
+        'turno_p90_ms',
+        'chamadas_ia',
+        'chamadas_limitadas',
+        'snapshot_em_utc',
+        'fila_pendente',
+        'categoria',
+        'ciclos',
+        'percentual',
       ];
       const forbidden =
         /customer_id|erp_sale_id|conversation_id|handoff_id|phone|cpf|(customer|full|first|last)_?name|\bnome\b|address|endereco|\btext\b|select\s+\*|\.\*/i;
       const returned = await isolated(async tx => {
         const columns = new Set<string>();
-        for (const file of P0_FILES) {
+        for (const file of CARD_FILES) {
           const { fields } = await tx.execute(bound(file, 30));
           for (const field of fields) columns.add(field.name);
         }
@@ -991,7 +1119,333 @@ describe('Eventos do bot (e2e)', () => {
       });
       expect(returned.length).toBeGreaterThan(0);
       for (const column of returned) expect(allowed).toContain(column);
-      for (const file of P0_FILES) expect(code(file)).not.toMatch(forbidden);
+      for (const file of CARD_FILES) {
+        const text =
+          file === 'supervisor-expirados.sql'
+            ? code(file).replaceAll('handoff_id', '')
+            : code(file);
+        expect(text, file).not.toMatch(forbidden);
+      }
+    });
+
+    const modes = async (tx: Tx, file: string) => ({
+      nao: await query(tx, file, 30, 'nao'),
+      sim: await query(tx, file, 30, 'sim'),
+      talvez: await query(tx, file, 30, 'talvez'),
+    });
+
+    it('calcula recompra de 4 em 7 pedidos com desconhecidos fora do denominador', async () => {
+      const out = await isolated(async tx => {
+        const base = await modes(tx, 'gestor-recompra.sql');
+        await tx
+          .insert(saleAttempts)
+          .values([
+            attempt({ cycleId: cycle(), status: 'registered' }),
+            attempt({ cycleId: cycle(), status: 'registered' }),
+          ]);
+        return { base, comDesconhecidos: (await query(tx, 'gestor-recompra.sql'))[0] };
+      });
+      expect(out.base.nao).toEqual([
+        { pedidos_recorrentes: 4, pedidos_novos: 3, pedidos_sem_segmento: 0, recompra_pct: 57.1 },
+      ]);
+      expect(out.base.sim[0]).toEqual({
+        pedidos_recorrentes: 4,
+        pedidos_novos: 3,
+        pedidos_sem_segmento: 2,
+        recompra_pct: 57.1,
+      });
+      expect(out.base.talvez).toEqual(out.base.nao);
+      expect(out.comDesconhecidos).toEqual({
+        pedidos_recorrentes: 4,
+        pedidos_novos: 3,
+        pedidos_sem_segmento: 2,
+        recompra_pct: 57.1,
+      });
+    });
+
+    it('retorna nulo na recompra quando não há clientes classificados', async () => {
+      const semDados = await isolated(
+        async tx => (await query(tx, 'gestor-recompra.sql'))[0],
+        empty,
+      );
+      const soDesconhecidos = await isolated(
+        async tx => (await query(tx, 'gestor-recompra.sql'))[0],
+        async tx => {
+          await tx
+            .insert(saleAttempts)
+            .values([
+              attempt({ cycleId: cycle(), status: 'registered' }),
+              attempt({ cycleId: cycle(), status: 'registered' }),
+            ]);
+        },
+      );
+      expect(semDados).toEqual({
+        pedidos_recorrentes: 0,
+        pedidos_novos: 0,
+        pedidos_sem_segmento: 0,
+        recompra_pct: null,
+      });
+      expect(soDesconhecidos).toEqual({
+        pedidos_recorrentes: 0,
+        pedidos_novos: 0,
+        pedidos_sem_segmento: 2,
+        recompra_pct: null,
+      });
+    });
+
+    it('cruza produto e pagamento e fecha as margens do mix', async () => {
+      const out = await isolated(tx => modes(tx, 'gestor-mix.sql'));
+      expect(out.nao).toEqual([
+        { product_code: 'P13', payment_method_code: 'PIX', pedidos: 3, valor_brl: 420 },
+        { product_code: 'P45', payment_method_code: 'PIX', pedidos: 2, valor_brl: 280 },
+        { product_code: 'P13', payment_method_code: 'DINHEIRO', pedidos: 1, valor_brl: 140 },
+        { product_code: 'P45', payment_method_code: 'DINHEIRO', pedidos: 1, valor_brl: 140 },
+      ]);
+      const total = (rows: Row[], key: string, value: string, column: string) =>
+        rows.filter(row => row[key] === value).reduce((acc, row) => acc + Number(row[column]), 0);
+      expect(total(out.nao, 'product_code', 'P13', 'pedidos')).toBe(4);
+      expect(total(out.nao, 'product_code', 'P13', 'valor_brl')).toBe(560);
+      expect(total(out.nao, 'product_code', 'P45', 'pedidos')).toBe(3);
+      expect(total(out.nao, 'product_code', 'P45', 'valor_brl')).toBe(420);
+      expect(total(out.nao, 'payment_method_code', 'PIX', 'pedidos')).toBe(5);
+      expect(total(out.nao, 'payment_method_code', 'PIX', 'valor_brl')).toBe(700);
+      expect(total(out.nao, 'payment_method_code', 'DINHEIRO', 'pedidos')).toBe(2);
+      expect(total(out.nao, 'payment_method_code', 'DINHEIRO', 'valor_brl')).toBe(280);
+      expect(total(out.sim, 'payment_method_code', 'PIX', 'pedidos')).toBe(7);
+      expect(out.talvez).toEqual(out.nao);
+    });
+
+    it('agrupa intenções de compra por hora UTC', async () => {
+      const out = await isolated(async tx => {
+        await tx.execute(
+          sql`UPDATE bot_events
+              SET occurred_at = (date_trunc('day', now() AT TIME ZONE 'UTC') - interval '3 days' + interval '22 hours') AT TIME ZONE 'UTC'
+              WHERE name = 'purchase_started' AND cycle_id = ${pending}::uuid`,
+        );
+        return modes(tx, 'gestor-pico.sql');
+      });
+      expect(out.nao).toEqual([
+        { hora_utc: 10, intencoes: 2 },
+        { hora_utc: 14, intencoes: 4 },
+        { hora_utc: 18, intencoes: 3 },
+        { hora_utc: 22, intencoes: 1 },
+      ]);
+      expect(out.sim.reduce((acc, row) => acc + Number(row.intencoes), 0)).toBe(11);
+      expect(out.talvez).toEqual(out.nao);
+    });
+
+    it('conta expirações únicas e mede a mediana só das expiradas', async () => {
+      const [first, second, third, fourth, simulated] = Array.from({ length: 5 }, cycle);
+      const [expiredA, expiredB, expiredSim] = [randomUUID(), randomUUID(), randomUUID()];
+      const out = await isolated(async tx => {
+        await tx.insert(botEvents).values([
+          event({
+            name: 'handoff',
+            cycleId: first,
+            reason: 'customer_request',
+            occurredAt: ago(30),
+          }),
+          event({
+            name: 'handoff',
+            cycleId: second,
+            reason: 'customer_request',
+            occurredAt: ago(30),
+          }),
+          event({
+            name: 'handoff',
+            cycleId: third,
+            reason: 'customer_request',
+            occurredAt: ago(30),
+          }),
+          event({
+            name: 'handoff',
+            cycleId: fourth,
+            reason: 'customer_request',
+            occurredAt: ago(30),
+          }),
+          event({
+            name: 'handoff_expired',
+            cycleId: third,
+            handoffId: expiredA,
+            durationMs: 900_000,
+            occurredAt: ago(29),
+          }),
+          event({
+            name: 'handoff_expired',
+            cycleId: third,
+            handoffId: expiredA,
+            durationMs: 900_000,
+            occurredAt: ago(29),
+          }),
+          event({
+            name: 'handoff_expired',
+            cycleId: fourth,
+            handoffId: expiredB,
+            durationMs: 1_800_000,
+            occurredAt: ago(29),
+          }),
+          event({
+            name: 'handoff',
+            cycleId: simulated,
+            reason: 'customer_request',
+            occurredAt: ago(30),
+            isSimulated: true,
+          }),
+          event({
+            name: 'handoff_expired',
+            cycleId: simulated,
+            handoffId: expiredSim,
+            durationMs: 7_200_000,
+            occurredAt: ago(29),
+            isSimulated: true,
+          }),
+        ]);
+        return modes(tx, 'supervisor-expirados.sql');
+      });
+      const linha = (rows: Row[]) => rows.find(row => row.motivo === 'customer_request');
+      expect(out.nao).toHaveLength(1);
+      expect(linha(out.nao)).toEqual({
+        motivo: 'customer_request',
+        expirados: 2,
+        pedidos_transferidos: 6,
+        duracao_expiracao_p50_seg: 1350,
+      });
+      expect(linha(out.sim)).toEqual({
+        motivo: 'customer_request',
+        expirados: 3,
+        pedidos_transferidos: 7,
+        duracao_expiracao_p50_seg: 1800,
+      });
+      expect(out.talvez).toEqual(out.nao);
+    });
+
+    it('conta tentativas incertas por categoria de erro', async () => {
+      const out = await isolated(tx => modes(tx, 'tecnico-erp.sql'));
+      expect(out.nao).toEqual([
+        { status: 'rejected', error_kind: null, tentativas: 1 },
+        { status: 'uncertain', error_kind: 'timeout', tentativas: 1 },
+      ]);
+      expect(out.sim).toEqual([
+        { status: 'rejected', error_kind: null, tentativas: 1 },
+        { status: 'uncertain', error_kind: 'timeout', tentativas: 1 },
+        { status: 'uncertain', error_kind: null, tentativas: 1 },
+      ]);
+      expect(out.talvez).toEqual(out.nao);
+    });
+
+    it('mede 10 turnos de 400 ms e 4 chamadas de IA com 1 limitada', async () => {
+      const out = await isolated(async tx => ({
+        turnos: (
+          await tx.execute(
+            sql`SELECT count(*) AS n FROM bot_events
+                WHERE name = 'turn' AND is_simulated = false AND duration_ms = 400`,
+          )
+        ).rows[0]?.n,
+        ...(await modes(tx, 'tecnico-latencia-ia.sql')),
+      }));
+      expect(Number(out.turnos)).toBe(10);
+      const sum = (rows: Row[], column: string) =>
+        rows.reduce((acc, row) => acc + Number(row[column]), 0);
+      const withTurns = out.nao.filter(row => row.turno_p50_ms !== null);
+      expect(withTurns.length).toBeGreaterThan(0);
+      for (const row of withTurns) {
+        expect(row.turno_p50_ms).toBe(400);
+        expect(row.turno_p90_ms).toBe(400);
+      }
+      expect(sum(out.nao, 'chamadas_ia')).toBe(4);
+      expect(sum(out.nao, 'chamadas_limitadas')).toBe(1);
+      expect(sum(out.sim, 'chamadas_ia')).toBe(5);
+      expect(sum(out.sim, 'chamadas_limitadas')).toBe(2);
+      expect(out.talvez).toEqual(out.nao);
+    });
+
+    it('usa o snapshot mais recente como fila atual', async () => {
+      const latest = ago(1);
+      const out = await isolated(async tx => {
+        await tx.insert(botEvents).values([
+          event({ name: 'handoff_queue_snapshot', amount: 3, occurredAt: ago(5) }),
+          event({ name: 'handoff_queue_snapshot', amount: 2, occurredAt: ago(3) }),
+          event({ name: 'handoff_queue_snapshot', amount: 1, occurredAt: latest }),
+          event({
+            name: 'handoff_queue_snapshot',
+            amount: 9,
+            occurredAt: ago(0.5),
+            isSimulated: true,
+          }),
+          event({ name: 'handoff_queue_snapshot', amount: 7, occurredAt: ago(24 * 400) }),
+        ]);
+        return {
+          ...(await modes(tx, 'supervisor-fila.sql')),
+          umDia: await query(tx, 'supervisor-fila.sql', 1, 'nao'),
+        };
+      });
+      expect(out.nao).toHaveLength(1);
+      expect(out.nao[0]?.fila_pendente).toBe(1);
+      const instante = new Date(out.nao[0]?.snapshot_em_utc as string).getTime();
+      expect(Math.abs(instante - latest.getTime())).toBeLessThan(1000);
+      expect(out.sim[0]?.fila_pendente).toBe(9);
+      expect(out.talvez).toEqual(out.nao);
+      expect(out.umDia[0]?.fila_pendente).toBe(1);
+      expect(await isolated(tx => query(tx, 'supervisor-fila.sql'), empty)).toEqual([]);
+    });
+
+    it('classifica 5 ciclos automáticos, 2 humanos, 2 abandonados e 1 pendente', async () => {
+      const simulated = cycle();
+      const out = await isolated(async tx => {
+        const semEncerramento = await query(tx, 'supervisor-resolucao.sql');
+        await tx.insert(botEvents).values([
+          ...[...automatic, ...human].map(cycleId =>
+            event({
+              name: 'conversation_resolved',
+              cycleId,
+              outcome: 'registered',
+              occurredAt: ago(24),
+            }),
+          ),
+          ...abandoned.map(cycleId =>
+            event({
+              name: 'conversation_resolved',
+              cycleId,
+              outcome: 'abandoned',
+              occurredAt: ago(24),
+            }),
+          ),
+          event({
+            name: 'ai_call',
+            cycleId: pending,
+            outcome: 'allowed',
+            reason: 'interpret',
+            amount: 1,
+            occurredAt: ago(1),
+          }),
+          event({
+            name: 'purchase_started',
+            cycleId: simulated,
+            reason: 'new',
+            occurredAt: ago(60),
+            isSimulated: true,
+          }),
+          event({
+            name: 'conversation_resolved',
+            cycleId: simulated,
+            outcome: 'abandoned',
+            occurredAt: ago(24),
+            isSimulated: true,
+          }),
+        ]);
+        return { semEncerramento, ...(await modes(tx, 'supervisor-resolucao.sql')) };
+      });
+      expect(out.semEncerramento).toEqual([
+        { categoria: 'pendente', ciclos: 10, percentual: null },
+      ]);
+      expect(out.nao).toEqual([
+        { categoria: 'abandonada', ciclos: 2, percentual: 22.2 },
+        { categoria: 'automatica', ciclos: 5, percentual: 55.6 },
+        { categoria: 'mista', ciclos: 2, percentual: 22.2 },
+        { categoria: 'pendente', ciclos: 1, percentual: null },
+      ]);
+      expect(out.sim.find(row => row.categoria === 'abandonada')?.ciclos).toBe(3);
+      expect(out.talvez).toEqual(out.nao);
     });
 
     it('papel restrito lê os quatro cards e não lê identificadores operacionais', async () => {
@@ -1017,7 +1471,7 @@ describe('Eventos do bot (e2e)', () => {
             await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN`));
             for (const grant of grants) await tx.execute(sql.raw(grant));
             await tx.execute(sql.raw(`SET LOCAL ROLE ${role}`));
-            for (const file of [...P0_FILES, ...CHART_FILES]) {
+            for (const file of [...CARD_FILES, ...CHART_FILES]) {
               await tx.execute(bound(file, 30));
             }
             const errors = [
