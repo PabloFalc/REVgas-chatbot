@@ -31,8 +31,12 @@ durante o deploy.
   do Traefik, e a chamada não sai do servidor.
 - Chatwoot para bot pela URL pública (`https://revgas.felipeduan.com/webhooks/chatwoot`), sem
   `SAFE_FETCH_ALLOW_PRIVATE_NETWORK`.
-- `TRUSTED_PROXY` usa os blocos privados (10/8, 172.16/12, 192.168/16): o único par que fala com o bot
-  é o Traefik, dentro da rede do Docker. Se o IP real de clientes aparecer errado no log, troque pelo
+- A rede `dokploy-network` é compartilhada com outros projetos do servidor, e nomes como `postgres` e
+  `redis` podem resolver para containers de terceiros. Por isso o compose precisa estar com
+  "Isolated Deployment" ligado no Dokploy antes do primeiro deploy (aba Advanced do compose). Não ligue
+  "Randomize Compose".
+- `TRUSTED_PROXY` usa os blocos privados (10/8, 172.16/12, 192.168/16). Com o deploy isolado, o único
+  par que fala com o bot é o Traefik, dentro da rede do Docker. Se o IP real de clientes aparecer errado no log, troque pelo
   CIDR da rede `dokploy-network`.
 - `CORS_ORIGIN` é o próprio domínio do bot. Webhooks não usam CORS.
 
@@ -56,15 +60,22 @@ informa na tela do webhook da Meta.
 
 ## Enviar ao Dokploy
 
-Crie o compose no Dokploy como fonte raw (uma vez) e anote o `composeId`.
+Crie o compose no Dokploy como fonte raw (uma vez), ligue "Isolated Deployment" antes do primeiro
+deploy e anote o `composeId` e o nome do compose.
 
 ```bash
 DOKPLOY_URL=https://painel.exemplo.com DOKPLOY_API_KEY=... \
-  node scripts/deploy/dokploy-push.mjs <composeId> docker/compose.prod.yaml prod.env
+  node scripts/deploy/dokploy-push.mjs --name revgas <composeId> docker/compose.prod.yaml prod.env
 ```
 
-O script atualiza o compose e o env pela API (`compose.update`), mostra só o status HTTP e não dispara o
-deploy. Chaves do env que o compose não usa (as de provisionamento do Metabase) não são enviadas.
+`--name` é obrigatório. Antes de enviar, o script consulta o compose (`compose.one`) e aborta, sem enviar
+nada, se a resposta não for 200 ou se o nome for diferente do informado. Isso evita sobrescrever o compose
+de outro projeto por engano. Ele imprime o nome do alvo confirmado e nunca o corpo da resposta, que traz o
+env com segredos. `DOKPLOY_URL` precisa ser https (http só para localhost e 127.0.0.1) e cada chamada
+tem timeout de 30 s.
+
+Depois da confirmação, o script atualiza o compose e o env pela API (`compose.update`), mostra só o status
+HTTP e não dispara o deploy. Chaves do env que o compose não usa (as de provisionamento do Metabase) não são enviadas.
 Depois, no painel, crie os domínios (HTTPS) e faça o deploy:
 
 | Domínio | Serviço | Porta |
@@ -92,6 +103,11 @@ node docker/metabase/provision.mjs
 `METABASE_ADMIN_EMAIL` e `METABASE_ADMIN_PASSWORD` vêm do `prod.env`. Em um Metabase novo, o comando
 cria o administrador pelo setup inicial. Pode ser repetido.
 
+Enquanto não existe administrador, o setup inicial fica aberto para quem alcançar a URL. Rode o
+provisionamento logo que o Metabase responder e confirme que o login com o administrador do `prod.env`
+funciona. Se o login falhar em uma instância nova, trate a instância como comprometida: apague o volume
+`metabase_pg_data` e refaça o deploy e o provisionamento.
+
 ## Validar
 
 1. `https://revgas.felipeduan.com/health` responde 200 com `status` `ok` (ou `degraded`, que vem da
@@ -105,6 +121,13 @@ cria o administrador pelo setup inicial. Pode ser repetido.
 5. Nos logs de `chatwoot-setup` aparecem só `OUT:CHATWOOT_ACCOUNT_ID` e `OUT:CHATWOOT_INBOX_ID`, que devem
    ser os valores de `CHATWOOT_ACCOUNT_ID` e `CHATWOOT_INBOX_ID` (1 e 1). Se forem outros, o setup
    falha de propósito.
+6. Confira o código de saída e os logs de `kb-ingest` e `metrics-reader-setup`. A falha deles não marca o
+   deploy como erro no Dokploy, então um problema ali passa despercebido se ninguém olhar.
+
+Se o `chatwoot-setup` falhar na primeira subida depois de criar a conta, os ids deixam de ser 1 e o setup
+passa a abortar nas tentativas seguintes. Para recuperar, apague o volume do Postgres do Chatwoot
+(`chatwoot_pg_data` no compose; confira o nome real com o prefixo do projeto em `docker volume ls`) e
+refaça o deploy. Isso só vale enquanto não houver dado real.
 
 ## Rollback
 
@@ -124,7 +147,10 @@ incompatível, o rollback da imagem precisa de uma correção de banco à parte.
 ## O que este deploy não cobre
 
 - Backup e restauração dos volumes (Postgres do bot, Chatwoot, Metabase). Nada é copiado
-  automaticamente.
+  automaticamente. Backup precisa existir antes de entrar dado real.
+- Guarda do `prod.env`. Mantenha uma cópia em um cofre de senhas, porque algumas chaves não são
+  recuperáveis (`METABASE_ENCRYPTION_KEY`, por exemplo) e as senhas de banco já gravadas nos volumes não
+  podem ser regeneradas.
 - Monitoramento e alertas.
 - Atualização de versão do Chatwoot e do Metabase (tags fixas no compose).
 - Criptografia de campos do Chatwoot (`ACTIVE_RECORD_ENCRYPTION_*`), desligada.
