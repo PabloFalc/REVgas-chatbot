@@ -40,6 +40,7 @@
     "kb:ingest": "nest build && node dist/cli/kb-ingest.js",
     "llm:check": "vitest run --config vitest.config.live.ts scripts/llm.live-check.spec.ts",
     "rag:check": "vitest run --config vitest.config.live.ts scripts/rag.live-check.spec.ts",
+    "metrics:seed-demo": "nest build && node dist/cli/metrics-seed-demo.js",
     "chat": "nest build && node dist/cli/chat.js"
   },
   "dependencies": {
