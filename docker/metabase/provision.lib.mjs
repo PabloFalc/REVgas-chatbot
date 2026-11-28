@@ -368,13 +368,13 @@ function legend(title, lines, extraWarnings = []) {
 }
 
 const CHARS_PER_LINE = 90;
-const LINES_PER_ROW = 1.5;
+const LINES_PER_ROW = 2.2;
 
 export function textHeight(text) {
   const lines = String(text)
     .split('\n')
     .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / CHARS_PER_LINE)), 0);
-  return Math.ceil(lines / LINES_PER_ROW) + 3;
+  return Math.ceil(lines / LINES_PER_ROW) + 1;
 }
 
 export const LEGENDS = {

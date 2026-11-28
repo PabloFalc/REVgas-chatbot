@@ -810,13 +810,21 @@ describe('idempotência dos cards traduzidos', () => {
 describe('ajustes visuais', () => {
   const legendas = DASHBOARDS.map(d => d.cards.find(item => item.text)).filter(Boolean);
 
-  it('altura da legenda cresce com o texto e nunca fica menor que as linhas', () => {
+  it('altura da legenda cresce com o texto, sem sobra grande', () => {
     expect(textHeight('a')).toBeLessThan(textHeight('a\n'.repeat(30)));
     for (const item of legendas) {
       const linhas = String(item?.text).split('\n').length;
       expect(item?.sizeY).toBe(textHeight(item?.text));
-      expect(item?.sizeY as number).toBeGreaterThanOrEqual(Math.ceil(linhas / 1.5));
+      expect(item?.sizeY as number).toBeLessThanOrEqual(13);
+      expect(item?.sizeY as number).toBeGreaterThanOrEqual(Math.ceil(linhas / 2.5));
     }
+  });
+
+  it('alturas calibradas pela medida real das telas', () => {
+    const alturas = Object.fromEntries(
+      DASHBOARDS.map(d => [d.name, d.cards.find(item => item.text)?.sizeY]),
+    );
+    expect(alturas).toEqual({ Gestor: 12, Supervisor: 10, Técnico: 10 });
   });
 
   it('hora usa HH:mm para não mostrar 24:00', () => {
