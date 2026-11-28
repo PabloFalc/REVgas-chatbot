@@ -47,6 +47,8 @@ correspondente.
   resposta com Zod)
 - [environment.md](./guides/conventions/environment.md) — variáveis de ambiente: função,
   obrigatoriedade, defaults e consequências de cada uma
+- [deploy.md](./guides/conventions/deploy.md) — deploy em produção no Dokploy: env, ordem, validação
+  e rollback
 - [testing.md](./guides/conventions/testing.md) — como escrever testes (unit + e2e), os helpers
   `createApp(extraImports)`, os helpers `deleteBy`/`signIn`/`signUpVerified`/`bearer`, limpeza
   escopada e as armadilhas do e2e
