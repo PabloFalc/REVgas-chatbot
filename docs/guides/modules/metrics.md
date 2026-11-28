@@ -79,6 +79,14 @@ A imagem OSS fica fixa em `metabase/metabase:v0.65.3.7`, a versão estável mais
 
 O usuário `metrics_reader` tem CONNECT, USAGE no schema, SELECT em `bot_events` e SELECT só nas colunas analíticas de `sale_attempts` (`customer_id` e `erp_sale_id` ficam de fora), limite de dez conexões e timeout de 10 segundos. Não use a credencial administrativa do bot no Metabase. Permissões públicas herdadas do PostgreSQL também devem ser consideradas ao instalar em outro ambiente. Se o usuário já existe, rode apenas a última linha do script (o `GRANT` de `sale_attempts`) em vez do arquivo inteiro.
 
+## Dados de demonstração
+
+`pnpm metrics:seed-demo` grava dados simulados de 14 dias (terminando hoje) no banco da `DATABASE_URL`, para os três dashboards terem séries, abandono, handoffs e RAG. O gerador é determinístico (semente fixa) e o volume varia por dia. Todas as linhas entram com `is_simulated = true`, então só aparecem com `incluir_simulados = sim`.
+
+Cada ciclo da demonstração usa um UUID no intervalo `0de00de0-0000-4000-8000-000000000000` a `...ffffffffffff`, que é o marcador. O comando apaga apenas linhas simuladas dentro desse intervalo, nas duas tabelas, e reinsere tudo na mesma transação, então pode ser repetido. `pnpm metrics:seed-demo --clear` só remove a demonstração. Os dados não têm telefone, CPF, nome nem endereço, e as vendas usam `customer_id = 0`. O comando recusa rodar com `NODE_ENV=production`.
+
+O código fica em `src/cli/metrics-seed-demo*.ts`. Os testes são `src/cli/metrics-seed-demo.data.spec.ts` (geração) e `tests/metrics/demo-seed.e2e.spec.ts` (seed e `--clear` não tocam linhas alheias).
+
 ## Deploy
 
 Sequência para um servidor com o Metabase do compose. Os comandos rodam a partir de um checkout do repositório, porque o provisionamento lê os SQLs de `docs/guides/metrics/sql/`.
@@ -159,4 +167,4 @@ pnpm build
 pnpm test:e2e
 ```
 
-Os e2e exigem Postgres e Redis locais. `tests/metrics/bot-events.e2e.spec.ts` acompanha o webhook até uma venda fake, consulta apenas os ciclos do teste e compara as mensagens com o INSERT rejeitado.
+Os e2e exigem Postgres e Redis locais e rodam no banco `<nome>_e2e`, criado e migrado pelo `globalSetup`. `tests/metrics/bot-events.e2e.spec.ts` acompanha o webhook até uma venda fake, consulta apenas os ciclos do teste e compara as mensagens com o INSERT rejeitado.
