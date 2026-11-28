@@ -10,7 +10,7 @@ export default defineConfig({
       DATABASE_URL: 'postgresql://docker:docker@localhost:5432/test_db',
       DOTENV_CONFIG_PATH: '/dev/null',
     },
-    include: ['src/**/*.spec.ts', 'docker/**/*.spec.ts'],
+    include: ['src/**/*.spec.ts', 'docker/**/*.spec.ts', 'scripts/deploy/**/*.spec.ts'],
     alias: {
       src: resolve(__dirname, './src'),
     },

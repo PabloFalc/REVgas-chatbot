@@ -1,0 +1,415 @@
+x-chatwoot-env: &chatwoot-env
+  RAILS_ENV: production
+  NODE_ENV: production
+  INSTALLATION_ENV: docker
+  RAILS_LOG_TO_STDOUT: 'true'
+  LOG_LEVEL: info
+  ENABLE_ACCOUNT_SIGNUP: 'false'
+  SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE:?}
+  FRONTEND_URL: ${CHATWOOT_PUBLIC_URL:?}
+  POSTGRES_HOST: chatwoot-postgres
+  POSTGRES_PORT: '5432'
+  POSTGRES_USERNAME: postgres
+  POSTGRES_PASSWORD: ${CHATWOOT_DB_PASSWORD:?}
+  POSTGRES_DATABASE: chatwoot
+  REDIS_URL: redis://:${CHATWOOT_REDIS_PASSWORD:?}@chatwoot-redis:6379
+  REDIS_PASSWORD: ${CHATWOOT_REDIS_PASSWORD:?}
+  RAILS_MAX_THREADS: '5'
+  SIDEKIQ_CONCURRENCY: '5'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 192m
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  bot:
+    image: ghcr.io/pablofalc/revgas-chatbot:${BOT_IMAGE_TAG:?}
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      NODE_ENV: ${NODE_ENV:?}
+      PORT: '3100'
+      HOST: 0.0.0.0
+      RUN_MIGRATIONS: 'true'
+      CORS_ORIGIN: ${CORS_ORIGIN:?}
+      TRUSTED_PROXY: ${TRUSTED_PROXY:?}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      PRESSURE_MAX_HEAP_BYTES: '450000000'
+      PRESSURE_MAX_RSS_BYTES: '650000000'
+      REVGAS_MODE: ${REVGAS_MODE:?}
+      REVGAS_ALLOW_LIVE_SALES: ${REVGAS_ALLOW_LIVE_SALES:?}
+      REVGAS_API_URL: ${REVGAS_API_URL:?}
+      REVGAS_ESTABLISHMENT_ID: ${REVGAS_ESTABLISHMENT_ID:?}
+      REVGAS_API_KEY: ${REVGAS_API_KEY:?}
+      WHATSAPP_MODE: ${WHATSAPP_MODE:?}
+      WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:?}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:?}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:?}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:?}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:?}
+      WHATSAPP_ALLOWED_SENDERS: ${WHATSAPP_ALLOWED_SENDERS:?}
+      LLM_MODE: ${LLM_MODE:?}
+      LLM_API_URL: ${LLM_API_URL:?}
+      LLM_API_KEY: ${LLM_API_KEY:?}
+      LLM_MODEL: ${LLM_MODEL:?}
+      EMBEDDING_API_URL: ${EMBEDDING_API_URL:?}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:?}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:?}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:?}
+      STORE_CITY: ${STORE_CITY:?}
+      STORE_STATE: ${STORE_STATE:?}
+      STORE_PHONE: ${STORE_PHONE:-}
+      SERVICE_HOURS: ${SERVICE_HOURS:-}
+      CHATWOOT_MODE: ${CHATWOOT_MODE:?}
+      CHATWOOT_URL: http://chatwoot-rails:3000
+      CHATWOOT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID:?}
+      CHATWOOT_INBOX_ID: ${CHATWOOT_INBOX_ID:?}
+      CHATWOOT_API_TOKEN: ${CHATWOOT_API_TOKEN:?}
+      CHATWOOT_BOT_TOKEN: ${CHATWOOT_BOT_TOKEN:?}
+      CHATWOOT_WEBHOOK_SECRET: ${CHATWOOT_WEBHOOK_SECRET:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO /dev/null http://127.0.0.1:3100/health']
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+
+  kb-ingest:
+    image: ghcr.io/pablofalc/revgas-chatbot:${BOT_IMAGE_TAG:?}
+    restart: 'no'
+    mem_limit: 512m
+    command: ['node', 'dist/cli/kb-ingest.js']
+    environment:
+      NODE_ENV: ${NODE_ENV:?}
+      CORS_ORIGIN: ${CORS_ORIGIN:?}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      REVGAS_MODE: ${REVGAS_MODE:?}
+      WHATSAPP_ALLOWED_SENDERS: ${WHATSAPP_ALLOWED_SENDERS:?}
+      LLM_MODE: ${LLM_MODE:?}
+      LLM_API_URL: ${LLM_API_URL:?}
+      LLM_API_KEY: ${LLM_API_KEY:?}
+      EMBEDDING_API_URL: ${EMBEDDING_API_URL:?}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:?}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:?}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:?}
+    depends_on:
+      bot:
+        condition: service_healthy
+
+  metrics-reader-setup:
+    image: pgvector/pgvector:pg17
+    restart: 'no'
+    mem_limit: 128m
+    entrypoint: ['psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-h', 'postgres', '-f', '/metrics-reader.sql']
+    environment:
+      PGUSER: ${POSTGRES_USER:?}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      PGDATABASE: ${POSTGRES_DB:?}
+      METRICS_READER_PASSWORD: ${METRICS_READER_PASSWORD:?}
+    configs:
+      - source: metrics_reader_sql
+        target: /metrics-reader.sql
+    depends_on:
+      bot:
+        condition: service_healthy
+
+  chatwoot-postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${CHATWOOT_DB_PASSWORD:?}
+      POSTGRES_DB: chatwoot
+    volumes:
+      - chatwoot_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d chatwoot']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  chatwoot-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      REDIS_PASSWORD: ${CHATWOOT_REDIS_PASSWORD:?}
+      REDISCLI_AUTH: ${CHATWOOT_REDIS_PASSWORD:?}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --maxmemory 192mb --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - chatwoot_redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  chatwoot-setup:
+    image: chatwoot/chatwoot:v4.19.1-ce
+    restart: 'no'
+    mem_limit: 1024m
+    command:
+      - sh
+      - -c
+      - bundle exec rails db:chatwoot_prepare && bundle exec rails runner /setup.rb
+    environment:
+      RAILS_ENV: production
+      NODE_ENV: production
+      INSTALLATION_ENV: docker
+      RAILS_LOG_TO_STDOUT: 'true'
+      LOG_LEVEL: info
+      ENABLE_ACCOUNT_SIGNUP: 'false'
+      SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE:?}
+      FRONTEND_URL: ${CHATWOOT_PUBLIC_URL:?}
+      POSTGRES_HOST: chatwoot-postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: ${CHATWOOT_DB_PASSWORD:?}
+      POSTGRES_DATABASE: chatwoot
+      REDIS_URL: redis://:${CHATWOOT_REDIS_PASSWORD:?}@chatwoot-redis:6379
+      REDIS_PASSWORD: ${CHATWOOT_REDIS_PASSWORD:?}
+      RAILS_MAX_THREADS: '5'
+      SIDEKIQ_CONCURRENCY: '5'
+      CW_ADMIN_EMAIL: ${CHATWOOT_ADMIN_EMAIL:?}
+      CW_ADMIN_PASSWORD: ${CHATWOOT_ADMIN_PASSWORD:?}
+      CW_ACCOUNT_NAME: ${CHATWOOT_ACCOUNT_NAME:?}
+      CW_WEBHOOK_URL: ${PUBLIC_BOT_URL:?}/webhooks/chatwoot
+      CW_AGENT_EMAILS: ${CHATWOOT_AGENT_EMAILS:-}
+      CW_AGENT_PASSWORD: ${CHATWOOT_AGENT_PASSWORD:?}
+      CW_API_TOKEN: ${CHATWOOT_API_TOKEN:?}
+      CW_BOT_TOKEN: ${CHATWOOT_BOT_TOKEN:?}
+      CW_WEBHOOK_SECRET: ${CHATWOOT_WEBHOOK_SECRET:?}
+      CW_EXPECT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID:?}
+      CW_EXPECT_INBOX_ID: ${CHATWOOT_INBOX_ID:?}
+    configs:
+      - source: chatwoot_setup
+        target: /setup.rb
+    depends_on:
+      chatwoot-postgres:
+        condition: service_healthy
+      chatwoot-redis:
+        condition: service_healthy
+
+  chatwoot-rails:
+    image: chatwoot/chatwoot:v4.19.1-ce
+    restart: unless-stopped
+    mem_limit: 1024m
+    entrypoint: docker/entrypoints/rails.sh
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    environment: *chatwoot-env
+    volumes:
+      - chatwoot_storage:/app/storage
+    depends_on:
+      chatwoot-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO /dev/null http://127.0.0.1:3000/api']
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  chatwoot-sidekiq:
+    image: chatwoot/chatwoot:v4.19.1-ce
+    restart: unless-stopped
+    mem_limit: 1024m
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    environment: *chatwoot-env
+    volumes:
+      - chatwoot_storage:/app/storage
+    depends_on:
+      chatwoot-setup:
+        condition: service_completed_successfully
+
+  metabase-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: ${METABASE_DB_PASSWORD:?}
+      POSTGRES_DB: metabase
+    volumes:
+      - metabase_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U metabase -d metabase']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  metabase:
+    image: metabase/metabase:v0.65.3.7
+    restart: unless-stopped
+    mem_limit: 1536m
+    environment:
+      JAVA_OPTS: -Xms256m -Xmx768m -XX:MaxMetaspaceSize=512m
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: metabase-postgres
+      MB_DB_PORT: '5432'
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${METABASE_DB_PASSWORD:?}
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE_ENCRYPTION_KEY:?}
+      MB_SITE_URL: ${METABASE_PUBLIC_URL:?}
+      MB_ANON_TRACKING_ENABLED: 'false'
+    depends_on:
+      metabase-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fs http://127.0.0.1:3000/api/health']
+      interval: 20s
+      timeout: 10s
+      retries: 12
+      start_period: 120s
+
+configs:
+  chatwoot_setup:
+    content: |
+      admin_email = ENV.fetch('CW_ADMIN_EMAIL', 'admin@revgas.local')
+      account_name = ENV.fetch('CW_ACCOUNT_NAME', 'RevGás Local')
+      webhook = ENV.fetch('CW_WEBHOOK_URL', 'http://host.docker.internal:3100/webhooks/chatwoot')
+      agent_emails = ENV.fetch('CW_AGENT_EMAILS', '').split(',').map { |e| e.strip.downcase }.reject(&:empty?).uniq
+      agent_password = ENV['CW_AGENT_PASSWORD'].to_s
+      abort 'CW_AGENT_PASSWORD é obrigatória quando CW_AGENT_EMAILS não está vazia' if agent_emails.any? && agent_password.empty?
+
+      preset = { api: ENV['CW_API_TOKEN'].to_s, bot: ENV['CW_BOT_TOKEN'].to_s, secret: ENV['CW_WEBHOOK_SECRET'].to_s }
+      preset_mode = preset.values.none?(&:empty?)
+      abort 'Informe CW_API_TOKEN, CW_BOT_TOKEN e CW_WEBHOOK_SECRET juntas ou nenhuma' if !preset_mode && preset.values.any? { |v| !v.empty? }
+      abort 'CW_API_TOKEN e CW_BOT_TOKEN precisam ter ao menos 20 caracteres' if preset_mode && (preset[:api].length < 20 || preset[:bot].length < 20)
+      abort 'CW_WEBHOOK_SECRET precisa ter ao menos 16 caracteres' if preset_mode && preset[:secret].length < 16
+      abort 'CW_API_TOKEN e CW_BOT_TOKEN devem ser diferentes' if preset_mode && preset[:api] == preset[:bot]
+
+      ActiveRecord::Base.transaction do
+        user = User.find_by(email: admin_email)
+        unless user
+          password = ENV['CW_ADMIN_PASSWORD'].to_s
+          abort 'CW_ADMIN_PASSWORD é obrigatória quando o administrador ainda não existe' if password.empty?
+          user = User.new(name: 'Admin Local', email: admin_email, password: password, password_confirmation: password)
+          user.skip_confirmation!
+          user.save!
+        end
+        user.confirm if user.confirmed_at.nil?
+
+        account = Account.find_by(name: account_name) || Account.create!(name: account_name)
+        AccountUser.find_or_create_by!(account: account, user: user) { |au| au.role = :administrator }
+        au = AccountUser.find_by!(account: account, user: user)
+        au.update!(role: :administrator) unless au.administrator?
+
+        if account.custom_attributes.key?('onboarding_step')
+          account.custom_attributes.delete('onboarding_step')
+          account.save!
+        end
+
+        inbox = account.inboxes.find_by(name: 'WhatsApp Bot', channel_type: 'Channel::Api')
+        inbox ||= Inbox.create!(
+          account: account, name: 'WhatsApp Bot', enable_auto_assignment: false,
+          channel: Channel::Api.create!(account: account, webhook_url: webhook)
+        )
+        inbox.channel.update!(webhook_url: webhook) if inbox.channel.webhook_url != webhook
+        inbox.update!(enable_auto_assignment: false) if inbox.enable_auto_assignment
+
+        agent_emails.each do |email|
+          agent = User.find_by(email: email)
+          unless agent
+            agent = User.new(name: email.split('@').first, email: email, password: agent_password, password_confirmation: agent_password)
+            agent.skip_confirmation!
+            agent.save!
+          end
+          agent.confirm if agent.confirmed_at.nil?
+          AccountUser.find_or_create_by!(account: account, user: agent) { |a| a.role = :agent }
+          InboxMember.find_or_create_by!(inbox: inbox, user: agent)
+        end
+
+        bot = AgentBot.find_by(account_id: account.id, name: 'RevGás Bot') ||
+              AgentBot.create!(account: account, name: 'RevGás Bot', description: 'Remetente das mensagens do bot (local)')
+
+        ::Redis::Alfred.delete(::Redis::Alfred::CHATWOOT_INSTALLATION_ONBOARDING)
+
+        if preset_mode
+          user.access_token.update!(token: preset[:api]) unless user.access_token.token == preset[:api]
+          bot.access_token.update!(token: preset[:bot]) unless bot.access_token.token == preset[:bot]
+          inbox.channel.update!(secret: preset[:secret]) unless inbox.channel.secret == preset[:secret]
+
+          { 'CW_EXPECT_ACCOUNT_ID' => account.id, 'CW_EXPECT_INBOX_ID' => inbox.id }.each do |name, actual|
+            expected = ENV[name].to_s
+            abort "#{name}=#{expected} difere do id real #{actual}" if !expected.empty? && expected != actual.to_s
+          end
+
+          puts "OUT:CHATWOOT_ACCOUNT_ID=#{account.id}"
+          puts "OUT:CHATWOOT_INBOX_ID=#{inbox.id}"
+        else
+          puts 'OUT:CHATWOOT_MODE=live'
+          puts "OUT:CHATWOOT_ACCOUNT_ID=#{account.id}"
+          puts "OUT:CHATWOOT_INBOX_ID=#{inbox.id}"
+          puts "OUT:CHATWOOT_API_TOKEN=#{user.access_token.token}"
+          puts "OUT:CHATWOOT_BOT_TOKEN=#{bot.access_token.token}"
+          puts "OUT:CHATWOOT_WEBHOOK_SECRET=#{inbox.channel.reload.secret}"
+        end
+      end
+      puts "COUNTS accounts=#{Account.count} users=#{User.count} account_users=#{AccountUser.count} inboxes=#{Inbox.count} inbox_members=#{InboxMember.count} bots=#{AgentBot.count}"
+  metrics_reader_sql:
+    content: |
+      \getenv pass METRICS_READER_PASSWORD
+      \getenv DBNAME PGDATABASE
+      SELECT 'CREATE ROLE metrics_reader LOGIN' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'metrics_reader')\gexec
+      ALTER ROLE metrics_reader LOGIN PASSWORD :'pass' CONNECTION LIMIT 10;
+      ALTER ROLE metrics_reader SET statement_timeout = '10s';
+      GRANT CONNECT ON DATABASE :"DBNAME" TO metrics_reader;
+      GRANT USAGE ON SCHEMA public TO metrics_reader;
+      GRANT SELECT ON TABLE public.bot_events TO metrics_reader;
+      GRANT SELECT (id, cycle_id, status, total_cents, product_code, payment_method_code, customer_segment, error_kind, is_simulated, created_at, updated_at) ON TABLE public.sale_attempts TO metrics_reader;
+
+volumes:
+  postgres_data:
+  redis_data:
+  chatwoot_pg_data:
+  chatwoot_redis_data:
+  chatwoot_storage:
+  metabase_pg_data:
