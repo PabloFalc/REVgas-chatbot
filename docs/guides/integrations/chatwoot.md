@@ -132,6 +132,8 @@ Variáveis do setup:
 | `CW_WEBHOOK_URL` | `http://host.docker.internal:3100/webhooks/chatwoot` | Em produção, a URL pública do bot. |
 | `CW_AGENT_EMAILS` | vazio | Lista separada por vírgula. Cria cada atendente com papel `agent`, e-mail confirmado, e o adiciona à caixa. Vazio não cria ninguém. |
 | `CW_AGENT_PASSWORD` | sem padrão | Senha inicial dos atendentes novos; obrigatória se `CW_AGENT_EMAILS` não for vazia. |
+| `CW_API_TOKEN`, `CW_BOT_TOKEN`, `CW_WEBHOOK_SECRET` | sem padrão | Informe as três juntas para gravar esses valores como token do administrador, token do Agent Bot e segredo da caixa (mínimo de 20, 20 e 16 caracteres). Nesse modo o script não imprime segredos, só `CHATWOOT_ACCOUNT_ID` e `CHATWOOT_INBOX_ID`. Usado no deploy: [deploy.md](../conventions/deploy.md). |
+| `CW_EXPECT_ACCOUNT_ID`, `CW_EXPECT_INBOX_ID` | vazio | Opcionais, só no modo acima. Se o id real for outro, o script aborta e desfaz a transação. |
 
 O Chatwoot exige senha com maiúscula, minúscula, número e caractere especial. Atendente que já existe
 mantém a senha e o papel atuais. Peça para cada um trocar a senha no primeiro acesso.
@@ -141,8 +143,9 @@ O script imprime linhas `OUT:CHAVE=valor`. Copie-as para o `.env` do bot sem o p
 `CHATWOOT_BOT_TOKEN`, `CHATWOOT_WEBHOOK_SECRET`) e reinicie o bot. Elas têm tokens: não as cole em
 chat, issue nem log. Para filtrar só as linhas, adicione `| grep '^OUT:'` ao comando.
 
-Para um deploy, rode o mesmo script no contêiner Rails de lá, com `CW_WEBHOOK_URL` apontando para o
-bot.
+Para um deploy, o compose de produção roda o mesmo script no serviço `chatwoot-setup`, com `CW_WEBHOOK_URL`
+apontando para o bot ([deploy.md](../conventions/deploy.md)). Depois de mudar `setup.rb`, rode
+`node scripts/deploy/sync-chatwoot-setup.mjs` para atualizar a cópia embutida em `docker/compose.prod.yaml`.
 
 ### Configuração manual (alternativa)
 

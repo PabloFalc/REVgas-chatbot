@@ -5,6 +5,13 @@ agent_emails = ENV.fetch('CW_AGENT_EMAILS', '').split(',').map { |e| e.strip.dow
 agent_password = ENV['CW_AGENT_PASSWORD'].to_s
 abort 'CW_AGENT_PASSWORD é obrigatória quando CW_AGENT_EMAILS não está vazia' if agent_emails.any? && agent_password.empty?
 
+preset = { api: ENV['CW_API_TOKEN'].to_s, bot: ENV['CW_BOT_TOKEN'].to_s, secret: ENV['CW_WEBHOOK_SECRET'].to_s }
+preset_mode = preset.values.none?(&:empty?)
+abort 'Informe CW_API_TOKEN, CW_BOT_TOKEN e CW_WEBHOOK_SECRET juntas ou nenhuma' if !preset_mode && preset.values.any? { |v| !v.empty? }
+abort 'CW_API_TOKEN e CW_BOT_TOKEN precisam ter ao menos 20 caracteres' if preset_mode && (preset[:api].length < 20 || preset[:bot].length < 20)
+abort 'CW_WEBHOOK_SECRET precisa ter ao menos 16 caracteres' if preset_mode && preset[:secret].length < 16
+abort 'CW_API_TOKEN e CW_BOT_TOKEN devem ser diferentes' if preset_mode && preset[:api] == preset[:bot]
+
 ActiveRecord::Base.transaction do
   user = User.find_by(email: admin_email)
   unless user
@@ -51,11 +58,25 @@ ActiveRecord::Base.transaction do
 
   ::Redis::Alfred.delete(::Redis::Alfred::CHATWOOT_INSTALLATION_ONBOARDING)
 
-  puts 'OUT:CHATWOOT_MODE=live'
-  puts "OUT:CHATWOOT_ACCOUNT_ID=#{account.id}"
-  puts "OUT:CHATWOOT_INBOX_ID=#{inbox.id}"
-  puts "OUT:CHATWOOT_API_TOKEN=#{user.access_token.token}"
-  puts "OUT:CHATWOOT_BOT_TOKEN=#{bot.access_token.token}"
-  puts "OUT:CHATWOOT_WEBHOOK_SECRET=#{inbox.channel.reload.secret}"
+  if preset_mode
+    user.access_token.update!(token: preset[:api]) unless user.access_token.token == preset[:api]
+    bot.access_token.update!(token: preset[:bot]) unless bot.access_token.token == preset[:bot]
+    inbox.channel.update!(secret: preset[:secret]) unless inbox.channel.secret == preset[:secret]
+
+    { 'CW_EXPECT_ACCOUNT_ID' => account.id, 'CW_EXPECT_INBOX_ID' => inbox.id }.each do |name, actual|
+      expected = ENV[name].to_s
+      abort "#{name}=#{expected} difere do id real #{actual}" if !expected.empty? && expected != actual.to_s
+    end
+
+    puts "OUT:CHATWOOT_ACCOUNT_ID=#{account.id}"
+    puts "OUT:CHATWOOT_INBOX_ID=#{inbox.id}"
+  else
+    puts 'OUT:CHATWOOT_MODE=live'
+    puts "OUT:CHATWOOT_ACCOUNT_ID=#{account.id}"
+    puts "OUT:CHATWOOT_INBOX_ID=#{inbox.id}"
+    puts "OUT:CHATWOOT_API_TOKEN=#{user.access_token.token}"
+    puts "OUT:CHATWOOT_BOT_TOKEN=#{bot.access_token.token}"
+    puts "OUT:CHATWOOT_WEBHOOK_SECRET=#{inbox.channel.reload.secret}"
+  end
 end
 puts "COUNTS accounts=#{Account.count} users=#{User.count} account_users=#{AccountUser.count} inboxes=#{Inbox.count} inbox_members=#{InboxMember.count} bots=#{AgentBot.count}"
