@@ -3,6 +3,7 @@ import {
   CpfTakenError,
   CustomerRejectedError,
 } from 'src/modules/customer/contracts/customer.types';
+import type { HandoffOutcome } from 'src/modules/handoff/contracts/handoff.types';
 import type { SaleAttemptStatus } from 'src/modules/order/contracts/order.types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runFlow } from './flow';
@@ -119,6 +120,30 @@ describe('runFlow', () => {
     );
     expect(result.state).toEqual(state);
     expect(result.replies).toEqual([text(msg.unavailable)]);
+  });
+
+  it('trata indisponibilidade do Chatwoot sem afirmar ticket aberto', async () => {
+    const state: OrderState = { step: 'choosePayment', customer: { id: 1 } };
+    const requestHandoff = vi.fn(
+      async (): Promise<HandoffOutcome> => ({
+        status: 'unavailable',
+        open: false,
+        nextOpening: null,
+      }),
+    );
+    const tools = createFakeTools({ requestHandoff });
+    const result = await runFlow(
+      state,
+      { phone: FAKE_PHONE, content: { type: 'choice', id: HANDOFF_CHOICE, title: 'Atendente' } },
+      tools,
+    );
+    expect(result.state).toEqual(state);
+    expect(result.replies).toEqual([text(msg.talkToStore(tools.storePhone))]);
+    const sent = JSON.stringify(result.replies);
+    expect(sent).not.toContain(msg.handoffQueued);
+    expect(sent).not.toContain(msg.handoffAlreadyQueued);
+    expect(sent).not.toContain('Estamos fechados');
+    expect(requestHandoff).toHaveBeenCalledOnce();
   });
 
   it('mantém estado anterior ao falhar a consulta de preço', async () => {
