@@ -68,6 +68,35 @@ export const TRANSLATIONS = {
     question: 'Pergunta do cliente',
     sem_motivo: 'Sem finalidade registrada',
   },
+  statusVenda: {
+    uncertain: 'Resultado incerto',
+    failed: 'Falha ao registrar',
+    rejected: 'Recusada pelo sistema de vendas',
+  },
+  erroVenda: {
+    validation: 'Dados do pedido recusados',
+    timeout: 'Sem resposta a tempo',
+    server_error: 'Erro no sistema de vendas',
+    network: 'Falha de rede',
+    invalid_response: 'Resposta inválida',
+    stale: 'Tentativa antiga sem conclusão',
+    restart: 'Reinício do bot durante o registro',
+    unauthorized: 'Acesso não autorizado',
+    blocked: 'Acesso bloqueado',
+    forbidden: 'Operação proibida',
+    not_found: 'Item não encontrado',
+    unavailable: 'Sistema de vendas indisponível',
+    duplicate: 'Pedido duplicado',
+    unexpected: 'Erro inesperado',
+    sem_categoria: 'Sem categoria registrada',
+  },
+  categoriaResolucao: {
+    automatica: 'Resolvida só pelo bot',
+    mista: 'Bot e atendente',
+    por_humano: 'Resolvida só por atendente',
+    abandonada: 'Abandonada',
+    pendente: 'Em andamento',
+  },
   resultadoRag: {
     answered: 'Pergunta respondida',
     no_match: 'Sem trecho parecido na base',
@@ -128,6 +157,77 @@ export const VIEWS = {
     ],
     orderBy: 'base.eventos DESC',
   },
+  'gestor-recompra': {
+    columns: [
+      { from: 'pedidos_recorrentes', as: 'Pedidos de clientes recorrentes' },
+      { from: 'pedidos_novos', as: 'Pedidos de clientes novos' },
+      { from: 'pedidos_sem_segmento', as: 'Pedidos sem classificação do cliente' },
+      { from: 'recompra_pct', as: 'Recompra (%)' },
+    ],
+  },
+  'gestor-mix': {
+    columns: [
+      { from: 'product_code', as: 'Produto (código)' },
+      { from: 'payment_method_code', as: 'Forma de pagamento (código)' },
+      { from: 'pedidos', as: 'Pedidos' },
+      { from: 'valor_brl', as: 'Valor (R$)' },
+      {
+        id: 'participacao_pct',
+        from: 'pedidos',
+        expr: 'round(100.0 * base.pedidos / nullif(sum(base.pedidos) OVER (), 0), 1)',
+        as: 'Participação nos pedidos (%)',
+      },
+    ],
+    orderBy: 'base.pedidos DESC, base.product_code, base.payment_method_code',
+  },
+  'gestor-pico': {
+    columns: [
+      { from: 'hora_utc', as: 'Hora do dia (UTC)' },
+      { from: 'intencoes', as: 'Compras iniciadas' },
+    ],
+    orderBy: 'base.hora_utc',
+  },
+  'supervisor-expirados': {
+    columns: [
+      { from: 'motivo', as: 'Motivo', translate: 'motivoHandoff' },
+      { from: 'expirados', as: 'Expirados sem atendimento' },
+      { from: 'pedidos_transferidos', as: 'Transferências pedidas' },
+      { from: 'duracao_expiracao_p50_seg', as: 'Mediana até expirar (s)' },
+    ],
+    orderBy: 'base.expirados DESC, base.motivo',
+  },
+  'supervisor-fila': {
+    columns: [
+      { from: 'snapshot_em_utc', as: 'Fotografia da fila em (UTC)', format: 'datetime' },
+      { from: 'fila_pendente', as: 'Conversas na fila' },
+    ],
+  },
+  'supervisor-resolucao': {
+    columns: [
+      { from: 'categoria', as: 'Como terminou', translate: 'categoriaResolucao' },
+      { from: 'ciclos', as: 'Compras' },
+      { from: 'percentual', as: 'Percentual dos encerrados (%)' },
+    ],
+    orderBy: 'base.ciclos DESC, base.categoria',
+  },
+  'tecnico-erp': {
+    columns: [
+      { from: 'status', as: 'Situação', translate: 'statusVenda' },
+      { from: 'error_kind', as: 'Causa', translate: 'erroVenda', nullAs: 'sem_categoria' },
+      { from: 'tentativas', as: 'Tentativas' },
+    ],
+    orderBy: 'base.tentativas DESC, base.status, base.error_kind',
+  },
+  'tecnico-latencia-ia': {
+    columns: [
+      { from: 'dia_utc', as: 'Dia', format: 'date' },
+      { from: 'turno_p50_ms', as: 'Tempo mediano do turno (ms)' },
+      { from: 'turno_p90_ms', as: 'Tempo do turno em 90% dos casos (ms)' },
+      { from: 'chamadas_ia', as: 'Chamadas de IA' },
+      { from: 'chamadas_limitadas', as: 'Chamadas de IA bloqueadas pelo limite' },
+    ],
+    orderBy: 'base.dia_utc',
+  },
   'tecnico-latencia': {
     columns: [
       { from: 'dia', as: 'Dia', format: 'date' },
@@ -167,8 +267,9 @@ function quoteName(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
 }
 
-function columnExpression({ from, as, translate }) {
-  const source = `base.${from}`;
+function columnExpression({ from, as, translate, expr, nullAs }) {
+  if (expr) return `${expr} AS ${quoteName(as)}`;
+  const source = nullAs ? `coalesce(base.${from}, ${quoteText(nullAs)})` : `base.${from}`;
   const labels = translate ? TRANSLATIONS[translate] : undefined;
   if (!labels) return `${source} AS ${quoteName(as)}`;
   const whens = Object.entries(labels)
@@ -187,7 +288,9 @@ export function wrapSql(sql, view) {
 }
 
 function label(sqlFile, from) {
-  const column = VIEWS[sqlFile].columns.find(candidate => candidate.from === from);
+  const column = VIEWS[sqlFile].columns.find(
+    candidate => (candidate.id ?? candidate.from) === from,
+  );
   if (!column) throw new Error(`Coluna "${from}" não existe na visão de "${sqlFile}".`);
   return column.as;
 }
@@ -228,6 +331,19 @@ function chart(
   );
   settings.column_settings = { ...dateColumnSettings(sqlFile), ...numbers };
   return { sqlFile, display, settings };
+}
+
+function table(sqlFile, numbers) {
+  const fields = numbers.map(from => label(sqlFile, from));
+  const settings = {
+    column_settings: {
+      ...dateColumnSettings(sqlFile),
+      ...Object.fromEntries(
+        fields.map(field => [`["name","${field}"]`, { ...NUMBER, decimals: 0 }]),
+      ),
+    },
+  };
+  return { sqlFile, display: 'table', settings };
 }
 
 export const CARDS = [
@@ -291,6 +407,42 @@ export const CARDS = [
     }),
   },
   {
+    name: 'gestor-recompra',
+    title: 'Recompra (pedidos de clientes recorrentes)',
+    collection: 'Gestor',
+    ...scalar('gestor-recompra', 'recompra_pct', PERCENT),
+  },
+  {
+    name: 'gestor-mix',
+    title: 'Pedidos por produto e forma de pagamento',
+    collection: 'Gestor',
+    ...chart('gestor-mix', 'bar', {
+      dimensions: ['product_code', 'payment_method_code'],
+      metrics: ['pedidos'],
+      xTitle: 'Produto (código)',
+      yTitle: 'Pedidos registrados',
+      extra: {
+        [STACKED]: 'stacked',
+        'graph.tooltip_columns': [
+          label('gestor-mix', 'valor_brl'),
+          label('gestor-mix', 'participacao_pct'),
+        ],
+      },
+    }),
+  },
+  {
+    name: 'gestor-pico',
+    title: 'Horário de pico das compras (UTC)',
+    collection: 'Gestor',
+    ...chart('gestor-pico', 'bar', {
+      dimensions: ['hora_utc'],
+      metrics: ['intencoes'],
+      xTitle: 'Hora do dia (UTC)',
+      yTitle: 'Compras iniciadas',
+      extra: { [ORDINAL]: 'ordinal' },
+    }),
+  },
+  {
     name: 'supervisor-espera',
     title: 'Espera até um atendente assumir (mediana)',
     collection: 'Supervisor',
@@ -312,6 +464,38 @@ export const CARDS = [
       xTitle: 'Motivo',
       yTitle: 'Ocorrências',
       extra: { [STACKED]: 'stacked' },
+    }),
+  },
+  {
+    name: 'supervisor-fila',
+    title: 'Conversas na fila de atendimento (última fotografia)',
+    collection: 'Supervisor',
+    ...scalar('supervisor-fila', 'fila_pendente'),
+  },
+  {
+    name: 'supervisor-expirados',
+    title: 'Transferências pedidas e expiradas por motivo',
+    collection: 'Supervisor',
+    ...chart('supervisor-expirados', 'bar', {
+      dimensions: ['motivo'],
+      metrics: ['pedidos_transferidos', 'expirados'],
+      xTitle: 'Motivo',
+      yTitle: 'Transferências',
+      extra: {
+        'graph.tooltip_columns': [label('supervisor-expirados', 'duracao_expiracao_p50_seg')],
+      },
+    }),
+  },
+  {
+    name: 'supervisor-resolucao',
+    title: 'Como as compras terminaram',
+    collection: 'Supervisor',
+    ...chart('supervisor-resolucao', 'bar', {
+      dimensions: ['categoria'],
+      metrics: ['ciclos'],
+      xTitle: 'Como terminou',
+      yTitle: 'Compras',
+      extra: { 'graph.tooltip_columns': [label('supervisor-resolucao', 'percentual')] },
     }),
   },
   {
@@ -351,6 +535,29 @@ export const CARDS = [
       extra: { [STACKED]: 'stacked', [ORDINAL]: 'ordinal' },
     }),
   },
+  {
+    name: 'tecnico-erp',
+    title: 'Falhas e incertezas ao registrar vendas',
+    collection: 'Técnico',
+    ...chart('tecnico-erp', 'bar', {
+      dimensions: ['error_kind', 'status'],
+      metrics: ['tentativas'],
+      xTitle: 'Causa',
+      yTitle: 'Tentativas sem registro',
+      extra: { [STACKED]: 'stacked' },
+    }),
+  },
+  {
+    name: 'tecnico-latencia-ia',
+    title: 'Tempo de resposta e uso de IA por dia',
+    collection: 'Técnico',
+    ...table('tecnico-latencia-ia', [
+      'turno_p50_ms',
+      'turno_p90_ms',
+      'chamadas_ia',
+      'chamadas_limitadas',
+    ]),
+  },
 ];
 
 const MONEY_WARNING =
@@ -389,6 +596,9 @@ export const LEGENDS = {
       'Conversão total: o mesmo cálculo, incluindo as compras iniciadas nas últimas 24 horas.',
       'Compras por dia: quantas compras o bot iniciou, quantas chegaram ao resumo do pedido e quantas viraram venda registrada.',
       'Abandono por última etapa: compras iniciadas há mais de 24 horas que ficaram sem desfecho, agrupadas pela etapa em que a conversa parou.',
+      'Recompra: percentual dos pedidos registrados que vieram de clientes que já tinham comprado antes. Pedidos sem essa classificação ficam fora da conta.',
+      'Pedidos por produto e forma de pagamento: quantos pedidos foram registrados para cada produto e como foram pagos. Ao passar o mouse aparecem o valor e a participação no total. Produto e pagamento aparecem pelo código, até a revenda definir os nomes.',
+      'Horário de pico: em que hora do dia as compras começam, no horário de Greenwich (UTC), porque a revenda ainda não definiu o fuso da operação. O gráfico soma todos os dias do período, sem separar por dia da semana.',
     ],
     [
       'A conversão madura considera só as intenções com mais de 24 horas, para não contar como perdida uma compra que ainda pode ser concluída.',
@@ -403,6 +613,9 @@ export const LEGENDS = {
       'Transferido para atendente: o bot passou a conversa para uma pessoa.',
       'Transferência oferecida: o bot sugeriu a transferência ao cliente, por cliente sem avançar no pedido ou por ofensa.',
       'Motivos: pedido do cliente, emergência, falha ou recusa ao registrar a venda, resultado da venda incerto, cancelamento de venda, limite de quantidade e falha na confirmação de identidade.',
+      'Conversas na fila: quantas conversas esperavam um atendente na última fotografia da fila, tirada de tempos em tempos. Não é a fila ao vivo do atendimento.',
+      'Transferências pedidas e expiradas: para cada motivo, quantas transferências foram pedidas e quantas expiraram sem que um atendente assumisse.',
+      'Como as compras terminaram: só o bot, bot e atendente, só atendente, abandonada ou em andamento. O percentual vale para as compras já encerradas, sem as em andamento.',
     ],
     [
       'Os tempos de espera são medidos, mas a revenda ainda não definiu uma meta. Os números mostram a situação real e não indicam se ela está boa ou ruim.',
@@ -411,9 +624,11 @@ export const LEGENDS = {
   Técnico: legend(
     'Como ler este painel',
     [
-      'Latência do turno: tempo que o bot leva para processar cada mensagem do cliente, em milissegundos (1000 ms é 1 segundo). A mediana é o tempo típico. O percentil 95 é o tempo que 95% dos turnos não passam.',
+      'Tempo de resposta do bot por dia: tempo que o bot leva para processar cada mensagem do cliente, em milissegundos (1000 ms é 1 segundo). A mediana é o tempo típico. O percentil 95 é o tempo que 95% dos turnos não passam.',
       'Chamadas de IA por hora: quantas vezes o bot consultou o modelo de linguagem, separadas pela finalidade (interpretar a mensagem, ler nome, ler endereço ou responder pergunta). Entram chamadas permitidas e bloqueadas pelo limite de uso.',
       'Chamadas à base de conhecimento por dia: perguntas do cliente que o bot tentou responder com a base de conteúdo da revenda, separadas pelo resultado. "Pergunta respondida" é o resultado esperado. Os demais indicam que o bot não soube responder.',
+      'Falhas e incertezas ao registrar vendas: tentativas de venda que não foram registradas, por causa e situação (resultado incerto, falha ou recusa). Não inclui o texto da resposta do sistema de vendas.',
+      'Tempo de resposta e uso de IA por dia: tabela com o tempo mediano e o tempo de 90% dos turnos, as chamadas de IA e quantas foram bloqueadas pelo limite de uso. O dia é contado em UTC.',
     ],
     [
       'Os tempos são medidos, mas não há meta definida. Servem para acompanhar mudanças ao longo dos dias.',
@@ -476,7 +691,31 @@ export const DASHBOARDS = [
         sizeX: 24,
         sizeY: 8,
       },
-      { text: LEGENDS.Gestor, col: 0, row: 22, sizeX: 24, sizeY: textHeight(LEGENDS.Gestor) },
+      {
+        card: 'gestor-recompra',
+        title: 'Recompra (pedidos de clientes recorrentes)',
+        col: 0,
+        row: 22,
+        sizeX: 24,
+        sizeY: 3,
+      },
+      {
+        card: 'gestor-mix',
+        title: 'Pedidos por produto e forma de pagamento',
+        col: 0,
+        row: 25,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        card: 'gestor-pico',
+        title: 'Horário de pico das compras (UTC)',
+        col: 0,
+        row: 33,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      { text: LEGENDS.Gestor, col: 0, row: 41, sizeX: 24, sizeY: textHeight(LEGENDS.Gestor) },
     ],
   },
   {
@@ -508,9 +747,33 @@ export const DASHBOARDS = [
         sizeY: 8,
       },
       {
-        text: LEGENDS.Supervisor,
+        card: 'supervisor-fila',
+        title: 'Conversas na fila de atendimento (última fotografia)',
         col: 0,
         row: 11,
+        sizeX: 24,
+        sizeY: 3,
+      },
+      {
+        card: 'supervisor-expirados',
+        title: 'Transferências pedidas e expiradas por motivo',
+        col: 0,
+        row: 14,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        card: 'supervisor-resolucao',
+        title: 'Como as compras terminaram',
+        col: 0,
+        row: 22,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        text: LEGENDS.Supervisor,
+        col: 0,
+        row: 30,
         sizeX: 24,
         sizeY: textHeight(LEGENDS.Supervisor),
       },
@@ -544,7 +807,23 @@ export const DASHBOARDS = [
         sizeX: 24,
         sizeY: 8,
       },
-      { text: LEGENDS.Técnico, col: 0, row: 24, sizeX: 24, sizeY: textHeight(LEGENDS.Técnico) },
+      {
+        card: 'tecnico-erp',
+        title: 'Falhas e incertezas ao registrar vendas',
+        col: 0,
+        row: 24,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      {
+        card: 'tecnico-latencia-ia',
+        title: 'Tempo de resposta e uso de IA por dia',
+        col: 0,
+        row: 32,
+        sizeX: 24,
+        sizeY: 8,
+      },
+      { text: LEGENDS.Técnico, col: 0, row: 40, sizeX: 24, sizeY: textHeight(LEGENDS.Técnico) },
     ],
   },
 ];
@@ -567,7 +846,10 @@ const VARIABLES = {
     tagDefault: 'nao',
     parameterType: 'string/=',
     parameterDefault: ['nao'],
-    values: ['nao', 'sim'],
+    values: [
+      ['nao', 'Não'],
+      ['sim', 'Sim'],
+    ],
   },
 };
 

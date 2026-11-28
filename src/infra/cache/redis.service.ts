@@ -156,6 +156,17 @@ export class RedisService implements ICacheClient, OnApplicationShutdown {
     }
   }
 
+  async scanKeys(prefix: string): Promise<string[]> {
+    const found: string[] = [];
+    let cursor = '0';
+    do {
+      const [next, keys] = await this.redis.scan(cursor, 'MATCH', `${prefix}:*`, 'COUNT', 100);
+      found.push(...keys);
+      cursor = next;
+    } while (cursor !== '0');
+    return [...new Set(found)];
+  }
+
   withPrefix(prefix: string): ICacheClient {
     return {
       get: params => this.get({ ...params, prefix }),

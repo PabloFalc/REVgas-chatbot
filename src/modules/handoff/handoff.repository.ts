@@ -6,6 +6,7 @@ export const HANDOFF_PREFIX = 'handoff:state';
 export const THREAD_PREFIX = 'handoff:thread';
 export const CONTACT_PREFIX = 'handoff:contact';
 export const DESK_EVENT_PREFIX = 'handoff:desk-event';
+export const QUEUE_SNAPSHOT_PREFIX = 'metrics:queue-snapshot';
 
 const STATE_TTL_SECONDS = 604_800;
 const THREAD_TTL_SECONDS = 604_800;
@@ -31,6 +32,26 @@ export class HandoffRepository {
 
   clearState(phone: string): Promise<void> {
     return this.cache.delete({ prefix: HANDOFF_PREFIX, key: phone });
+  }
+
+  async listStates(): Promise<HandoffState[]> {
+    const keys = await this.cache.scanKeys(HANDOFF_PREFIX);
+    const states: HandoffState[] = [];
+    for (const fullKey of keys) {
+      const key = fullKey.slice(HANDOFF_PREFIX.length + 1);
+      const state = await this.cache.get<HandoffState>({ prefix: HANDOFF_PREFIX, key });
+      if (state) states.push(state);
+    }
+    return states;
+  }
+
+  claimQueueSnapshot(ttlSeconds: number): Promise<boolean> {
+    return this.cache.setIfAbsent({
+      prefix: QUEUE_SNAPSHOT_PREFIX,
+      key: 'tick',
+      value: 1,
+      ttl: ttlSeconds,
+    });
   }
 
   getThread(phone: string): Promise<DeskThread | null> {

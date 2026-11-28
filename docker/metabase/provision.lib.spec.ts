@@ -114,14 +114,19 @@ describe('buildParameters', () => {
     expect(porSlug.dias).toMatchObject({ type: 'number/=', required: true, default: 30 });
   });
 
-  it('incluir_simulados tem lista fixa nao e sim', () => {
+  it('incluir_simulados tem lista fixa com valor nao/sim e rótulo Não/Sim', () => {
     expect(porSlug.incluir_simulados).toMatchObject({
       type: 'string/=',
       required: true,
       default: ['nao'],
       values_query_type: 'list',
       values_source_type: 'static-list',
-      values_source_config: { values: ['nao', 'sim'] },
+      values_source_config: {
+        values: [
+          ['nao', 'Não'],
+          ['sim', 'Sim'],
+        ],
+      },
     });
   });
 });
@@ -274,12 +279,14 @@ describe('catálogo de cards e dashboards', () => {
     expect([...names].sort()).toEqual([...used].sort());
   });
 
-  it('cria o dashboard Técnico com latência, IA e RAG', () => {
+  it('cria o dashboard Técnico com latência, IA, RAG, erros de venda e tabela diária', () => {
     const tecnico = DASHBOARDS.find(dashboard => dashboard.name === 'Técnico');
     expect(tecnico?.cards.flatMap(item => (item.card ? [item.card] : []))).toEqual([
       'tecnico-latencia',
       'tecnico-ia',
       'tecnico-rag',
+      'tecnico-erp',
+      'tecnico-latencia-ia',
     ]);
   });
 
@@ -288,10 +295,15 @@ describe('catálogo de cards e dashboards', () => {
     expect(grafico.map(card => card.name)).toEqual([
       'gestor-funil-diario',
       'gestor-abandono',
+      'gestor-mix',
+      'gestor-pico',
       'supervisor-handoffs',
+      'supervisor-expirados',
+      'supervisor-resolucao',
       'tecnico-latencia',
       'tecnico-ia',
       'tecnico-rag',
+      'tecnico-erp',
     ]);
     for (const card of grafico) {
       expect(card.settings['graph.dimensions'].length).toBeGreaterThan(0);
@@ -350,7 +362,12 @@ describe('dashboard', () => {
       type: 'string/=',
       default: ['nao'],
       values_source_type: 'static-list',
-      values_source_config: { values: ['nao', 'sim'] },
+      values_source_config: {
+        values: [
+          ['nao', 'Não'],
+          ['sim', 'Sim'],
+        ],
+      },
     });
   });
 
@@ -602,6 +619,22 @@ describe('traduções', () => {
     expect(TRANSLATIONS.tipoHandoff).toHaveProperty('handoff_offered');
   });
 
+  it('toda causa de erro de venda, situação e categoria de resolução tem rótulo', () => {
+    const causas = uniao(
+      SRC('modules/order/contracts/order.types.ts'),
+      /export type SaleAttemptErrorKind =/,
+    );
+    expect(causas).toHaveLength(14);
+    for (const causa of causas) expect(TRANSLATIONS.erroVenda, causa).toHaveProperty(causa);
+    expect(TRANSLATIONS.erroVenda).toHaveProperty('sem_categoria');
+    for (const status of ['uncertain', 'failed', 'rejected']) {
+      expect(TRANSLATIONS.statusVenda).toHaveProperty(status);
+    }
+    for (const categoria of ['automatica', 'mista', 'por_humano', 'abandonada', 'pendente']) {
+      expect(TRANSLATIONS.categoriaResolucao).toHaveProperty(categoria);
+    }
+  });
+
   it('cobre os valores de reserva dos SQLs', () => {
     expect(TRANSLATIONS.etapa).toHaveProperty('unknown');
     expect(TRANSLATIONS.motivoHandoff).toHaveProperty('sem_motivo');
@@ -648,6 +681,16 @@ describe('wrapSql', () => {
     expect(extractTemplateTagNames(sql)).toEqual(['dias']);
   });
 
+  it('calcula coluna derivada e troca nulo por categoria antes de traduzir', () => {
+    const derivada = wrapSql('SELECT 1', VIEWS['gestor-mix']);
+    expect(derivada).toContain(
+      'round(100.0 * base.pedidos / nullif(sum(base.pedidos) OVER (), 0), 1) AS "Participação nos pedidos (%)"',
+    );
+    const erp = wrapSql('SELECT 1', VIEWS['tecnico-erp']);
+    expect(erp).toContain("CASE coalesce(base.error_kind, 'sem_categoria') WHEN");
+    expect(erp).toContain("THEN 'Sem categoria registrada'");
+  });
+
   it('escapa aspas simples nos rótulos', () => {
     const grupo: Record<string, string> = TRANSLATIONS.etapa;
     grupo.__teste = "d'água";
@@ -665,7 +708,10 @@ describe('wrapSql', () => {
     ][]) {
       const original = sqlCanonico(arquivo);
       for (const coluna of visao.columns) {
-        const procurada = new RegExp(`\\bAS ${coluna.from}\\b|\\bSELECT ${coluna.from}\\b`);
+        const procurada = new RegExp(
+          `\\bAS ${coluna.from}\\b|\\bSELECT ${coluna.from}\\b|^\\s*${coluna.from},?\\s*$`,
+          'm',
+        );
         expect(original, `${arquivo}.${coluna.from}`).toMatch(procurada);
         if ('translate' in coluna) expect(TRANSLATIONS).toHaveProperty(coluna.translate as string);
       }
@@ -815,16 +861,16 @@ describe('ajustes visuais', () => {
     for (const item of legendas) {
       const linhas = String(item?.text).split('\n').length;
       expect(item?.sizeY).toBe(textHeight(item?.text));
-      expect(item?.sizeY as number).toBeLessThanOrEqual(13);
+      expect(item?.sizeY as number).toBeLessThanOrEqual(16);
       expect(item?.sizeY as number).toBeGreaterThanOrEqual(Math.ceil(linhas / 2.5));
     }
   });
 
-  it('alturas calibradas pela medida real das telas', () => {
+  it('alturas da legenda seguem a fórmula de textHeight', () => {
     const alturas = Object.fromEntries(
       DASHBOARDS.map(d => [d.name, d.cards.find(item => item.text)?.sizeY]),
     );
-    expect(alturas).toEqual({ Gestor: 12, Supervisor: 10, Técnico: 10 });
+    expect(alturas).toEqual({ Gestor: 16, Supervisor: 13, Técnico: 12 });
   });
 
   it('hora usa HH:mm para não mostrar 24:00', () => {
@@ -838,9 +884,12 @@ describe('ajustes visuais', () => {
         string,
         { number_separators?: string }
       >;
-      const alvos = card.settings['scalar.field']
-        ? [card.settings['scalar.field']]
-        : card.settings['graph.metrics'];
+      const alvos =
+        card.display === 'table'
+          ? []
+          : card.settings['scalar.field']
+            ? [card.settings['scalar.field']]
+            : card.settings['graph.metrics'];
       for (const campo of alvos) {
         expect(colunas[`["name","${campo}"]`]?.number_separators, `${card.name}.${campo}`).toBe(
           ',.',

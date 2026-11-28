@@ -305,20 +305,26 @@ describe('FlowToolsService métricas', () => {
     const { service, events, orders } = setup();
     const tools = service.forPhone(PHONE, async () => undefined, 'cycle');
     await expect(tools.createSale(saleOrder, { segment: 'recurring' })).resolves.toBe(7);
-    expect(events.record).toHaveBeenLastCalledWith({
+    expect(events.record).toHaveBeenCalledWith({
       name: 'sale',
       cycleId: 'cycle',
       outcome: 'created',
       reason: 'direct',
     });
+    expect(events.record).toHaveBeenLastCalledWith({
+      name: 'conversation_resolved',
+      cycleId: 'cycle',
+      outcome: 'registered',
+    });
     orders.findRecentSale.mockResolvedValueOnce(8 as never);
     await expect(tools.findRecentSale(saleOrder, new Date())).resolves.toBe(8);
-    expect(events.record).toHaveBeenLastCalledWith({
+    expect(events.record).toHaveBeenCalledWith({
       name: 'sale',
       cycleId: 'cycle',
       outcome: 'created',
       reason: 'recovered',
     });
+    expect(events.record).toHaveBeenCalledTimes(4);
   });
 
   it.each([
@@ -382,6 +388,11 @@ describe('FlowToolsService métricas', () => {
     const { service, events } = setup();
     service.forPhone(PHONE, async () => undefined, 'cycle').track({ name: 'order_cancelled' });
     expect(events.record).toHaveBeenCalledWith({ name: 'order_cancelled', cycleId: 'cycle' });
+    expect(events.record).toHaveBeenLastCalledWith({
+      name: 'conversation_resolved',
+      cycleId: 'cycle',
+      outcome: 'cancelled',
+    });
   });
 });
 

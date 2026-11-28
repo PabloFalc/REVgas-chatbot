@@ -29,6 +29,8 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 | `order_status` | `found` ou `none` |
 | `cpf` | `mismatch`, `blocked`, `blocked_hit`; tentativas em `amount` |
 | `identity_check` | `verified`, `failed` ou `owner_changed` na confirmação do CPF completo; sem id de cliente nem CPF |
+| `conversation_resolved` | Desfecho único do ciclo, em `outcome`: `registered` (venda criada, direta ou recuperada), `cancelled` (pedido cancelado), `human_resolved` (atendente resolveu a conversa no Chatwoot) ou `handoff_expired` (handoff expirou sem resolução). Só sai quando o estado tem `cycle_id`. Abandono não gera evento: é derivado por query |
+| `handoff_queue_snapshot` | Fotografia periódica da fila: `amount` com a quantidade de handoffs em `queued` (inclusive 0) e `duration_ms` com a idade do mais antigo, ausente com fila vazia |
 | `sale_outcome_unknown` | Venda de resultado incerto: `timeout`, `server_error`, `invalid_response` ou `other`. Também sai com `other` para cada tentativa `pending` que a varredura marca como `uncertain` 60 s depois do boot |
 
 `SaleRejectedError` não carrega `kind`: recebe razão `unexpected` e outcome `rejected`. Um `blocked_hit` usa o limiar de três tentativas, pois o estado de bloqueio guarda apenas sua existência. `ai_call` mede unidades do limite local, sem tokens ou custo financeiro.
@@ -36,6 +38,8 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 ## Retenção
 
 `METRICS_ENABLED` vale `true` por padrão; `false` desliga gravação e limpeza. `METRICS_RETENTION_DAYS` é um inteiro positivo, padrão 180. A limpeza remove eventos anteriores ao limite ao iniciar e a cada 24 horas. O timer não mantém o processo aberto e fica desligado em testes. Falha na limpeza gera aviso e será tentada na próxima execução.
+
+`METRICS_QUEUE_SNAPSHOT_SECONDS` (mínimo 30, padrão 300) define o intervalo da fotografia da fila de handoff. O agendador roda ao iniciar e depois a cada intervalo, com `setInterval` que não mantém o processo aberto, e fica desligado em testes e com `METRICS_ENABLED=false`. Com mais de uma instância, cada tick tenta um lock no Redis (`metrics:queue-snapshot:tick`, TTL de 90% do intervalo) e só quem o obtém grava. Falha gera aviso fixo e não afeta o atendimento.
 
 ## Metabase local
 
@@ -55,7 +59,7 @@ docker exec -i revgas-pg psql -U docker -d revgas -v DBNAME=revgas -v pass='senh
 
 4. Rode `pnpm metabase:up` e espere a interface responder em http://localhost:3001.
 5. Copie `docker/metabase.provision.env.example` para `docker/metabase.provision.env` e preencha e-mail e senha da conta administrativa (a primeira execução cria essa conta) e a senha do `metrics_reader` criada no passo 3. Esse arquivo também fica fora do Git. Ele é separado de `docker/metabase.env` de propósito: o compose injeta `docker/metabase.env` nos containers, e as credenciais do provisionamento não devem ir parar no ambiente do Metabase.
-6. Rode `pnpm metabase:provision`. O comando espera o `/api/health` por até 3 minutos e deixa a instância assim: administrador criado se ainda não existir, fuso dos relatórios `America/Sao_Paulo`, telemetria anônima desligada, conexão PostgreSQL "RevGás (leitura)" com o usuário `metrics_reader`, coleções Gestor, Supervisor e Técnico, as perguntas (quatro P0 mais as de funil, handoffs, latência, IA e RAG) com as variáveis `dias` e `incluir_simulados`, e os dashboards Gestor, Supervisor e Técnico. O SQL de cada pergunta é lido de `docs/guides/metrics/sql/` na hora da execução.
+6. Rode `pnpm metabase:provision`. O comando espera o `/api/health` por até 3 minutos e deixa a instância assim: administrador criado se ainda não existir, fuso dos relatórios `America/Sao_Paulo`, telemetria anônima desligada, conexão PostgreSQL "RevGás (leitura)" com o usuário `metrics_reader`, coleções Gestor, Supervisor e Técnico, as perguntas (as doze consultas do painel mais as derivadas de funil, handoffs, latência, IA e RAG) com as variáveis `dias` e `incluir_simulados`, e os dashboards Gestor, Supervisor e Técnico. O SQL de cada pergunta é lido de `docs/guides/metrics/sql/` na hora da execução.
 7. Rode `pnpm metabase:stop` ao terminar. Os volumes preservam a configuração. Não remova containers ou volumes existentes.
 
 O comando pode ser repetido. Cada linha da saída diz se o item foi criado, atualizado ou ficou sem mudança, e uma segunda execução seguida deve terminar com zero criados e zero atualizados. O que alguém editar pela interface nas perguntas (SQL, variáveis, coleção, conexão) volta ao definido no repositório na próxima execução; o tipo de gráfico e o restante da visualização não são tocados.
@@ -125,22 +129,31 @@ As consultas estão em [`../metrics/sql/`](../metrics/sql/). Use o mesmo fuso ho
 
 ### Cards P0 do painel
 
-Os cards vão em três coleções, criadas pelo provisionamento: Gestor (vendas, conversão, funil diário e abandono), Supervisor (espera e handoffs) e Técnico (latência, IA e RAG). Cada um usa duas variáveis, com os mesmos nomes em todos:
+Os cards vão em três coleções, criadas pelo provisionamento: Gestor (vendas, conversão, funil diário, abandono, recompra, mix e pico), Supervisor (espera, handoffs, fila, expirados e resolução) e Técnico (latência, IA, RAG, erros de venda e latência com IA por dia). Cada um usa duas variáveis, com os mesmos nomes em todos:
 
 - `dias`: numérica, obrigatória, padrão 30. O próprio SQL recusa valores fora de 1 a 365 com erro do Postgres (`dias deve estar entre 1 e 365, recebido N`), sem ajustar o valor. O Metabase não impede 0 ou 10000 na variável, então a trava fica no SQL.
 - `incluir_simulados`: texto, obrigatória, padrão `nao`, com lista de valores `nao` e `sim`. Com `nao` as linhas simuladas ficam de fora. Com `sim` entram também as simuladas, nas duas tabelas de origem. Qualquer outro valor se comporta como `nao`.
 
 ### Dashboards
 
-O mesmo comando cria o dashboard "Gestor" (vendas, conversão, funil por dia e abandono), o "Supervisor" (espera até assumir e handoffs por motivo) e o "Técnico" (latência, IA e RAG), cada um na coleção de mesmo nome. Para abrir, entre no Metabase, vá em Collections, escolha a coleção e clique no dashboard.
+O mesmo comando cria o dashboard "Gestor" (vendas, conversão, funil por dia, abandono, recompra, mix e pico), o "Supervisor" (espera até assumir, handoffs por motivo, fila, expirados e resolução) e o "Técnico" (latência, IA, RAG, erros de venda e tabela diária de latência e IA), cada um na coleção de mesmo nome. Para abrir, entre no Metabase, vá em Collections, escolha a coleção e clique no dashboard.
 
-Cada dashboard tem os filtros "Período (dias)" (padrão 30) e "Incluir dados simulados" (padrão `nao`), ligados às variáveis de todos os cards. Pedidos, valor, ticket médio, incertos, conversão e espera são números (`scalar`, uma coluna por card, reaproveitando o mesmo SQL). Funil, abandono, handoffs, IA e RAG são barras (as três últimas empilhadas por motivo) e a latência é linha. Moeda e percentuais usam vírgula decimal por configuração de coluna do card. Rodar o provisionamento de novo só corrige o que divergir.
+Cada dashboard tem os filtros "Período (dias)" (padrão 30) e "Incluir dados simulados" (padrão `nao`, lista com rótulos "Não" e "Sim" que gravam `nao` e `sim`), ligados às variáveis de todos os cards. Pedidos, valor, ticket médio, incertos, conversão e espera são números (`scalar`, uma coluna por card, reaproveitando o mesmo SQL). Funil, abandono, handoffs, IA e RAG são barras (as três últimas empilhadas por motivo) e a latência é linha. Moeda e percentuais usam vírgula decimal por configuração de coluna do card. Rodar o provisionamento de novo só corrige o que divergir.
 
 Apresentação em português: o provisionamento define o idioma da instância (`site-locale` = `pt_BR`), formata datas como dia/mês/ano com hora em 24 h e coloca uma legenda (cartão de texto) no fim de cada dashboard. Os SQLs de `docs/guides/metrics/sql/` não mudam. Na hora de publicar, `provision.lib.mjs` embrulha cada um em `WITH base AS (...) SELECT ...`, renomeia as colunas e traduz etapas, motivos e resultados com `CASE`. Valor que não está no mapa aparece como veio. Todos os rótulos ficam em `TRANSLATIONS` e `VIEWS` (`docker/metabase/provision.lib.mjs`). Ao criar etapa, motivo ou resultado novo em `src/`, acrescente o rótulo ali; o teste `provision.lib.spec.ts` lê os tipos do código e falha se faltar algum.
 
+Os oito cards P1 (spec 06 §6.5) usam os SQLs `gestor-recompra`, `gestor-mix`, `gestor-pico`, `supervisor-fila`, `supervisor-expirados`, `supervisor-resolucao`, `tecnico-erp` e `tecnico-latencia-ia`, cada um na coleção que a spec indica. Recompra e fila são números; mix, pico, expirados, resolução e erros são barras; a latência com IA é tabela, porque mistura milissegundos e contagens. Decisões de leitura:
+
+- Mix: a participação nos pedidos é calculada no card (`round(100 * pedidos / soma)` sobre as linhas devolvidas), como o dicionário pede ("o denominador fica a cargo do card"), e aparece na dica ao passar o mouse. Produto e pagamento ficam como código até a revenda liberar nomes (R11).
+- Pico: o dicionário lista o filtro por dia da semana, mas o SQL e a spec 06 §10 só pedem volume por hora UTC. Não foi implementado; o card soma todos os dias do período e rotula UTC (fuso da operação pendente, R10). Divergência registrada, sem decisão de negócio.
+- Fila: mostra só o último snapshot (`amount`); a idade do mais antigo vai em `duration_ms` mas nenhum card a exibe.
+- Resolução: `pendente` não recebe percentual, como no SQL.
+
 A espera do supervisor traz mediana, p90 e contagem na consulta; o dashboard mostra mediana e p90. O percentual de meta fica de fora até a revenda aprovar o limite.
 
-Limitação conhecida: o abandono depende do evento `conversation_resolved`, que ainda não tem produtor. Por isso um ciclo com `handoff_resolved` e sem venda aparece como abandono com etapa `unknown`.
+`conversation_resolved` agora tem produtor, então ciclo resolvido por humano sai do abandono. Limitação conhecida: um ciclo que entrou em handoff e nunca foi resolvido nem expirou continua sem terminal e aparece como abandono após 24 h parado.
+
+`supervisor-resolucao.sql` deriva o abandono: ciclo sem `conversation_resolved` e sem evento terminal (`sale_attempts` terminal, `order_cancelled`, `sale_outcome_unknown`) vira `abandonada` após 24 h sem atividade, antes disso é `pendente`. Desfechos `cancelled` e `handoff_expired` sem passagem por humano também contam como `abandonada`; ciclo com `handoff_assumed` ou `handoff_resolved` é `mista`. Essa versão diverge da cópia no repositório de planejamento, que esperava `outcome = 'abandoned'`; o dicionário e a spec 06 §6.6 mandam (abandono é derivado, não emitido).
 
 A fonte canônica dos quatro SQLs P0 é o repositório de planejamento (`docs/metricas/sql/`). A cópia em `docs/guides/metrics/sql/` existe para o teste E2E e deve ficar idêntica byte a byte (`cmp`). Os cinco SQLs derivados (`gestor-funil-diario`, `supervisor-handoffs`, `tecnico-*`) nasceram neste repositório e ainda não existem no de planejamento.
 

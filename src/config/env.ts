@@ -28,6 +28,7 @@ export const envConfigSchema = z
     DATABASE_URL: z.url(),
     METRICS_ENABLED: z.stringbool().default(true),
     METRICS_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
+    METRICS_QUEUE_SNAPSHOT_SECONDS: z.coerce.number().int().min(30).default(300),
     DB_POOL_MAX: z.coerce.number().default(20),
     DB_IDLE_TIMEOUT_MS: z.coerce.number().default(30_000),
     DB_CONNECTION_TIMEOUT_MS: z.coerce.number().default(5_000),

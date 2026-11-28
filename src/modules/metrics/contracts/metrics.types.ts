@@ -46,6 +46,11 @@ export type MetricEvent = Cycle &
         handoffId: string;
         durationMs: number;
       }
+    | {
+        name: 'conversation_resolved';
+        outcome: 'registered' | 'cancelled' | 'human_resolved' | 'handoff_expired';
+      }
+    | { name: 'handoff_queue_snapshot'; amount: number; durationMs?: number }
     | { name: 'summary_confirmation_rejected'; reason: 'stale_revision' }
     | { name: 'summary_changed'; fields: CommercialField[] }
   );
