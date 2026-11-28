@@ -53,6 +53,7 @@ aplicação **não sobe** (fail-closed). Todo o código importa `env` desse mód
 | Variável | Obrigatória | Default | Função e consequências |
 |---|---|---|---|
 | `DATABASE_URL` | **Sim** | — | String de conexão Postgres (`postgresql://user:pass@host:porta/db`). Sem ela o boot falha. |
+| `SEED_ALLOW_REMOTE` | Não | `false` | Só lida pelo `pnpm metrics:seed-demo`. O seed recusa host que não seja `localhost`, `127.0.0.1`, `::1` ou `postgres`; `true` libera banco remoto. Com `NODE_ENV=production` o seed recusa sempre. |
 | `DB_POOL_MAX` | Não | `20` | Máx. de conexões no pool. Baixo demais = gargalo; alto demais pode estourar o limite do servidor Postgres. |
 | `DB_IDLE_TIMEOUT_MS` | Não | `30000` | Tempo até fechar conexão ociosa. |
 | `DB_CONNECTION_TIMEOUT_MS` | Não | `5000` | Tempo máx. para abrir conexão antes de falhar. |
