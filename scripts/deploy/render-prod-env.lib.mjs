@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 const CATEGORY_LINE = /^#\s*(GERADA|ORIGEM|FIXA)(?:\s+(longa|senha|opcional))?\s*$/;
 const ASSIGNMENT = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
 const UNSAFE_VALUE = /[$"'`\\\n\r]/;
+const COMMENT_VALUE = / #/;
+const REUSED_FIXED = new Set(['BOT_IMAGE_TAG']);
 
 export function stripQuotes(raw) {
   const value = raw.trim();
@@ -76,7 +78,9 @@ export function buildEnv({ template, source, existing = new Map(), sets = new Ma
     } else if (entry.category === 'ORIGEM') {
       value = source.get(entry.key) ?? '';
     } else {
-      value = entry.value;
+      const reused = REUSED_FIXED.has(entry.key) ? existing.get(entry.key) : undefined;
+      value = reused || entry.value;
+      if (reused) origin = 'FIXA (reaproveitada)';
     }
     if (sets.has(entry.key)) {
       value = sets.get(entry.key);
@@ -98,6 +102,15 @@ export function buildEnv({ template, source, existing = new Map(), sets = new Ma
   if (unsafe.length > 0) {
     throw new Error(
       `valor com caractere não permitido ($ aspas crase barra invertida ou quebra de linha): ${unsafe.join(', ')}`,
+    );
+  }
+
+  const commented = entries
+    .filter(entry => COMMENT_VALUE.test(entry.value))
+    .map(entry => entry.key);
+  if (commented.length > 0) {
+    throw new Error(
+      `valor com espaço seguido de # (o Dokploy grava sem aspas e o resto viraria comentário): ${commented.join(', ')}`,
     );
   }
 

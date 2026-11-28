@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { embedBlock, extractBlock } from './compose-sync.lib.mjs';
-import { buildBody, filterEnv, normalizeApiBase, referencedVars } from './dokploy-push.lib.mjs';
+import {
+  assertSecureUrl,
+  buildBody,
+  confirmTarget,
+  filterEnv,
+  normalizeApiBase,
+  referencedVars,
+} from './dokploy-push.lib.mjs';
 import {
   buildEnv,
   formatEnv,
@@ -88,6 +95,37 @@ describe('render-prod-env', () => {
     expect(pick(second)).toEqual(pick(first));
   });
 
+  it('reaproveita BOT_IMAGE_TAG do arquivo existente, com --set na frente', () => {
+    const existing = new Map([
+      ['BOT_IMAGE_TAG', 'sha-antiga'],
+      ['MODE', 'fake'],
+    ]);
+    const reused = buildEnv({ template, source: parseAssignments(SOURCE), existing });
+    const mode = reused.entries.find(entry => entry.key === 'MODE');
+    expect(mode?.value).toBe('live');
+
+    const withTag = parseTemplate('# FIXA\nBOT_IMAGE_TAG=sha-nova\n');
+    const kept = buildEnv({ template: withTag, source: new Map(), existing });
+    expect(kept.entries[0]).toMatchObject({ value: 'sha-antiga', origin: 'FIXA (reaproveitada)' });
+    const fresh = buildEnv({ template: withTag, source: new Map() });
+    expect(fresh.entries[0]).toMatchObject({ value: 'sha-nova', origin: 'FIXA' });
+    const set = buildEnv({
+      template: withTag,
+      source: new Map(),
+      existing,
+      sets: parseSets(['BOT_IMAGE_TAG=sha-set']),
+    });
+    expect(set.entries[0].value).toBe('sha-set');
+  });
+
+  it('recusa valor com espaço seguido de cerquilha', () => {
+    expect(() =>
+      buildEnv({ template, source: new Map([['API_KEY', 'abc #resto']]), sets: new Map() }),
+    ).toThrow(/API_KEY/);
+    const ok = buildEnv({ template, source: new Map([['API_KEY', 'abc#resto']]) });
+    expect(ok.entries.find(entry => entry.key === 'API_KEY')?.value).toBe('abc#resto');
+  });
+
   it('lista as obrigatórias vazias e aceita --set', () => {
     const empty = buildEnv({ template, source: new Map() });
     expect(empty.missing).toEqual(['API_KEY', 'LLM_API_KEY']);
@@ -162,6 +200,28 @@ describe('dokploy-push', () => {
     const { env, dropped } = filterEnv('A=1\nB=2\nC=3\nD=4\n', vars);
     expect(env).toBe('A=1\nC=3\n');
     expect(dropped).toEqual(['B', 'D']);
+  });
+
+  it('confirma o alvo só com HTTP 200 e nome igual, sem vazar o corpo', () => {
+    const body = { name: 'revgas', env: 'SEGREDO=xyz' };
+    expect(confirmTarget({ status: 200, body, expectedName: 'revgas' })).toBe('revgas');
+    expect(() => confirmTarget({ status: 404, body, expectedName: 'revgas' })).toThrow(/404/);
+    expect(() => confirmTarget({ status: 200, body, expectedName: 'outro' })).toThrow(/outro nome/);
+    expect(() => confirmTarget({ status: 200, body: undefined, expectedName: 'revgas' })).toThrow();
+    try {
+      confirmTarget({ status: 200, body, expectedName: 'outro' });
+    } catch (error) {
+      expect((error as Error).message).not.toContain('SEGREDO');
+    }
+  });
+
+  it('exige https, exceto em localhost e 127.0.0.1', () => {
+    expect(() => assertSecureUrl('https://d.exemplo.com')).not.toThrow();
+    expect(() => assertSecureUrl('http://localhost:3000')).not.toThrow();
+    expect(() => assertSecureUrl('http://127.0.0.1:3000')).not.toThrow();
+    expect(() => assertSecureUrl('http://d.exemplo.com')).toThrow(/https/);
+    expect(() => assertSecureUrl('ftp://localhost')).toThrow(/https/);
+    expect(() => assertSecureUrl('lixo')).toThrow(/inválida/);
   });
 
   it('monta o corpo como fonte raw', () => {
