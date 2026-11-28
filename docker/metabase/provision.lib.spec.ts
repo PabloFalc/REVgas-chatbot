@@ -114,14 +114,19 @@ describe('buildParameters', () => {
     expect(porSlug.dias).toMatchObject({ type: 'number/=', required: true, default: 30 });
   });
 
-  it('incluir_simulados tem lista fixa nao e sim', () => {
+  it('incluir_simulados tem lista fixa com valor nao/sim e rótulo Não/Sim', () => {
     expect(porSlug.incluir_simulados).toMatchObject({
       type: 'string/=',
       required: true,
       default: ['nao'],
       values_query_type: 'list',
       values_source_type: 'static-list',
-      values_source_config: { values: ['nao', 'sim'] },
+      values_source_config: {
+        values: [
+          ['nao', 'Não'],
+          ['sim', 'Sim'],
+        ],
+      },
     });
   });
 });
@@ -357,7 +362,12 @@ describe('dashboard', () => {
       type: 'string/=',
       default: ['nao'],
       values_source_type: 'static-list',
-      values_source_config: { values: ['nao', 'sim'] },
+      values_source_config: {
+        values: [
+          ['nao', 'Não'],
+          ['sim', 'Sim'],
+        ],
+      },
     });
   });
 

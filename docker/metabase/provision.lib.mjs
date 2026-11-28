@@ -846,7 +846,10 @@ const VARIABLES = {
     tagDefault: 'nao',
     parameterType: 'string/=',
     parameterDefault: ['nao'],
-    values: ['nao', 'sim'],
+    values: [
+      ['nao', 'Não'],
+      ['sim', 'Sim'],
+    ],
   },
 };
 
