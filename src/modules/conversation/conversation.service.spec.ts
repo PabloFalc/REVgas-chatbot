@@ -681,7 +681,7 @@ describe('ConversationService fila de atendimento', () => {
   });
 
   it('botão e mensagem não suportada na fila recebem só a espera', async () => {
-    const { service, whatsapp, handoff } = setup();
+    const { service, whatsapp, handoff, repository, flowTools } = setup();
     handoff.routeFor.mockResolvedValue('queued');
 
     await service.handle(
@@ -703,6 +703,42 @@ describe('ConversationService fila de atendimento', () => {
     expect(whatsapp.sent).toHaveLength(1);
     expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.handoffQueued);
     expect(runFlowMock).not.toHaveBeenCalled();
+    expect(flowTools.forPhone).not.toHaveBeenCalled();
+    expect(repository.saveOrder).not.toHaveBeenCalled();
+    expect(repository.scheduleReminder).not.toHaveBeenCalled();
+  });
+
+  it('botão de resposta na fila não chama fluxo, ferramentas nem pedido', async () => {
+    const { service, whatsapp, handoff, repository, flowTools } = setup();
+    handoff.routeFor.mockResolvedValue('queued');
+
+    await service.handle(
+      parseWebhook(
+        webhookPayload({
+          messages: [
+            {
+              from: '5586999991234',
+              id: 'wamid.Q6',
+              timestamp: '1760000000',
+              type: 'interactive',
+              interactive: {
+                type: 'button_reply',
+                button_reply: { id: 'product:1', title: 'P13' },
+              },
+            },
+          ],
+        }),
+      ),
+    );
+
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(JSON.stringify(whatsapp.sent[0].body)).toContain(msg.handoffQueued);
+    expect(runFlowMock).not.toHaveBeenCalled();
+    expect(flowTools.forPhone).not.toHaveBeenCalled();
+    expect(repository.loadOrder).not.toHaveBeenCalled();
+    expect(repository.saveOrder).not.toHaveBeenCalled();
+    expect(repository.scheduleReminder).not.toHaveBeenCalled();
+    expect(handoff.forwardToAgent).not.toHaveBeenCalled();
   });
 });
 
