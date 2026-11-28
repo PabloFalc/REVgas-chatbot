@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     globals: true,
     include: ['tests/**/*.e2e.spec.ts'],
+    globalSetup: ['tests/global-setup-e2e.ts'],
     fileParallelism: false,
     env: {
       REDIS_DB: '1',

@@ -61,8 +61,11 @@ O arquivo fica ao lado da unidade testada (`*.spec.ts` dentro de `src/`).
 
 ## Testes e2e
 
-> **Pré-requisitos do e2e:** Postgres e Redis no ar. O e2e usa o
-> banco do `.env` (o de desenvolvimento). O unitário (`pnpm test`) não lê `.env`: o
+> **Pré-requisitos do e2e:** Postgres e Redis no ar. O e2e usa um banco separado, derivado da
+> `DATABASE_URL` com o sufixo `_e2e` (ex.: `revgas` vira `revgas_e2e`). O `globalSetup`
+> (`tests/global-setup-e2e.ts`) cria o banco se não existir e aplica as migrations a cada execução,
+> então o banco de desenvolvimento não recebe resíduo dos testes. O usuário da `DATABASE_URL` precisa
+> poder criar bancos e a extensão `vector`. O unitário (`pnpm test`) não lê `.env`: o
 > `vitest.config.ts` define o ambiente.
 
 > O Postgres do e2e precisa ter o **pgvector** (imagem `pgvector/pgvector:pg17`, já no
@@ -87,9 +90,9 @@ rotas que disparam erros do banco.
 Em `NODE_ENV=test` os rate limits ficam relaxados (limite 9999) e o logger fica `silent` (suba com
 `LOG_LEVEL=debug` ao depurar).
 
-> ⚠️ Hoje o e2e roda contra o **mesmo banco do desenvolvimento** (a `DATABASE_URL` do `.env`).
-> Por isso a limpeza é **escopada por suíte** (apaga só os dados daquele teste) — nunca um
-> `TRUNCATE` global, que apagaria seus dados de dev.
+> O e2e roda no banco `<nome>_e2e`, não no de desenvolvimento. Mesmo assim a limpeza é
+> **escopada por suíte** (apaga só os dados daquele teste), porque as suítes compartilham esse banco
+> e nunca se usa `TRUNCATE` global.
 
 Estrutura típica de uma suíte que grava no banco (ver `tests/metrics/bot-events.e2e.spec.ts`):
 
