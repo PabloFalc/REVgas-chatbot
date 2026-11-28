@@ -29,6 +29,7 @@ function memoryRepository() {
     clearState: async (phone: string) => {
       states.delete(phone);
     },
+    listStates: async () => [...states.values()],
     getThread: async (phone: string) => threads.get(phone) ?? null,
     saveThread: async (phone: string, thread: DeskThread) => {
       threads.set(phone, thread);
@@ -790,11 +791,17 @@ describe('HandoffService', () => {
       });
       client.failNext();
       expect(await service.routeFor(PHONE)).toBe('bot');
-      expect(events.record).toHaveBeenCalledExactlyOnceWith({
+      expect(events.record).toHaveBeenCalledTimes(2);
+      expect(events.record).toHaveBeenNthCalledWith(1, {
         name: 'handoff_expired',
         cycleId: CYCLE_ID,
         handoffId: CYCLE_ID,
         durationMs: (72 * 60 + 1) * 60_000,
+      });
+      expect(events.record).toHaveBeenNthCalledWith(2, {
+        name: 'conversation_resolved',
+        cycleId: CYCLE_ID,
+        outcome: 'handoff_expired',
       });
       expect(stateAtEmit).toBeDefined();
       expect(states.size).toBe(0);
@@ -870,11 +877,16 @@ describe('HandoffService', () => {
       expect(states.has(PHONE)).toBe(true);
 
       await service.endFromDesk(PHONE, queued.conversationId);
-      expect(events.record).toHaveBeenLastCalledWith({
+      expect(events.record).toHaveBeenCalledWith({
         name: 'handoff_resolved',
         cycleId: CYCLE_ID,
         handoffId: queued.handoffId,
         durationMs: 600_000,
+      });
+      expect(events.record).toHaveBeenLastCalledWith({
+        name: 'conversation_resolved',
+        cycleId: CYCLE_ID,
+        outcome: 'human_resolved',
       });
       expect(stateAtEmit?.conversationId).toBe(queued.conversationId);
       expect(states.has(PHONE)).toBe(false);
@@ -907,6 +919,55 @@ describe('HandoffService', () => {
     });
   });
 
+  describe('queueStats', () => {
+    it('conta só quem está na fila e informa a idade do mais antigo', async () => {
+      const { service, states } = setup();
+      const base = { conversationId: 1, since: minutesAgo(0) };
+      states.set('a', { ...base, status: 'queued', requestedAt: minutesAgo(10) } as HandoffState);
+      states.set('b', { ...base, status: 'queued', requestedAt: minutesAgo(30) } as HandoffState);
+      states.set('c', { ...base, status: 'active', requestedAt: minutesAgo(90) } as HandoffState);
+      states.set('d', {
+        conversationId: 2,
+        since: minutesAgo(73 * 60),
+        status: 'queued',
+        requestedAt: minutesAgo(73 * 60),
+      } as HandoffState);
+      await expect(service.queueStats()).resolves.toEqual({ size: 2, oldestAgeMs: 30 * 60_000 });
+    });
+
+    it('fila vazia devolve zero e idade nula', async () => {
+      const { service } = setup();
+      await expect(service.queueStats()).resolves.toEqual({ size: 0, oldestAgeMs: null });
+    });
+  });
+
+  describe('conversation_resolved', () => {
+    it('resolver a conversa ativa emite o desfecho human_resolved uma vez', async () => {
+      const { service, states, events } = setup();
+      await service.requestHandoff({
+        phone: PHONE,
+        reason: 'customer_request',
+        summary: null,
+        cycleId: CYCLE_ID,
+      });
+      const { conversationId } = states.get(PHONE) as HandoffState;
+      await service.endFromDesk(PHONE, conversationId);
+      const resolved = events.record.mock.calls.filter(([e]) => e.name === 'conversation_resolved');
+      expect(resolved).toEqual([
+        [{ name: 'conversation_resolved', cycleId: CYCLE_ID, outcome: 'human_resolved' }],
+      ]);
+    });
+
+    it('sem cycleId no estado não emite conversation_resolved', async () => {
+      const { service, states, events } = setup();
+      await service.requestHandoff({ phone: PHONE, reason: 'customer_request', summary: null });
+      await service.endFromDesk(PHONE, (states.get(PHONE) as HandoffState).conversationId);
+      expect(events.record).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'conversation_resolved' }),
+      );
+    });
+  });
+
   describe('privacidade dos eventos', () => {
     it('não envia evento com telefone, CPF ou conteúdo da mensagem', async () => {
       const { service, states, events, advance } = setup();
@@ -934,9 +995,13 @@ describe('HandoffService', () => {
       advance(1000);
       await service.endFromDesk(PHONE, conversationId);
 
-      expect(events.record).toHaveBeenCalledTimes(2);
+      expect(events.record).toHaveBeenCalledTimes(3);
+      const allowed = [
+        ['cycleId', 'durationMs', 'handoffId', 'name'],
+        ['cycleId', 'name', 'outcome'],
+      ];
       for (const [event] of events.record.mock.calls) {
-        expect(Object.keys(event).sort()).toEqual(['cycleId', 'durationMs', 'handoffId', 'name']);
+        expect(allowed).toContainEqual(Object.keys(event).sort());
       }
       const sent = JSON.stringify(events.record.mock.calls);
       expect(sent).not.toContain(PHONE);

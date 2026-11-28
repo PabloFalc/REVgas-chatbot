@@ -7,6 +7,7 @@ import { parseServiceHours } from 'src/utils/service-hours';
 import { DeskGateway } from './desk.gateway';
 import { HandoffRepository } from './handoff.repository';
 import { HANDOFF_CLOCK, HandoffService, SERVICE_HOURS } from './handoff.service';
+import { QueueSnapshotScheduler } from './queue-snapshot.scheduler';
 
 @Module({
   imports: [CacheModule, ChatwootModule, MetricsModule],
@@ -14,6 +15,7 @@ import { HANDOFF_CLOCK, HandoffService, SERVICE_HOURS } from './handoff.service'
     HandoffService,
     HandoffRepository,
     DeskGateway,
+    QueueSnapshotScheduler,
     { provide: HANDOFF_CLOCK, useValue: { now: () => new Date() } },
     { provide: SERVICE_HOURS, useFactory: () => parseServiceHours(env.SERVICE_HOURS ?? '') },
   ],

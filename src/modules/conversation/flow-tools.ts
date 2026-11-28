@@ -61,6 +61,12 @@ function unknownReason(
     : 'other';
 }
 
+function resolvedOutcome(event: MetricEvent): 'registered' | 'cancelled' | null {
+  if (event.name === 'order_cancelled') return 'cancelled';
+  if (event.name === 'sale' && event.outcome === 'created') return 'registered';
+  return null;
+}
+
 function errorName(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
 }
@@ -87,7 +93,11 @@ export class FlowToolsService {
   }
 
   forPhone(phone: string, save: (state: OrderState) => Promise<void>, cycleId?: string): FlowTools {
-    const track = (event: MetricEvent) => this.track({ ...event, cycleId });
+    const track = (event: MetricEvent) => {
+      this.track({ ...event, cycleId });
+      const outcome = resolvedOutcome(event);
+      if (outcome) this.track({ name: 'conversation_resolved', cycleId, outcome });
+    };
     return {
       phone,
       track,

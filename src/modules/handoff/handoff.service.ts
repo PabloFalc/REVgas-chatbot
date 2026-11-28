@@ -289,10 +289,22 @@ export class HandoffService {
           resolvedAt.getTime() - assumedAt,
         );
       }
+      this.resolveCycle(state, 'human_resolved');
       await this.repo.clearState(phone);
     }
     const thread = await this.repo.getThread(phone);
     if (thread?.conversationId === conversationId) await this.repo.clearThread(phone);
+  }
+
+  async queueStats(): Promise<{ size: number; oldestAgeMs: number | null }> {
+    const now = this.clock.now();
+    const queued = (await this.repo.listStates()).filter(
+      state => state.status === 'queued' && !isExpired(state, now),
+    );
+    const ages = queued.map(state =>
+      Math.max(0, now.getTime() - Date.parse(state.requestedAt ?? state.since)),
+    );
+    return { size: queued.length, oldestAgeMs: ages.length ? Math.max(...ages) : null };
   }
 
   async noteWindowClosed(conversationId: number): Promise<void> {
@@ -338,6 +350,7 @@ export class HandoffService {
       state.handoffId ?? randomUUID(),
       now.getTime() - Date.parse(state.requestedAt ?? state.since),
     );
+    this.resolveCycle(state, 'handoff_expired');
     if (this.desk.enabled) {
       try {
         await this.desk.postNote(state.conversationId, EXPIRED_NOTE);
@@ -363,6 +376,11 @@ export class HandoffService {
       handoffId,
       durationMs: Math.max(0, durationMs),
     });
+  }
+
+  private resolveCycle(state: HandoffState, outcome: 'human_resolved' | 'handoff_expired'): void {
+    if (!state.cycleId) return;
+    this.events?.record({ name: 'conversation_resolved', cycleId: state.cycleId, outcome });
   }
 
   private async postEmergencyNote(phone: string, conversationId: number): Promise<void> {

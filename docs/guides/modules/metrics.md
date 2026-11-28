@@ -29,6 +29,8 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 | `order_status` | `found` ou `none` |
 | `cpf` | `mismatch`, `blocked`, `blocked_hit`; tentativas em `amount` |
 | `identity_check` | `verified`, `failed` ou `owner_changed` na confirmação do CPF completo; sem id de cliente nem CPF |
+| `conversation_resolved` | Desfecho único do ciclo, em `outcome`: `registered` (venda criada, direta ou recuperada), `cancelled` (pedido cancelado), `human_resolved` (atendente resolveu a conversa no Chatwoot) ou `handoff_expired` (handoff expirou sem resolução). Só sai quando o estado tem `cycle_id`. Abandono não gera evento: é derivado por query |
+| `handoff_queue_snapshot` | Fotografia periódica da fila: `amount` com a quantidade de handoffs em `queued` (inclusive 0) e `duration_ms` com a idade do mais antigo, ausente com fila vazia |
 | `sale_outcome_unknown` | Venda de resultado incerto: `timeout`, `server_error`, `invalid_response` ou `other`. Também sai com `other` para cada tentativa `pending` que a varredura marca como `uncertain` 60 s depois do boot |
 
 `SaleRejectedError` não carrega `kind`: recebe razão `unexpected` e outcome `rejected`. Um `blocked_hit` usa o limiar de três tentativas, pois o estado de bloqueio guarda apenas sua existência. `ai_call` mede unidades do limite local, sem tokens ou custo financeiro.
@@ -36,6 +38,8 @@ A tabela não recebe telefone, nome, CPF, endereço, mensagens, identificadores 
 ## Retenção
 
 `METRICS_ENABLED` vale `true` por padrão; `false` desliga gravação e limpeza. `METRICS_RETENTION_DAYS` é um inteiro positivo, padrão 180. A limpeza remove eventos anteriores ao limite ao iniciar e a cada 24 horas. O timer não mantém o processo aberto e fica desligado em testes. Falha na limpeza gera aviso e será tentada na próxima execução.
+
+`METRICS_QUEUE_SNAPSHOT_SECONDS` (mínimo 30, padrão 300) define o intervalo da fotografia da fila de handoff. O agendador roda ao iniciar e depois a cada intervalo, com `setInterval` que não mantém o processo aberto, e fica desligado em testes e com `METRICS_ENABLED=false`. Com mais de uma instância, cada tick tenta um lock no Redis (`metrics:queue-snapshot:tick`, TTL de 90% do intervalo) e só quem o obtém grava. Falha gera aviso fixo e não afeta o atendimento.
 
 ## Metabase local
 
@@ -140,7 +144,9 @@ Apresentação em português: o provisionamento define o idioma da instância (`
 
 A espera do supervisor traz mediana, p90 e contagem na consulta; o dashboard mostra mediana e p90. O percentual de meta fica de fora até a revenda aprovar o limite.
 
-Limitação conhecida: o abandono depende do evento `conversation_resolved`, que ainda não tem produtor. Por isso um ciclo com `handoff_resolved` e sem venda aparece como abandono com etapa `unknown`.
+`conversation_resolved` agora tem produtor, então ciclo resolvido por humano sai do abandono. Limitação conhecida: um ciclo que entrou em handoff e nunca foi resolvido nem expirou continua sem terminal e aparece como abandono após 24 h parado.
+
+`supervisor-resolucao.sql` deriva o abandono: ciclo sem `conversation_resolved` e sem evento terminal (`sale_attempts` terminal, `order_cancelled`, `sale_outcome_unknown`) vira `abandonada` após 24 h sem atividade, antes disso é `pendente`. Desfechos `cancelled` e `handoff_expired` sem passagem por humano também contam como `abandonada`; ciclo com `handoff_assumed` ou `handoff_resolved` é `mista`. Essa versão diverge da cópia no repositório de planejamento, que esperava `outcome = 'abandoned'`; o dicionário e a spec 06 §6.6 mandam (abandono é derivado, não emitido).
 
 A fonte canônica dos quatro SQLs P0 é o repositório de planejamento (`docs/metricas/sql/`). A cópia em `docs/guides/metrics/sql/` existe para o teste E2E e deve ficar idêntica byte a byte (`cmp`). Os cinco SQLs derivados (`gestor-funil-diario`, `supervisor-handoffs`, `tecnico-*`) nasceram neste repositório e ainda não existem no de planejamento.
 

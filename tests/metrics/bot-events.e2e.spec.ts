@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { REDIS } from 'src/infra/cache/redis.client';
@@ -23,6 +23,8 @@ import {
   ORDER_PREFIX,
   REMINDER_SET,
 } from 'src/modules/conversation/conversation.repository';
+import { HandoffRepository, QUEUE_SNAPSHOT_PREFIX } from 'src/modules/handoff/handoff.repository';
+import { QueueSnapshotScheduler } from 'src/modules/handoff/queue-snapshot.scheduler';
 import supertest from 'supertest';
 import { createApp } from '../setup-e2e';
 
@@ -1402,14 +1404,6 @@ describe('Eventos do bot (e2e)', () => {
               occurredAt: ago(24),
             }),
           ),
-          ...abandoned.map(cycleId =>
-            event({
-              name: 'conversation_resolved',
-              cycleId,
-              outcome: 'abandoned',
-              occurredAt: ago(24),
-            }),
-          ),
           event({
             name: 'ai_call',
             cycleId: pending,
@@ -1425,18 +1419,12 @@ describe('Eventos do bot (e2e)', () => {
             occurredAt: ago(60),
             isSimulated: true,
           }),
-          event({
-            name: 'conversation_resolved',
-            cycleId: simulated,
-            outcome: 'abandoned',
-            occurredAt: ago(24),
-            isSimulated: true,
-          }),
         ]);
         return { semEncerramento, ...(await modes(tx, 'supervisor-resolucao.sql')) };
       });
       expect(out.semEncerramento).toEqual([
-        { categoria: 'pendente', ciclos: 10, percentual: null },
+        { categoria: 'abandonada', ciclos: 2, percentual: 100 },
+        { categoria: 'pendente', ciclos: 8, percentual: null },
       ]);
       expect(out.nao).toEqual([
         { categoria: 'abandonada', ciclos: 2, percentual: 22.2 },
@@ -1446,6 +1434,74 @@ describe('Eventos do bot (e2e)', () => {
       ]);
       expect(out.sim.find(row => row.categoria === 'abandonada')?.ciclos).toBe(3);
       expect(out.talvez).toEqual(out.nao);
+    });
+
+    it('ciclo real de venda alimenta supervisor-resolucao sem fixture do evento', async () => {
+      const cycleId = cycles[0] as string;
+      const real = await vi.waitFor(async () => {
+        const rows = await db.select().from(botEvents).where(eq(botEvents.cycleId, cycleId));
+        expect(rows.filter(row => row.name === 'conversation_resolved')).toHaveLength(1);
+        return rows;
+      });
+      const attempts = await db
+        .select()
+        .from(saleAttempts)
+        .where(eq(saleAttempts.cycleId, cycleId));
+      expect(real.find(row => row.name === 'conversation_resolved')?.outcome).toBe('registered');
+      const out = await isolated(
+        async tx => {
+          await tx.insert(botEvents).values(real.map(({ id: _id, ...row }) => row));
+          if (attempts.length)
+            await tx.insert(saleAttempts).values(attempts.map(({ id: _id, ...row }) => row));
+          return query(tx, 'supervisor-resolucao.sql', 30, 'sim');
+        },
+        async () => undefined,
+      );
+      expect(out).toEqual([{ categoria: 'automatica', ciclos: 1, percentual: 100 }]);
+    });
+
+    it('snapshot real da fila alimenta supervisor-fila', async () => {
+      const handoffs = app.get(HandoffRepository);
+      const scheduler = app.get(QueueSnapshotScheduler);
+      const queuedPhone = `55869${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+      const started = new Date();
+      await handoffs.saveState(queuedPhone, {
+        status: 'queued',
+        conversationId: 1,
+        reason: 'customer_request',
+        since: new Date(started.getTime() - 600_000).toISOString(),
+        requestedAt: new Date(started.getTime() - 600_000).toISOString(),
+      });
+      await redis.del(`${QUEUE_SNAPSHOT_PREFIX}:tick`);
+      try {
+        await scheduler.tick();
+        const [snapshot] = await vi.waitFor(async () => {
+          const rows = await db
+            .select()
+            .from(botEvents)
+            .where(eq(botEvents.name, 'handoff_queue_snapshot'))
+            .orderBy(desc(botEvents.occurredAt), desc(botEvents.id))
+            .limit(1);
+          expect(rows[0]?.occurredAt.getTime()).toBeGreaterThanOrEqual(started.getTime() - 1000);
+          return rows;
+        });
+        expect(snapshot?.amount).toBeGreaterThanOrEqual(1);
+        expect(snapshot?.durationMs).toBeGreaterThanOrEqual(600_000);
+        const out = await isolated(
+          async tx => {
+            const { id: _id, ...row } = snapshot as NonNullable<typeof snapshot>;
+            await tx.insert(botEvents).values(row);
+            return query(tx, 'supervisor-fila.sql', 30, 'sim');
+          },
+          async () => undefined,
+        );
+        expect(out).toHaveLength(1);
+        expect(out[0]?.fila_pendente).toBe(snapshot?.amount);
+        await db.delete(botEvents).where(eq(botEvents.id, (snapshot as { id: bigint }).id));
+      } finally {
+        await handoffs.clearState(queuedPhone);
+        await redis.del(`${QUEUE_SNAPSHOT_PREFIX}:tick`);
+      }
     });
 
     it('papel restrito lê os quatro cards e não lê identificadores operacionais', async () => {

@@ -253,5 +253,6 @@ Além dos tipos, o schema aplica refinamentos que **derrubam o boot** se violado
 | --- | --- | --- | --- |
 | `METRICS_ENABLED` | Não | `true` | Liga os eventos do bot e sua limpeza. `false` desliga ambos sem alterar o fluxo. |
 | `METRICS_RETENTION_DAYS` | Não | `180` | Inteiro positivo. Eventos anteriores ao limite são removidos ao iniciar e a cada 24 horas; timer desligado em testes. |
+| `METRICS_QUEUE_SNAPSHOT_SECONDS` | Não | `300` | Inteiro de 30 em diante. Intervalo da fotografia da fila de handoff (`handoff_queue_snapshot`). Só roda com `METRICS_ENABLED=true`; timer desligado em testes. Com várias instâncias, uma trava no Redis evita fotografias duplicadas. |
 
 O Metabase usa `docker/metabase.env`, ignorado pelo Git. `POSTGRES_PASSWORD` e `MB_DB_PASS` devem ter a mesma senha do banco de configuração; essa credencial é diferente da usada para ler `bot_events`. Setup e catálogo em [metrics.md](../modules/metrics.md).
