@@ -218,6 +218,7 @@ describe('ReminderScheduler.tick', () => {
 
     expect(messaging.send.mock.calls.some(([to]) => to === PHONE)).toBe(false);
     expect(messaging.send.mock.calls.some(([to]) => to === OTHER)).toBe(true);
+    expect(handoff.mirrorOutgoing).not.toHaveBeenCalledWith(PHONE, expect.anything());
     expect(events.record).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledOnce();
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain(PHONE);
