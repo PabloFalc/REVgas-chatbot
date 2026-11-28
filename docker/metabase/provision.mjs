@@ -214,11 +214,11 @@ async function provisionCollections(client) {
 
 async function provisionCards(client, databaseId, collectionIds) {
   const provisioned = {};
-  for (const { name, sqlFile, collection, display, settings } of CARDS) {
+  for (const { name, title, sqlFile, collection, display, settings } of CARDS) {
     const sql = wrapSql(await readFile(`${SQL_DIR}${sqlFile}.sql`, 'utf8'), VIEWS[sqlFile]);
     const collectionId = collectionIds[collection];
     const desired = buildCardPayload({
-      name,
+      name: title,
       sql,
       databaseId,
       collectionId,
@@ -226,10 +226,10 @@ async function provisionCards(client, databaseId, collectionIds) {
       visualizationSettings: settings,
     });
     const items = await client.get(`/api/collection/${collectionId}/items?models=card&limit=500`);
-    const found = findByName(items.data, name);
+    const found = findByName(items.data, title) ?? findByName(items.data, name);
     const existing = found ? await client.get(`/api/card/${found.id}`) : undefined;
     const action = planCard(existing, desired);
-    const label = `pergunta "${name}" (coleção ${collection}, ${display})`;
+    const label = `pergunta "${title}" (coleção ${collection}, ${display})`;
     let id = existing?.id;
     if (action === 'create') {
       id = (await client.post('/api/card', desired)).id;

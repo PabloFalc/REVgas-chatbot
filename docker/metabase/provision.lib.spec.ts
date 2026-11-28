@@ -22,6 +22,7 @@ import {
   reuseDashcardIds,
   sameLocale,
   TRANSLATIONS,
+  textHeight,
   VIEWS,
   wrapSql,
 } from './provision.lib.mjs';
@@ -693,7 +694,7 @@ describe('formato brasileiro das datas', () => {
     const ia = CARDS.find(card => card.name === 'tecnico-ia');
     expect(ia?.settings.column_settings['["name","Hora"]']).toMatchObject({
       date_style: 'D/M/YYYY',
-      time_style: 'k:mm',
+      time_style: 'HH:mm',
     });
   });
 
@@ -722,7 +723,6 @@ describe('legendas', () => {
       expect(textos, dashboard.name).toHaveLength(1);
       const texto = textos[0].text as string;
       expect(texto).toContain('Como ler este painel');
-      expect(texto).toContain('registro de pedidos do bot');
       expect(texto).toContain('Incluir dados simulados');
     }
     expect(textoDe('Gestor')).toContain('mais de 24 horas');
@@ -774,7 +774,7 @@ describe('idempotência dos cards traduzidos', () => {
     for (const card of CARDS) {
       const sql = wrapSql(sqlCanonico(card.sqlFile), VIEWS[card.sqlFile as NomeVisao]);
       const desired = buildCardPayload({
-        name: card.name,
+        name: card.title,
         sql,
         databaseId: 1,
         collectionId: 2,
@@ -804,5 +804,80 @@ describe('idempotência dos cards traduzidos', () => {
       Object.entries(colunas['["name","Dia"]']).reverse(),
     );
     expect(planCard(lido, desired)).toBe('unchanged');
+  });
+});
+
+describe('ajustes visuais', () => {
+  const legendas = DASHBOARDS.map(d => d.cards.find(item => item.text)).filter(Boolean);
+
+  it('altura da legenda cresce com o texto e nunca fica menor que as linhas', () => {
+    expect(textHeight('a')).toBeLessThan(textHeight('a\n'.repeat(30)));
+    for (const item of legendas) {
+      const linhas = String(item?.text).split('\n').length;
+      expect(item?.sizeY).toBe(textHeight(item?.text));
+      expect(item?.sizeY as number).toBeGreaterThanOrEqual(Math.ceil(linhas / 1.5));
+    }
+  });
+
+  it('hora usa HH:mm para não mostrar 24:00', () => {
+    const ia = CARDS.find(card => card.name === 'tecnico-ia');
+    expect(ia?.settings.column_settings['["name","Hora"]'].time_style).toBe('HH:mm');
+  });
+
+  it('todo cartão numérico usa separadores brasileiros', () => {
+    for (const card of CARDS) {
+      const colunas = card.settings.column_settings as Record<
+        string,
+        { number_separators?: string }
+      >;
+      const alvos = card.settings['scalar.field']
+        ? [card.settings['scalar.field']]
+        : card.settings['graph.metrics'];
+      for (const campo of alvos) {
+        expect(colunas[`["name","${campo}"]`]?.number_separators, `${card.name}.${campo}`).toBe(
+          ',.',
+        );
+      }
+    }
+    const latencia = CARDS.find(card => card.name === 'tecnico-latencia');
+    expect(latencia?.settings.column_settings['["name","Mediana (ms)"]'].decimals).toBe(0);
+  });
+
+  it('aviso do registro de pedidos só onde há valor em reais', () => {
+    const tem = (nome: string) =>
+      DASHBOARDS.find(d => d.name === nome)
+        ?.cards.find(i => i.text)
+        ?.text?.includes('não do financeiro');
+    expect(tem('Gestor')).toBe(true);
+    expect(tem('Supervisor')).toBe(false);
+    expect(tem('Técnico')).toBe(false);
+  });
+
+  it('cartões têm título em português, únicos por coleção e diferentes do nome técnico', () => {
+    for (const card of CARDS) expect(card.title).not.toBe(card.name);
+    const chaves = CARDS.map(card => `${card.collection}/${card.title}`);
+    expect(new Set(chaves).size).toBe(chaves.length);
+    const titulos = CARDS.map(card => card.title);
+    for (const nome of CARDS.map(card => card.name)) expect(titulos).not.toContain(nome);
+  });
+
+  it('renomear não duplica: achar pelo título novo ou, na falta, pelo nome antigo', () => {
+    const card = CARDS[0];
+    const itens = [{ id: 7, name: card.name }];
+    const achado = findByName(itens, card.title) ?? findByName(itens, card.name);
+    expect(achado?.id).toBe(7);
+    const desired = buildCardPayload({
+      name: card.title,
+      sql: 'SELECT 1',
+      databaseId: 1,
+      collectionId: 2,
+    });
+    const antigo = lerComoApi(
+      buildCardPayload({ name: card.name, sql: 'SELECT 1', databaseId: 1, collectionId: 2 }),
+    );
+    expect(planCard(antigo, desired)).toBe('update');
+    expect(planCard(lerComoApi(desired), desired)).toBe('unchanged');
+    const renomeados = [{ id: 7, name: card.title }];
+    expect(findByName(renomeados, card.title)?.id).toBe(7);
   });
 });

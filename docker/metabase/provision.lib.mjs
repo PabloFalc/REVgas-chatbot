@@ -15,8 +15,9 @@ const SECONDS = { suffix: ' s', decimals: 1, number_separators: SEPARATORS };
 const ORDINAL = 'graph.x_axis.scale';
 const STACKED = 'stackable.stack_type';
 
+const NUMBER = { number_separators: SEPARATORS };
 const DATE_STYLE = { date_style: 'D/M/YYYY', date_separator: '/', date_abbreviate: false };
-const DATETIME_STYLE = { ...DATE_STYLE, time_enabled: 'minutes', time_style: 'k:mm' };
+const DATETIME_STYLE = { ...DATE_STYLE, time_enabled: 'minutes', time_style: 'HH:mm' };
 
 export const TRANSLATIONS = {
   etapa: {
@@ -201,14 +202,20 @@ function dateColumnSettings(sqlFile) {
   return Object.fromEntries(entries);
 }
 
-function scalar(sqlFile, from, columnSettings) {
+function scalar(sqlFile, from, columnSettings = NUMBER) {
   const field = label(sqlFile, from);
-  const settings = { 'scalar.field': field };
-  if (columnSettings) settings.column_settings = { [`["name","${field}"]`]: columnSettings };
+  const settings = {
+    'scalar.field': field,
+    column_settings: { [`["name","${field}"]`]: columnSettings },
+  };
   return { sqlFile, display: 'scalar', settings };
 }
 
-function chart(sqlFile, display, { dimensions, metrics, xTitle, yTitle, extra = {} }) {
+function chart(
+  sqlFile,
+  display,
+  { dimensions, metrics, xTitle, yTitle, metricSettings = NUMBER, extra = {} },
+) {
   const settings = {
     'graph.dimensions': dimensions.map(from => label(sqlFile, from)),
     'graph.metrics': metrics.map(from => label(sqlFile, from)),
@@ -216,44 +223,53 @@ function chart(sqlFile, display, { dimensions, metrics, xTitle, yTitle, extra = 
     'graph.y_axis.title_text': yTitle,
     ...extra,
   };
-  const dates = dateColumnSettings(sqlFile);
-  if (Object.keys(dates).length > 0) settings.column_settings = dates;
+  const numbers = Object.fromEntries(
+    settings['graph.metrics'].map(field => [`["name","${field}"]`, metricSettings]),
+  );
+  settings.column_settings = { ...dateColumnSettings(sqlFile), ...numbers };
   return { sqlFile, display, settings };
 }
 
 export const CARDS = [
   {
     name: 'gestor-vendas',
+    title: 'Pedidos registrados',
     collection: 'Gestor',
     ...scalar('gestor-vendas', 'pedidos_registrados'),
   },
   {
     name: 'gestor-vendas-valor',
+    title: 'Valor registrado',
     collection: 'Gestor',
     ...scalar('gestor-vendas', 'valor_registrado_brl', BRL),
   },
   {
     name: 'gestor-vendas-ticket',
+    title: 'Ticket médio',
     collection: 'Gestor',
     ...scalar('gestor-vendas', 'ticket_medio_brl', BRL),
   },
   {
     name: 'gestor-vendas-incertos',
+    title: 'Pedidos com resultado incerto',
     collection: 'Gestor',
     ...scalar('gestor-vendas', 'resultado_incerto'),
   },
   {
     name: 'gestor-conversao',
+    title: 'Conversão madura',
     collection: 'Gestor',
     ...scalar('gestor-conversao', 'conversao_madura_pct', PERCENT),
   },
   {
     name: 'gestor-conversao-total',
+    title: 'Conversão total',
     collection: 'Gestor',
     ...scalar('gestor-conversao', 'conversao_total_pct', PERCENT),
   },
   {
     name: 'gestor-funil-diario',
+    title: 'Compras por dia: iniciadas, com resumo e vendidas',
     collection: 'Gestor',
     ...chart('gestor-funil-diario', 'bar', {
       dimensions: ['dia'],
@@ -265,6 +281,7 @@ export const CARDS = [
   },
   {
     name: 'gestor-abandono',
+    title: 'Abandono por última etapa',
     collection: 'Gestor',
     ...chart('gestor-abandono', 'bar', {
       dimensions: ['ultima_etapa'],
@@ -275,16 +292,19 @@ export const CARDS = [
   },
   {
     name: 'supervisor-espera',
+    title: 'Espera até um atendente assumir (mediana)',
     collection: 'Supervisor',
     ...scalar('supervisor-espera', 'espera_p50_seg', SECONDS),
   },
   {
     name: 'supervisor-espera-p90',
+    title: 'Espera até um atendente assumir (90% dos casos)',
     collection: 'Supervisor',
     ...scalar('supervisor-espera', 'espera_p90_seg', SECONDS),
   },
   {
     name: 'supervisor-handoffs',
+    title: 'Transferências para atendente por motivo',
     collection: 'Supervisor',
     ...chart('supervisor-handoffs', 'bar', {
       dimensions: ['motivo', 'tipo'],
@@ -296,17 +316,20 @@ export const CARDS = [
   },
   {
     name: 'tecnico-latencia',
+    title: 'Tempo de resposta do bot por dia (ms)',
     collection: 'Técnico',
     ...chart('tecnico-latencia', 'line', {
       dimensions: ['dia'],
       metrics: ['p50_ms', 'p95_ms'],
       xTitle: 'Dia',
       yTitle: 'Tempo do turno (ms)',
+      metricSettings: { ...NUMBER, decimals: 0 },
       extra: { [ORDINAL]: 'ordinal' },
     }),
   },
   {
     name: 'tecnico-ia',
+    title: 'Chamadas de IA por hora e finalidade',
     collection: 'Técnico',
     ...chart('tecnico-ia', 'bar', {
       dimensions: ['hora', 'reason'],
@@ -318,6 +341,7 @@ export const CARDS = [
   },
   {
     name: 'tecnico-rag',
+    title: 'Chamadas à base de conhecimento por dia e resultado',
     collection: 'Técnico',
     ...chart('tecnico-rag', 'bar', {
       dimensions: ['dia', 'motivo'],
@@ -329,8 +353,10 @@ export const CARDS = [
   },
 ];
 
+const MONEY_WARNING =
+  'Os valores vêm do registro de pedidos do bot, não do financeiro, e podem divergir do caixa.';
+
 const LEGEND_FOOTER = [
-  'Os valores vêm do registro de pedidos do bot, não do financeiro, e podem divergir do caixa.',
   'Dados de teste (simulados) só aparecem com o filtro "Incluir dados simulados" em "sim".',
   'O filtro "Período (dias)" vale para todos os números e gráficos deste painel.',
 ];
@@ -339,6 +365,16 @@ function legend(title, lines, extraWarnings = []) {
   const items = lines.map(line => `- ${line}`).join('\n');
   const warnings = [...extraWarnings, ...LEGEND_FOOTER].map(line => `- ${line}`).join('\n');
   return `## ${title}\n\n${items}\n\n## Avisos\n\n${warnings}`;
+}
+
+const CHARS_PER_LINE = 90;
+const LINES_PER_ROW = 1.5;
+
+export function textHeight(text) {
+  const lines = String(text)
+    .split('\n')
+    .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / CHARS_PER_LINE)), 0);
+  return Math.ceil(lines / LINES_PER_ROW) + 3;
 }
 
 export const LEGENDS = {
@@ -356,6 +392,7 @@ export const LEGENDS = {
     ],
     [
       'A conversão madura considera só as intenções com mais de 24 horas, para não contar como perdida uma compra que ainda pode ser concluída.',
+      MONEY_WARNING,
     ],
   ),
   Supervisor: legend(
@@ -439,7 +476,7 @@ export const DASHBOARDS = [
         sizeX: 24,
         sizeY: 8,
       },
-      { text: LEGENDS.Gestor, col: 0, row: 22, sizeX: 24, sizeY: 10 },
+      { text: LEGENDS.Gestor, col: 0, row: 22, sizeX: 24, sizeY: textHeight(LEGENDS.Gestor) },
     ],
   },
   {
@@ -470,7 +507,13 @@ export const DASHBOARDS = [
         sizeX: 24,
         sizeY: 8,
       },
-      { text: LEGENDS.Supervisor, col: 0, row: 11, sizeX: 24, sizeY: 8 },
+      {
+        text: LEGENDS.Supervisor,
+        col: 0,
+        row: 11,
+        sizeX: 24,
+        sizeY: textHeight(LEGENDS.Supervisor),
+      },
     ],
   },
   {
@@ -501,7 +544,7 @@ export const DASHBOARDS = [
         sizeX: 24,
         sizeY: 8,
       },
-      { text: LEGENDS.Técnico, col: 0, row: 24, sizeX: 24, sizeY: 8 },
+      { text: LEGENDS.Técnico, col: 0, row: 24, sizeX: 24, sizeY: textHeight(LEGENDS.Técnico) },
     ],
   },
 ];
