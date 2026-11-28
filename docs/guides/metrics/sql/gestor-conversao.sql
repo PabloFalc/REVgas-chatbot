@@ -21,8 +21,8 @@ WITH intents AS (
 SELECT
   count(*) FILTER (WHERE mature) AS intencoes_maduras,
   count(*) FILTER (WHERE mature AND converted) AS pedidos_em_intencoes_maduras,
-  round(100.0 * count(*) FILTER (WHERE mature AND converted)
-    / nullif(count(*) FILTER (WHERE mature), 0), 1) AS conversao_madura_pct,
+  coalesce(round(100.0 * count(*) FILTER (WHERE mature AND converted)
+    / nullif(count(*) FILTER (WHERE mature), 0), 1), 0) AS conversao_madura_pct,
   count(*) AS intencoes_totais,
   count(*) FILTER (WHERE converted) AS pedidos_em_intencoes_totais,
   round(100.0 * count(*) FILTER (WHERE converted) / nullif(count(*), 0), 1) AS conversao_total_pct

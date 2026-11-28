@@ -521,7 +521,7 @@ describe('Eventos do bot (e2e)', () => {
       expect(sorted(aged)).toEqual(expected);
     });
 
-    it('retorna nulo quando não há denominador', async () => {
+    it('retorna nulo ou zero quando não há denominador', async () => {
       const out = await isolated(
         async tx => ({
           conversao: (await query(tx, 'gestor-conversao.sql'))[0],
@@ -534,7 +534,7 @@ describe('Eventos do bot (e2e)', () => {
       expect(out.conversao).toEqual({
         intencoes_maduras: 0,
         pedidos_em_intencoes_maduras: 0,
-        conversao_madura_pct: null,
+        conversao_madura_pct: 0,
         intencoes_totais: 0,
         pedidos_em_intencoes_totais: 0,
         conversao_total_pct: null,
