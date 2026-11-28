@@ -15,6 +15,10 @@ import {
   planDatabase,
   redact,
   reuseDashcardIds,
+  SITE_LOCALE,
+  sameLocale,
+  VIEWS,
+  wrapSql,
 } from './provision.lib.mjs';
 
 const REPORT_TIMEZONE = 'America/Sao_Paulo';
@@ -133,6 +137,17 @@ async function provisionSettings(client) {
     await client.put('/api/setting/report-timezone', { value: REPORT_TIMEZONE });
     report('update', `fuso dos relatórios ${REPORT_TIMEZONE}`);
   }
+  let locale = findSetting(settings, 'site-locale');
+  if (!locale) {
+    const properties = await client.get('/api/session/properties');
+    locale = { value: properties['site-locale'] };
+  }
+  if (sameLocale(locale.value, SITE_LOCALE)) {
+    report('unchanged', `idioma da instância ${SITE_LOCALE}`);
+  } else {
+    await client.put('/api/setting/site-locale', { value: SITE_LOCALE });
+    report('update', `idioma da instância ${SITE_LOCALE}`);
+  }
   const tracking = findSetting(settings, 'anon-tracking-enabled');
   if (tracking?.is_env_setting) {
     console.log(
@@ -199,11 +214,11 @@ async function provisionCollections(client) {
 
 async function provisionCards(client, databaseId, collectionIds) {
   const provisioned = {};
-  for (const { name, sqlFile, collection, display, settings } of CARDS) {
-    const sql = await readFile(`${SQL_DIR}${sqlFile}.sql`, 'utf8');
+  for (const { name, title, sqlFile, collection, display, settings } of CARDS) {
+    const sql = wrapSql(await readFile(`${SQL_DIR}${sqlFile}.sql`, 'utf8'), VIEWS[sqlFile]);
     const collectionId = collectionIds[collection];
     const desired = buildCardPayload({
-      name,
+      name: title,
       sql,
       databaseId,
       collectionId,
@@ -211,10 +226,10 @@ async function provisionCards(client, databaseId, collectionIds) {
       visualizationSettings: settings,
     });
     const items = await client.get(`/api/collection/${collectionId}/items?models=card&limit=500`);
-    const found = findByName(items.data, name);
+    const found = findByName(items.data, title) ?? findByName(items.data, name);
     const existing = found ? await client.get(`/api/card/${found.id}`) : undefined;
     const action = planCard(existing, desired);
-    const label = `pergunta "${name}" (coleção ${collection}, ${display})`;
+    const label = `pergunta "${title}" (coleção ${collection}, ${display})`;
     let id = existing?.id;
     if (action === 'create') {
       id = (await client.post('/api/card', desired)).id;
@@ -234,8 +249,9 @@ async function provisionDashboards(client, collectionIds, cards) {
       name,
       collectionId,
       cards: layout.map(item => ({
-        cardId: cards[item.card].id,
-        sql: cards[item.card].sql,
+        cardId: item.card ? cards[item.card].id : null,
+        sql: item.card ? cards[item.card].sql : null,
+        text: item.text,
         col: item.col,
         row: item.row,
         sizeX: item.sizeX,

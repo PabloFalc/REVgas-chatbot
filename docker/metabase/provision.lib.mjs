@@ -15,125 +15,411 @@ const SECONDS = { suffix: ' s', decimals: 1, number_separators: SEPARATORS };
 const ORDINAL = 'graph.x_axis.scale';
 const STACKED = 'stackable.stack_type';
 
-function scalar(field, columnSettings) {
-  const settings = { 'scalar.field': field };
-  if (columnSettings) settings.column_settings = { [`["name","${field}"]`]: columnSettings };
-  return { display: 'scalar', settings };
+const NUMBER = { number_separators: SEPARATORS };
+const DATE_STYLE = { date_style: 'D/M/YYYY', date_separator: '/', date_abbreviate: false };
+const DATETIME_STYLE = { ...DATE_STYLE, time_enabled: 'minutes', time_style: 'HH:mm' };
+
+export const TRANSLATIONS = {
+  etapa: {
+    askName: 'Nome do cliente',
+    askCpf: 'CPF',
+    askCpfPrefix: 'Início do CPF',
+    confirmCpf: 'Confirmação do CPF',
+    offerRepeat: 'Oferta de repetir o último pedido',
+    chooseAddress: 'Escolha do endereço',
+    askNewAddress: 'Novo endereço',
+    askAddressField: 'Dados do endereço',
+    confirmAddress: 'Confirmação do endereço',
+    chooseProduct: 'Escolha do produto',
+    searchProduct: 'Busca do produto',
+    pickProduct: 'Seleção do produto',
+    chooseQuantity: 'Escolha da quantidade',
+    askQuantity: 'Quantidade',
+    choosePayment: 'Escolha do pagamento',
+    askNeedsChange: 'Pergunta sobre troco',
+    askChangeAmount: 'Valor do troco',
+    summary: 'Resumo do pedido',
+    chooseCorrection: 'Correção do pedido',
+    creatingSale: 'Registro da venda',
+    saleFailed: 'Falha ao registrar a venda',
+    unknown: 'Etapa não registrada',
+  },
+  motivoHandoff: {
+    customer_request: 'Pedido do cliente',
+    emergency: 'Emergência',
+    sale_failed: 'Falha ao registrar a venda',
+    sale_rejected: 'Venda recusada',
+    sale_uncertain: 'Resultado da venda incerto',
+    sale_cancellation: 'Cancelamento de venda',
+    quantity_limit: 'Limite de quantidade',
+    identity_failure: 'Falha na confirmação de identidade',
+    stuck: 'Cliente sem avançar no pedido',
+    offense: 'Ofensa do cliente',
+    sem_motivo: 'Sem motivo registrado',
+  },
+  tipoHandoff: {
+    handoff: 'Transferido para atendente',
+    handoff_offered: 'Transferência oferecida',
+  },
+  finalidadeIa: {
+    interpret: 'Interpretação da mensagem',
+    read_name: 'Leitura do nome',
+    address: 'Leitura do endereço',
+    question: 'Pergunta do cliente',
+    sem_motivo: 'Sem finalidade registrada',
+  },
+  resultadoRag: {
+    answered: 'Pergunta respondida',
+    no_match: 'Sem trecho parecido na base',
+    not_in_sources: 'Assunto fora da base',
+    rejected: 'Pergunta recusada',
+    unavailable: 'Busca indisponível',
+  },
+};
+
+export const VIEWS = {
+  'gestor-vendas': {
+    columns: [
+      { from: 'pedidos_registrados', as: 'Pedidos registrados' },
+      { from: 'valor_registrado_brl', as: 'Valor registrado (R$)' },
+      { from: 'ticket_medio_brl', as: 'Ticket médio (R$)' },
+      { from: 'resultado_incerto', as: 'Pedidos com resultado incerto' },
+    ],
+  },
+  'gestor-conversao': {
+    columns: [
+      { from: 'intencoes_maduras', as: 'Intenções maduras' },
+      { from: 'pedidos_em_intencoes_maduras', as: 'Pedidos nas intenções maduras' },
+      { from: 'conversao_madura_pct', as: 'Conversão madura (%)' },
+      { from: 'intencoes_totais', as: 'Intenções totais' },
+      { from: 'pedidos_em_intencoes_totais', as: 'Pedidos nas intenções totais' },
+      { from: 'conversao_total_pct', as: 'Conversão total (%)' },
+    ],
+  },
+  'gestor-funil-diario': {
+    columns: [
+      { from: 'dia', as: 'Dia', format: 'date' },
+      { from: 'ciclos', as: 'Compras iniciadas' },
+      { from: 'resumos', as: 'Chegaram ao resumo' },
+      { from: 'vendas', as: 'Vendas registradas' },
+      { from: 'conversao_percentual', as: 'Conversão (%)' },
+    ],
+    orderBy: 'base.dia',
+  },
+  'gestor-abandono': {
+    columns: [
+      { from: 'ultima_etapa', as: 'Última etapa', translate: 'etapa' },
+      { from: 'ciclos_abandonados', as: 'Compras abandonadas' },
+    ],
+    orderBy: 'base.ciclos_abandonados DESC',
+  },
+  'supervisor-espera': {
+    columns: [
+      { from: 'espera_p50_seg', as: 'Espera mediana (s)' },
+      { from: 'espera_p90_seg', as: 'Espera em 90% dos casos (s)' },
+      { from: 'handoffs_assumidos', as: 'Atendimentos assumidos' },
+    ],
+  },
+  'supervisor-handoffs': {
+    columns: [
+      { from: 'motivo', as: 'Motivo', translate: 'motivoHandoff' },
+      { from: 'tipo', as: 'Tipo', translate: 'tipoHandoff' },
+      { from: 'eventos', as: 'Ocorrências' },
+    ],
+    orderBy: 'base.eventos DESC',
+  },
+  'tecnico-latencia': {
+    columns: [
+      { from: 'dia', as: 'Dia', format: 'date' },
+      { from: 'p50_ms', as: 'Mediana (ms)' },
+      { from: 'p95_ms', as: 'Percentil 95 (ms)' },
+    ],
+    orderBy: 'base.dia',
+  },
+  'tecnico-ia': {
+    columns: [
+      { from: 'hora', as: 'Hora', format: 'datetime' },
+      { from: 'reason', as: 'Finalidade', translate: 'finalidadeIa' },
+      { from: 'chamadas', as: 'Chamadas' },
+      { from: 'permitidas', as: 'Permitidas' },
+      { from: 'bloqueadas', as: 'Bloqueadas' },
+      { from: 'unidades_consumidas', as: 'Unidades consumidas' },
+    ],
+    orderBy: 'base.hora, base.reason',
+  },
+  'tecnico-rag': {
+    columns: [
+      { from: 'dia', as: 'Dia', format: 'date' },
+      { from: 'motivo', as: 'Resultado', translate: 'resultadoRag' },
+      { from: 'desconhecidas', as: 'Sem resposta' },
+      { from: 'chamadas', as: 'Chamadas' },
+      { from: 'taxa_nao_sei_percentual', as: 'Taxa de "não sei" (%)' },
+    ],
+    orderBy: 'base.dia, base.motivo',
+  },
+};
+
+function quoteText(value) {
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+function quoteName(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function columnExpression({ from, as, translate }) {
+  const source = `base.${from}`;
+  const labels = translate ? TRANSLATIONS[translate] : undefined;
+  if (!labels) return `${source} AS ${quoteName(as)}`;
+  const whens = Object.entries(labels)
+    .map(([value, label]) => `WHEN ${quoteText(value)} THEN ${quoteText(label)}`)
+    .join(' ');
+  return `CASE ${source} ${whens} ELSE ${source}::text END AS ${quoteName(as)}`;
+}
+
+export function wrapSql(sql, view) {
+  const inner = String(sql)
+    .trim()
+    .replace(/;+\s*$/, '');
+  const select = view.columns.map(columnExpression).join(',\n  ');
+  const order = view.orderBy ? `\nORDER BY ${view.orderBy}` : '';
+  return `WITH base AS (\n${inner}\n)\nSELECT\n  ${select}\nFROM base${order}`;
+}
+
+function label(sqlFile, from) {
+  const column = VIEWS[sqlFile].columns.find(candidate => candidate.from === from);
+  if (!column) throw new Error(`Coluna "${from}" não existe na visão de "${sqlFile}".`);
+  return column.as;
+}
+
+function dateColumnSettings(sqlFile) {
+  const entries = VIEWS[sqlFile].columns
+    .filter(column => column.format)
+    .map(column => [
+      `["name","${column.as}"]`,
+      column.format === 'datetime' ? DATETIME_STYLE : DATE_STYLE,
+    ]);
+  return Object.fromEntries(entries);
+}
+
+function scalar(sqlFile, from, columnSettings = NUMBER) {
+  const field = label(sqlFile, from);
+  const settings = {
+    'scalar.field': field,
+    column_settings: { [`["name","${field}"]`]: columnSettings },
+  };
+  return { sqlFile, display: 'scalar', settings };
+}
+
+function chart(
+  sqlFile,
+  display,
+  { dimensions, metrics, xTitle, yTitle, metricSettings = NUMBER, extra = {} },
+) {
+  const settings = {
+    'graph.dimensions': dimensions.map(from => label(sqlFile, from)),
+    'graph.metrics': metrics.map(from => label(sqlFile, from)),
+    'graph.x_axis.title_text': xTitle,
+    'graph.y_axis.title_text': yTitle,
+    ...extra,
+  };
+  const numbers = Object.fromEntries(
+    settings['graph.metrics'].map(field => [`["name","${field}"]`, metricSettings]),
+  );
+  settings.column_settings = { ...dateColumnSettings(sqlFile), ...numbers };
+  return { sqlFile, display, settings };
 }
 
 export const CARDS = [
   {
     name: 'gestor-vendas',
-    sqlFile: 'gestor-vendas',
+    title: 'Pedidos registrados',
     collection: 'Gestor',
-    ...scalar('pedidos_registrados'),
+    ...scalar('gestor-vendas', 'pedidos_registrados'),
   },
   {
     name: 'gestor-vendas-valor',
-    sqlFile: 'gestor-vendas',
+    title: 'Valor registrado',
     collection: 'Gestor',
-    ...scalar('valor_registrado_brl', BRL),
+    ...scalar('gestor-vendas', 'valor_registrado_brl', BRL),
   },
   {
     name: 'gestor-vendas-ticket',
-    sqlFile: 'gestor-vendas',
+    title: 'Ticket médio',
     collection: 'Gestor',
-    ...scalar('ticket_medio_brl', BRL),
+    ...scalar('gestor-vendas', 'ticket_medio_brl', BRL),
   },
   {
     name: 'gestor-vendas-incertos',
-    sqlFile: 'gestor-vendas',
+    title: 'Pedidos com resultado incerto',
     collection: 'Gestor',
-    ...scalar('resultado_incerto'),
+    ...scalar('gestor-vendas', 'resultado_incerto'),
   },
   {
     name: 'gestor-conversao',
-    sqlFile: 'gestor-conversao',
+    title: 'Conversão madura',
     collection: 'Gestor',
-    ...scalar('conversao_madura_pct', PERCENT),
+    ...scalar('gestor-conversao', 'conversao_madura_pct', PERCENT),
   },
   {
     name: 'gestor-conversao-total',
-    sqlFile: 'gestor-conversao',
+    title: 'Conversão total',
     collection: 'Gestor',
-    ...scalar('conversao_total_pct', PERCENT),
+    ...scalar('gestor-conversao', 'conversao_total_pct', PERCENT),
   },
   {
     name: 'gestor-funil-diario',
-    sqlFile: 'gestor-funil-diario',
+    title: 'Compras por dia: iniciadas, com resumo e vendidas',
     collection: 'Gestor',
-    display: 'bar',
-    settings: {
-      'graph.dimensions': ['dia'],
-      'graph.metrics': ['ciclos', 'resumos', 'vendas'],
-      [ORDINAL]: 'ordinal',
-    },
+    ...chart('gestor-funil-diario', 'bar', {
+      dimensions: ['dia'],
+      metrics: ['ciclos', 'resumos', 'vendas'],
+      xTitle: 'Dia',
+      yTitle: 'Quantidade de compras',
+      extra: { [ORDINAL]: 'ordinal' },
+    }),
   },
   {
     name: 'gestor-abandono',
-    sqlFile: 'gestor-abandono',
+    title: 'Abandono por última etapa',
     collection: 'Gestor',
-    display: 'bar',
-    settings: { 'graph.dimensions': ['ultima_etapa'], 'graph.metrics': ['ciclos_abandonados'] },
+    ...chart('gestor-abandono', 'bar', {
+      dimensions: ['ultima_etapa'],
+      metrics: ['ciclos_abandonados'],
+      xTitle: 'Última etapa',
+      yTitle: 'Compras abandonadas',
+    }),
   },
   {
     name: 'supervisor-espera',
-    sqlFile: 'supervisor-espera',
+    title: 'Espera até um atendente assumir (mediana)',
     collection: 'Supervisor',
-    ...scalar('espera_p50_seg', SECONDS),
+    ...scalar('supervisor-espera', 'espera_p50_seg', SECONDS),
   },
   {
     name: 'supervisor-espera-p90',
-    sqlFile: 'supervisor-espera',
+    title: 'Espera até um atendente assumir (90% dos casos)',
     collection: 'Supervisor',
-    ...scalar('espera_p90_seg', SECONDS),
+    ...scalar('supervisor-espera', 'espera_p90_seg', SECONDS),
   },
   {
     name: 'supervisor-handoffs',
-    sqlFile: 'supervisor-handoffs',
+    title: 'Transferências para atendente por motivo',
     collection: 'Supervisor',
-    display: 'bar',
-    settings: {
-      'graph.dimensions': ['motivo', 'tipo'],
-      'graph.metrics': ['eventos'],
-      [STACKED]: 'stacked',
-    },
+    ...chart('supervisor-handoffs', 'bar', {
+      dimensions: ['motivo', 'tipo'],
+      metrics: ['eventos'],
+      xTitle: 'Motivo',
+      yTitle: 'Ocorrências',
+      extra: { [STACKED]: 'stacked' },
+    }),
   },
   {
     name: 'tecnico-latencia',
-    sqlFile: 'tecnico-latencia',
+    title: 'Tempo de resposta do bot por dia (ms)',
     collection: 'Técnico',
-    display: 'line',
-    settings: {
-      'graph.dimensions': ['dia'],
-      'graph.metrics': ['p50_ms', 'p95_ms'],
-      [ORDINAL]: 'ordinal',
-    },
+    ...chart('tecnico-latencia', 'line', {
+      dimensions: ['dia'],
+      metrics: ['p50_ms', 'p95_ms'],
+      xTitle: 'Dia',
+      yTitle: 'Tempo do turno (ms)',
+      metricSettings: { ...NUMBER, decimals: 0 },
+      extra: { [ORDINAL]: 'ordinal' },
+    }),
   },
   {
     name: 'tecnico-ia',
-    sqlFile: 'tecnico-ia',
+    title: 'Chamadas de IA por hora e finalidade',
     collection: 'Técnico',
-    display: 'bar',
-    settings: {
-      'graph.dimensions': ['hora', 'reason'],
-      'graph.metrics': ['chamadas'],
-      [STACKED]: 'stacked',
-    },
+    ...chart('tecnico-ia', 'bar', {
+      dimensions: ['hora', 'reason'],
+      metrics: ['chamadas'],
+      xTitle: 'Hora',
+      yTitle: 'Chamadas de IA',
+      extra: { [STACKED]: 'stacked' },
+    }),
   },
   {
     name: 'tecnico-rag',
-    sqlFile: 'tecnico-rag',
+    title: 'Chamadas à base de conhecimento por dia e resultado',
     collection: 'Técnico',
-    display: 'bar',
-    settings: {
-      'graph.dimensions': ['dia', 'motivo'],
-      'graph.metrics': ['chamadas'],
-      [STACKED]: 'stacked',
-      [ORDINAL]: 'ordinal',
-    },
+    ...chart('tecnico-rag', 'bar', {
+      dimensions: ['dia', 'motivo'],
+      metrics: ['chamadas'],
+      xTitle: 'Dia',
+      yTitle: 'Chamadas à base de conhecimento',
+      extra: { [STACKED]: 'stacked', [ORDINAL]: 'ordinal' },
+    }),
   },
 ];
+
+const MONEY_WARNING =
+  'Os valores vêm do registro de pedidos do bot, não do financeiro, e podem divergir do caixa.';
+
+const LEGEND_FOOTER = [
+  'Dados de teste (simulados) só aparecem com o filtro "Incluir dados simulados" em "sim".',
+  'O filtro "Período (dias)" vale para todos os números e gráficos deste painel.',
+];
+
+function legend(title, lines, extraWarnings = []) {
+  const items = lines.map(line => `- ${line}`).join('\n');
+  const warnings = [...extraWarnings, ...LEGEND_FOOTER].map(line => `- ${line}`).join('\n');
+  return `## ${title}\n\n${items}\n\n## Avisos\n\n${warnings}`;
+}
+
+const CHARS_PER_LINE = 90;
+const LINES_PER_ROW = 2.2;
+
+export function textHeight(text) {
+  const lines = String(text)
+    .split('\n')
+    .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / CHARS_PER_LINE)), 0);
+  return Math.ceil(lines / LINES_PER_ROW) + 1;
+}
+
+export const LEGENDS = {
+  Gestor: legend(
+    'Como ler este painel',
+    [
+      'Pedidos registrados: pedidos que o bot conseguiu lançar no sistema de vendas no período.',
+      'Valor registrado: soma, em reais, dos pedidos registrados.',
+      'Ticket médio: valor registrado dividido pelo número de pedidos registrados.',
+      'Resultado incerto: pedidos em que o bot não recebeu uma confirmação clara do sistema de vendas e que precisam de conferência manual.',
+      'Conversão madura: percentual das compras iniciadas há mais de 24 horas que terminaram em pedido registrado.',
+      'Conversão total: o mesmo cálculo, incluindo as compras iniciadas nas últimas 24 horas.',
+      'Compras por dia: quantas compras o bot iniciou, quantas chegaram ao resumo do pedido e quantas viraram venda registrada.',
+      'Abandono por última etapa: compras iniciadas há mais de 24 horas que ficaram sem desfecho, agrupadas pela etapa em que a conversa parou.',
+    ],
+    [
+      'A conversão madura considera só as intenções com mais de 24 horas, para não contar como perdida uma compra que ainda pode ser concluída.',
+      MONEY_WARNING,
+    ],
+  ),
+  Supervisor: legend(
+    'Como ler este painel',
+    [
+      'Espera mediana: tempo que metade das conversas esperou, desde o pedido de ajuda humana até um atendente assumir.',
+      'Espera em 90% dos casos: 9 em cada 10 conversas esperaram esse tempo ou menos. Mostra os casos mais demorados sem contar os extremos.',
+      'Transferido para atendente: o bot passou a conversa para uma pessoa.',
+      'Transferência oferecida: o bot sugeriu a transferência ao cliente, por cliente sem avançar no pedido ou por ofensa.',
+      'Motivos: pedido do cliente, emergência, falha ou recusa ao registrar a venda, resultado da venda incerto, cancelamento de venda, limite de quantidade e falha na confirmação de identidade.',
+    ],
+    [
+      'Os tempos de espera são medidos, mas a revenda ainda não definiu uma meta. Os números mostram a situação real e não indicam se ela está boa ou ruim.',
+    ],
+  ),
+  Técnico: legend(
+    'Como ler este painel',
+    [
+      'Latência do turno: tempo que o bot leva para processar cada mensagem do cliente, em milissegundos (1000 ms é 1 segundo). A mediana é o tempo típico. O percentil 95 é o tempo que 95% dos turnos não passam.',
+      'Chamadas de IA por hora: quantas vezes o bot consultou o modelo de linguagem, separadas pela finalidade (interpretar a mensagem, ler nome, ler endereço ou responder pergunta). Entram chamadas permitidas e bloqueadas pelo limite de uso.',
+      'Chamadas à base de conhecimento por dia: perguntas do cliente que o bot tentou responder com a base de conteúdo da revenda, separadas pelo resultado. "Pergunta respondida" é o resultado esperado. Os demais indicam que o bot não soube responder.',
+    ],
+    [
+      'Os tempos são medidos, mas não há meta definida. Servem para acompanhar mudanças ao longo dos dias.',
+    ],
+  ),
+};
 
 export const DASHBOARDS = [
   {
@@ -152,7 +438,7 @@ export const DASHBOARDS = [
       { card: 'gestor-vendas-ticket', title: 'Ticket médio', col: 12, row: 0, sizeX: 6, sizeY: 3 },
       {
         card: 'gestor-vendas-incertos',
-        title: 'Resultado incerto',
+        title: 'Pedidos com resultado incerto',
         col: 18,
         row: 0,
         sizeX: 6,
@@ -160,7 +446,7 @@ export const DASHBOARDS = [
       },
       {
         card: 'gestor-conversao',
-        title: 'Conversão madura (intenções com mais de 24 h)',
+        title: 'Conversão madura (compras iniciadas há mais de 24 h)',
         col: 0,
         row: 3,
         sizeX: 12,
@@ -176,7 +462,7 @@ export const DASHBOARDS = [
       },
       {
         card: 'gestor-funil-diario',
-        title: 'Funil por dia: ciclos, resumos e vendas',
+        title: 'Compras por dia: iniciadas, com resumo e vendidas',
         col: 0,
         row: 6,
         sizeX: 24,
@@ -190,6 +476,7 @@ export const DASHBOARDS = [
         sizeX: 24,
         sizeY: 8,
       },
+      { text: LEGENDS.Gestor, col: 0, row: 22, sizeX: 24, sizeY: textHeight(LEGENDS.Gestor) },
     ],
   },
   {
@@ -198,7 +485,7 @@ export const DASHBOARDS = [
     cards: [
       {
         card: 'supervisor-espera',
-        title: 'Espera até assumir (mediana)',
+        title: 'Espera até um atendente assumir (mediana)',
         col: 0,
         row: 0,
         sizeX: 12,
@@ -206,7 +493,7 @@ export const DASHBOARDS = [
       },
       {
         card: 'supervisor-espera-p90',
-        title: 'Espera até assumir (p90)',
+        title: 'Espera até um atendente assumir (90% dos casos)',
         col: 12,
         row: 0,
         sizeX: 12,
@@ -214,11 +501,18 @@ export const DASHBOARDS = [
       },
       {
         card: 'supervisor-handoffs',
-        title: 'Handoffs por motivo',
+        title: 'Transferências para atendente por motivo',
         col: 0,
         row: 3,
         sizeX: 24,
         sizeY: 8,
+      },
+      {
+        text: LEGENDS.Supervisor,
+        col: 0,
+        row: 11,
+        sizeX: 24,
+        sizeY: textHeight(LEGENDS.Supervisor),
       },
     ],
   },
@@ -228,7 +522,7 @@ export const DASHBOARDS = [
     cards: [
       {
         card: 'tecnico-latencia',
-        title: 'Latência do turno por dia (ms, p50 e p95)',
+        title: 'Tempo de resposta do bot por dia (ms)',
         col: 0,
         row: 0,
         sizeX: 24,
@@ -236,7 +530,7 @@ export const DASHBOARDS = [
       },
       {
         card: 'tecnico-ia',
-        title: 'Chamadas de IA por hora e motivo',
+        title: 'Chamadas de IA por hora e finalidade',
         col: 0,
         row: 8,
         sizeX: 24,
@@ -244,12 +538,13 @@ export const DASHBOARDS = [
       },
       {
         card: 'tecnico-rag',
-        title: 'Chamadas ao RAG por dia e motivo',
+        title: 'Chamadas à base de conhecimento por dia e resultado',
         col: 0,
         row: 16,
         sizeX: 24,
         sizeY: 8,
       },
+      { text: LEGENDS.Técnico, col: 0, row: 24, sizeX: 24, sizeY: textHeight(LEGENDS.Técnico) },
     ],
   },
 ];
@@ -257,7 +552,7 @@ export const DASHBOARDS = [
 const VARIABLES = {
   dias: {
     id: '11111111-1111-4111-8111-111111111111',
-    displayName: 'Dias',
+    displayName: 'Período (dias)',
     sectionId: 'number',
     tagType: 'number',
     tagDefault: '30',
@@ -266,7 +561,7 @@ const VARIABLES = {
   },
   incluir_simulados: {
     id: '22222222-2222-4222-8222-222222222222',
-    displayName: 'Incluir simulados',
+    displayName: 'Incluir dados simulados',
     sectionId: 'string',
     tagType: 'text',
     tagDefault: 'nao',
@@ -351,6 +646,27 @@ export function buildCardPayload({
   };
 }
 
+export const SITE_LOCALE = 'pt_BR';
+
+export function sameLocale(current, wanted) {
+  const normalize = value =>
+    String(value ?? '')
+      .replaceAll('-', '_')
+      .toLowerCase();
+  return normalize(current) === normalize(wanted);
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const body = Object.keys(value)
+      .sort()
+      .map(key => `${JSON.stringify(key)}:${stable(value[key])}`);
+    return `{${body.join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
 function firstValue(value) {
   return String(Array.isArray(value) ? value[0] : value);
 }
@@ -363,6 +679,7 @@ function summarizeCard(card, desiredSettings) {
   const tags = (Array.isArray(rawTags) ? rawTags : Object.values(rawTags ?? {}))
     .map(tag => ({
       name: tag.name,
+      displayName: tag['display-name'] ?? null,
       type: tag.type,
       required: Boolean(tag.required),
       default: tag.default === undefined ? null : firstValue(tag.default),
@@ -371,6 +688,7 @@ function summarizeCard(card, desiredSettings) {
   const parameters = (card.parameters ?? [])
     .map(parameter => ({
       slug: parameter.slug,
+      name: parameter.name,
       type: parameter.type,
       required: Boolean(parameter.required),
       default: parameter.default === undefined ? null : firstValue(parameter.default),
@@ -395,8 +713,8 @@ function summarizeCard(card, desiredSettings) {
 export function planCard(existing, desired) {
   if (!existing) return 'create';
   const same =
-    JSON.stringify(summarizeCard(existing, desired.visualization_settings)) ===
-    JSON.stringify(summarizeCard(desired, desired.visualization_settings));
+    stable(summarizeCard(existing, desired.visualization_settings)) ===
+    stable(summarizeCard(desired, desired.visualization_settings));
   return same ? 'unchanged' : 'update';
 }
 
@@ -428,6 +746,16 @@ export function buildDashcardMappings(cardId, sql) {
   }));
 }
 
+const VIRTUAL_TEXT_CARD = {
+  virtual_card: {
+    name: null,
+    display: 'text',
+    visualization_settings: {},
+    dataset_query: {},
+    archived: false,
+  },
+};
+
 export function buildDashboardPayload({ name, collectionId, cards }) {
   return {
     name,
@@ -435,13 +763,19 @@ export function buildDashboardPayload({ name, collectionId, cards }) {
     parameters: buildDashboardParameters(),
     dashcards: cards.map((card, index) => ({
       id: -(index + 1),
-      card_id: card.cardId,
+      card_id: card.text === undefined ? card.cardId : null,
       col: card.col,
       row: card.row,
       size_x: card.sizeX,
       size_y: card.sizeY,
-      parameter_mappings: buildDashcardMappings(card.cardId, card.sql),
-      visualization_settings: card.title ? { 'card.title': card.title } : {},
+      parameter_mappings:
+        card.text === undefined ? buildDashcardMappings(card.cardId, card.sql) : [],
+      visualization_settings:
+        card.text === undefined
+          ? card.title
+            ? { 'card.title': card.title }
+            : {}
+          : { ...VIRTUAL_TEXT_CARD, text: card.text },
     })),
   };
 }
@@ -465,30 +799,31 @@ function summarizeDashboard(dashboard) {
       sizeX: dashcard.size_x,
       sizeY: dashcard.size_y,
       title: dashcard.visualization_settings?.['card.title'] ?? null,
+      text: dashcard.visualization_settings?.text ?? null,
       mappings: (dashcard.parameter_mappings ?? [])
         .map(mapping => `${mapping.parameter_id}=${JSON.stringify(mapping.target)}`)
         .sort(),
     }))
-    .sort((a, b) => a.cardId - b.cardId);
+    .sort((a, b) => a.row - b.row || a.col - b.col);
   return { name: dashboard.name, collectionId: dashboard.collection_id, parameters, dashcards };
 }
 
 export function planDashboard(existing, desired) {
   if (!existing) return 'create';
-  const same =
-    JSON.stringify(summarizeDashboard(existing)) === JSON.stringify(summarizeDashboard(desired));
+  const same = stable(summarizeDashboard(existing)) === stable(summarizeDashboard(desired));
   return same ? 'unchanged' : 'update';
 }
 
 export function reuseDashcardIds(existing, desired) {
+  const keyOf = dashcard => dashcard.card_id ?? `texto:${dashcard.row}:${dashcard.col}`;
   const byCard = new Map(
-    (existing?.dashcards ?? []).map(dashcard => [dashcard.card_id, dashcard.id]),
+    (existing?.dashcards ?? []).map(dashcard => [keyOf(dashcard), dashcard.id]),
   );
   return {
     ...desired,
     dashcards: desired.dashcards.map(dashcard => ({
       ...dashcard,
-      id: byCard.get(dashcard.card_id) ?? dashcard.id,
+      id: byCard.get(keyOf(dashcard)) ?? dashcard.id,
     })),
   };
 }

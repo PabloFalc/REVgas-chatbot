@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildCardPayload,
@@ -18,6 +20,11 @@ import {
   planDatabase,
   redact,
   reuseDashcardIds,
+  sameLocale,
+  TRANSLATIONS,
+  textHeight,
+  VIEWS,
+  wrapSql,
 } from './provision.lib.mjs';
 
 const SQL = `-- {{comentario}} fica de fora? não, o regex pega
@@ -250,7 +257,7 @@ describe('catálogo de cards e dashboards', () => {
 
   it('dashboard só usa cards definidos e da mesma coleção', () => {
     for (const dashboard of DASHBOARDS) {
-      for (const item of dashboard.cards) {
+      for (const item of dashboard.cards.filter(candidate => candidate.card)) {
         const card = CARDS.find(candidate => candidate.name === item.card);
         expect(card, item.card).toBeDefined();
         expect(card?.collection).toBe(dashboard.collection);
@@ -261,13 +268,15 @@ describe('catálogo de cards e dashboards', () => {
   it('nomes de cards são únicos e todo card está em algum dashboard', () => {
     const names = CARDS.map(card => card.name);
     expect(new Set(names).size).toBe(names.length);
-    const used = DASHBOARDS.flatMap(dashboard => dashboard.cards.map(item => item.card));
+    const used = DASHBOARDS.flatMap(dashboard =>
+      dashboard.cards.flatMap(item => (item.card ? [item.card] : [])),
+    );
     expect([...names].sort()).toEqual([...used].sort());
   });
 
   it('cria o dashboard Técnico com latência, IA e RAG', () => {
     const tecnico = DASHBOARDS.find(dashboard => dashboard.name === 'Técnico');
-    expect(tecnico?.cards.map(item => item.card)).toEqual([
+    expect(tecnico?.cards.flatMap(item => (item.card ? [item.card] : []))).toEqual([
       'tecnico-latencia',
       'tecnico-ia',
       'tecnico-rag',
@@ -289,13 +298,13 @@ describe('catálogo de cards e dashboards', () => {
       expect(card.settings['graph.metrics'].length).toBeGreaterThan(0);
     }
     const ia = CARDS.find(card => card.name === 'tecnico-ia');
-    expect(ia?.settings['graph.dimensions']).toEqual(['hora', 'reason']);
+    expect(ia?.settings['graph.dimensions']).toEqual(['Hora', 'Finalidade']);
     expect(ia?.settings['stackable.stack_type']).toBe('stacked');
   });
 
   it('moeda e percentuais usam separadores brasileiros', () => {
     const valor = CARDS.find(card => card.name === 'gestor-vendas-valor');
-    expect(valor?.settings.column_settings['["name","valor_registrado_brl"]']).toMatchObject({
+    expect(valor?.settings.column_settings['["name","Valor registrado (R$)"]']).toMatchObject({
       number_style: 'currency',
       currency: 'BRL',
       number_separators: ',.',
@@ -330,13 +339,13 @@ describe('dashboard', () => {
   it('cria filtros Dias e Incluir simulados com os padrões das perguntas', () => {
     const [dias, simulados] = buildDashboardParameters();
     expect(dias).toMatchObject({
-      name: 'Dias',
+      name: 'Período (dias)',
       slug: 'dias',
       type: 'number/=',
       default: 30,
     });
     expect(simulados).toMatchObject({
-      name: 'Incluir simulados',
+      name: 'Incluir dados simulados',
       slug: 'incluir_simulados',
       type: 'string/=',
       default: ['nao'],
@@ -542,5 +551,341 @@ describe('redact', () => {
 
   it('ignora segredos vazios', () => {
     expect(redact('texto', ['', undefined])).toBe('texto');
+  });
+});
+
+const SRC = (arquivo: string) => readFileSync(join(process.cwd(), 'src', arquivo), 'utf8');
+
+function uniao(texto: string, inicio: RegExp) {
+  const achado = inicio.exec(texto);
+  if (!achado) throw new Error(`Trecho não encontrado: ${inicio}`);
+  const resto = texto.slice(achado.index + achado[0].length);
+  const bloco = resto.slice(0, resto.search(/[;}]/));
+  return [...bloco.matchAll(/'([A-Za-z_]+)'/g)].map(match => match[1]);
+}
+
+function sqlCanonico(arquivo: string) {
+  return readFileSync(join(process.cwd(), 'docs/guides/metrics/sql', `${arquivo}.sql`), 'utf8');
+}
+
+type NomeVisao = keyof typeof VIEWS;
+
+describe('traduções', () => {
+  const etapas = uniao(SRC('modules/conversation/flow/flow.types.ts'), /export type Step =/);
+  const motivosHandoff = uniao(
+    SRC('modules/handoff/contracts/handoff.types.ts'),
+    /export type HandoffReason =/,
+  );
+  const eventos = SRC('modules/metrics/contracts/metrics.types.ts');
+  const ofertas = uniao(eventos, /name: 'handoff_offered'; reason:/);
+  const ia = uniao(eventos, /name: 'ai_call';[\s\S]*?reason:/);
+  const rag = uniao(eventos, /name: 'rag';[\s\S]*?reason\?:/);
+
+  it('lê as listas completas dos enums do código', () => {
+    expect(etapas).toHaveLength(21);
+    expect(motivosHandoff).toHaveLength(8);
+    expect([...ofertas].sort()).toEqual(['offense', 'stuck']);
+    expect([...ia].sort()).toEqual(['address', 'interpret', 'question', 'read_name']);
+    expect([...rag].sort()).toEqual(['no_match', 'not_in_sources', 'rejected', 'unavailable']);
+  });
+
+  it('toda etapa, motivo, finalidade e resultado tem rótulo em português', () => {
+    for (const etapa of etapas) expect(TRANSLATIONS.etapa, etapa).toHaveProperty(etapa);
+    for (const motivo of [...motivosHandoff, ...ofertas]) {
+      expect(TRANSLATIONS.motivoHandoff, motivo).toHaveProperty(motivo);
+    }
+    for (const finalidade of ia) expect(TRANSLATIONS.finalidadeIa).toHaveProperty(finalidade);
+    for (const resultado of ['answered', ...rag]) {
+      expect(TRANSLATIONS.resultadoRag).toHaveProperty(resultado);
+    }
+    expect(TRANSLATIONS.tipoHandoff).toHaveProperty('handoff');
+    expect(TRANSLATIONS.tipoHandoff).toHaveProperty('handoff_offered');
+  });
+
+  it('cobre os valores de reserva dos SQLs', () => {
+    expect(TRANSLATIONS.etapa).toHaveProperty('unknown');
+    expect(TRANSLATIONS.motivoHandoff).toHaveProperty('sem_motivo');
+    expect(TRANSLATIONS.finalidadeIa).toHaveProperty('sem_motivo');
+  });
+
+  it('nenhum rótulo é igual ao valor técnico nem fica vazio', () => {
+    for (const grupo of Object.values(TRANSLATIONS) as Record<string, string>[]) {
+      for (const [valor, rotulo] of Object.entries(grupo)) {
+        expect(rotulo.trim().length).toBeGreaterThan(0);
+        expect(rotulo).not.toBe(valor);
+      }
+    }
+  });
+});
+
+describe('wrapSql', () => {
+  const view = {
+    columns: [
+      { from: 'etapa', as: 'Etapa', translate: 'etapa' },
+      { from: 'total', as: 'Total de casos' },
+    ],
+    orderBy: 'base.total DESC',
+  };
+  const sql = wrapSql(
+    '-- comentário\nSELECT step AS etapa, 1 AS total FROM t WHERE x = {{dias}};\n',
+    view,
+  );
+
+  it('embrulha o SQL original sem o ponto e vírgula final', () => {
+    expect(sql.startsWith('WITH base AS (\n-- comentário\nSELECT step')).toBe(true);
+    expect(sql).toContain('{{dias}}\n)\nSELECT');
+    expect(sql).not.toContain(';');
+    expect(sql.trimEnd().endsWith('ORDER BY base.total DESC')).toBe(true);
+  });
+
+  it('traduz valores conhecidos e deixa os desconhecidos como estão', () => {
+    expect(sql).toContain("WHEN 'choosePayment' THEN 'Escolha do pagamento'");
+    expect(sql).toContain('ELSE base.etapa::text END AS "Etapa"');
+    expect(sql).toContain('base.total AS "Total de casos"');
+  });
+
+  it('preserva as variáveis para o Metabase', () => {
+    expect(extractTemplateTagNames(sql)).toEqual(['dias']);
+  });
+
+  it('escapa aspas simples nos rótulos', () => {
+    const grupo: Record<string, string> = TRANSLATIONS.etapa;
+    grupo.__teste = "d'água";
+    try {
+      expect(wrapSql('SELECT 1', view)).toContain("THEN 'd''água'");
+    } finally {
+      delete grupo.__teste;
+    }
+  });
+
+  it('toda visão só usa colunas que o SQL canônico devolve e grupos de tradução existentes', () => {
+    for (const [arquivo, visao] of Object.entries(VIEWS) as [
+      string,
+      { columns: { from: string; translate?: string }[] },
+    ][]) {
+      const original = sqlCanonico(arquivo);
+      for (const coluna of visao.columns) {
+        const procurada = new RegExp(`\\bAS ${coluna.from}\\b|\\bSELECT ${coluna.from}\\b`);
+        expect(original, `${arquivo}.${coluna.from}`).toMatch(procurada);
+        if ('translate' in coluna) expect(TRANSLATIONS).toHaveProperty(coluna.translate as string);
+      }
+    }
+  });
+
+  it('cards usam só rótulos que existem nas suas visões', () => {
+    for (const card of CARDS) {
+      const rotulos = VIEWS[card.sqlFile as NomeVisao].columns.map(coluna => coluna.as);
+      const usados = [
+        card.settings['scalar.field'],
+        ...(card.settings['graph.dimensions'] ?? []),
+        ...(card.settings['graph.metrics'] ?? []),
+      ].filter(Boolean);
+      for (const rotulo of usados) expect(rotulos, `${card.name}.${rotulo}`).toContain(rotulo);
+    }
+  });
+});
+
+describe('formato brasileiro das datas', () => {
+  it('colunas de data usam dia/mês/ano e hora em 24 h', () => {
+    const funil = CARDS.find(card => card.name === 'gestor-funil-diario');
+    expect(funil?.settings.column_settings['["name","Dia"]']).toMatchObject({
+      date_style: 'D/M/YYYY',
+    });
+    const ia = CARDS.find(card => card.name === 'tecnico-ia');
+    expect(ia?.settings.column_settings['["name","Hora"]']).toMatchObject({
+      date_style: 'D/M/YYYY',
+      time_style: 'HH:mm',
+    });
+  });
+
+  it('gráficos têm títulos de eixo em português', () => {
+    for (const card of CARDS.filter(item => item.display === 'bar' || item.display === 'line')) {
+      expect(card.settings['graph.x_axis.title_text'], card.name).toBeTruthy();
+      expect(card.settings['graph.y_axis.title_text'], card.name).toBeTruthy();
+    }
+  });
+
+  it('sameLocale aceita pt_BR e pt-BR e recusa en', () => {
+    expect(sameLocale('pt_BR', 'pt_BR')).toBe(true);
+    expect(sameLocale('pt-BR', 'pt_BR')).toBe(true);
+    expect(sameLocale('en', 'pt_BR')).toBe(false);
+    expect(sameLocale(undefined, 'pt_BR')).toBe(false);
+  });
+});
+
+describe('legendas', () => {
+  const textoDe = (nome: string) =>
+    DASHBOARDS.find(dashboard => dashboard.name === nome)?.cards.find(item => item.text)?.text;
+
+  it('cada dashboard tem um cartão de texto com os avisos obrigatórios', () => {
+    for (const dashboard of DASHBOARDS) {
+      const textos = dashboard.cards.filter(item => item.text);
+      expect(textos, dashboard.name).toHaveLength(1);
+      const texto = textos[0].text as string;
+      expect(texto).toContain('Como ler este painel');
+      expect(texto).toContain('Incluir dados simulados');
+    }
+    expect(textoDe('Gestor')).toContain('mais de 24 horas');
+    expect(textoDe('Supervisor')).toContain('ainda não definiu uma meta');
+    expect(textoDe('Técnico')).toContain('não há meta');
+  });
+
+  it('textos não usam travessão nem negrito', () => {
+    for (const dashboard of DASHBOARDS) {
+      for (const item of dashboard.cards.filter(candidate => candidate.text)) {
+        expect(item.text).not.toMatch(/[–—]|\*\*/);
+      }
+    }
+  });
+
+  const comTexto = buildDashboardPayload({
+    name: 'X',
+    collectionId: 1,
+    cards: [
+      { cardId: 5, sql: 'SELECT {{dias}}', col: 0, row: 0, sizeX: 24, sizeY: 3 },
+      { text: '## Olá', col: 0, row: 3, sizeX: 24, sizeY: 4 },
+    ],
+  });
+
+  it('cartão de texto vira dashcard virtual sem card nem mapeamentos', () => {
+    expect(comTexto.dashcards[1]).toMatchObject({
+      id: -2,
+      card_id: null,
+      parameter_mappings: [],
+      visualization_settings: { text: '## Olá', virtual_card: { display: 'text' } },
+    });
+  });
+
+  it('dashboard com texto, lido da API, não muda; texto alterado atualiza', () => {
+    const lido = structuredClone(comTexto);
+    lido.dashcards.forEach((dashcard: { id: number }, indice: number) => {
+      dashcard.id = 50 + indice;
+    });
+    expect(planDashboard(lido, comTexto)).toBe('unchanged');
+    const ids = reuseDashcardIds(lido, comTexto).dashcards.map((d: { id: number }) => d.id);
+    expect(ids).toEqual([50, 51]);
+    lido.dashcards[1].visualization_settings.text = 'antigo';
+    expect(planDashboard(lido, comTexto)).toBe('update');
+  });
+});
+
+describe('idempotência dos cards traduzidos', () => {
+  it('cards do catálogo lidos da API não mudam; nome de filtro antigo manda atualizar', () => {
+    for (const card of CARDS) {
+      const sql = wrapSql(sqlCanonico(card.sqlFile), VIEWS[card.sqlFile as NomeVisao]);
+      const desired = buildCardPayload({
+        name: card.title,
+        sql,
+        databaseId: 1,
+        collectionId: 2,
+        display: card.display,
+        visualizationSettings: card.settings,
+      });
+      const lido = lerComoApi(desired);
+      expect(planCard(lido, desired), card.name).toBe('unchanged');
+      lido.parameters[0].name = 'Dias';
+      expect(planCard(lido, desired), card.name).toBe('update');
+    }
+  });
+
+  it('a ordem das chaves devolvida pela API não gera atualização', () => {
+    const card = CARDS.find(item => item.name === 'gestor-funil-diario');
+    const desired = buildCardPayload({
+      name: 'x',
+      sql: 'SELECT {{dias}}',
+      databaseId: 1,
+      collectionId: 2,
+      display: card?.display,
+      visualizationSettings: card?.settings,
+    });
+    const lido = lerComoApi(desired);
+    const colunas = lido.visualization_settings.column_settings;
+    colunas['["name","Dia"]'] = Object.fromEntries(
+      Object.entries(colunas['["name","Dia"]']).reverse(),
+    );
+    expect(planCard(lido, desired)).toBe('unchanged');
+  });
+});
+
+describe('ajustes visuais', () => {
+  const legendas = DASHBOARDS.map(d => d.cards.find(item => item.text)).filter(Boolean);
+
+  it('altura da legenda cresce com o texto, sem sobra grande', () => {
+    expect(textHeight('a')).toBeLessThan(textHeight('a\n'.repeat(30)));
+    for (const item of legendas) {
+      const linhas = String(item?.text).split('\n').length;
+      expect(item?.sizeY).toBe(textHeight(item?.text));
+      expect(item?.sizeY as number).toBeLessThanOrEqual(13);
+      expect(item?.sizeY as number).toBeGreaterThanOrEqual(Math.ceil(linhas / 2.5));
+    }
+  });
+
+  it('alturas calibradas pela medida real das telas', () => {
+    const alturas = Object.fromEntries(
+      DASHBOARDS.map(d => [d.name, d.cards.find(item => item.text)?.sizeY]),
+    );
+    expect(alturas).toEqual({ Gestor: 12, Supervisor: 10, Técnico: 10 });
+  });
+
+  it('hora usa HH:mm para não mostrar 24:00', () => {
+    const ia = CARDS.find(card => card.name === 'tecnico-ia');
+    expect(ia?.settings.column_settings['["name","Hora"]'].time_style).toBe('HH:mm');
+  });
+
+  it('todo cartão numérico usa separadores brasileiros', () => {
+    for (const card of CARDS) {
+      const colunas = card.settings.column_settings as Record<
+        string,
+        { number_separators?: string }
+      >;
+      const alvos = card.settings['scalar.field']
+        ? [card.settings['scalar.field']]
+        : card.settings['graph.metrics'];
+      for (const campo of alvos) {
+        expect(colunas[`["name","${campo}"]`]?.number_separators, `${card.name}.${campo}`).toBe(
+          ',.',
+        );
+      }
+    }
+    const latencia = CARDS.find(card => card.name === 'tecnico-latencia');
+    expect(latencia?.settings.column_settings['["name","Mediana (ms)"]'].decimals).toBe(0);
+  });
+
+  it('aviso do registro de pedidos só onde há valor em reais', () => {
+    const tem = (nome: string) =>
+      DASHBOARDS.find(d => d.name === nome)
+        ?.cards.find(i => i.text)
+        ?.text?.includes('não do financeiro');
+    expect(tem('Gestor')).toBe(true);
+    expect(tem('Supervisor')).toBe(false);
+    expect(tem('Técnico')).toBe(false);
+  });
+
+  it('cartões têm título em português, únicos por coleção e diferentes do nome técnico', () => {
+    for (const card of CARDS) expect(card.title).not.toBe(card.name);
+    const chaves = CARDS.map(card => `${card.collection}/${card.title}`);
+    expect(new Set(chaves).size).toBe(chaves.length);
+    const titulos = CARDS.map(card => card.title);
+    for (const nome of CARDS.map(card => card.name)) expect(titulos).not.toContain(nome);
+  });
+
+  it('renomear não duplica: achar pelo título novo ou, na falta, pelo nome antigo', () => {
+    const card = CARDS[0];
+    const itens = [{ id: 7, name: card.name }];
+    const achado = findByName(itens, card.title) ?? findByName(itens, card.name);
+    expect(achado?.id).toBe(7);
+    const desired = buildCardPayload({
+      name: card.title,
+      sql: 'SELECT 1',
+      databaseId: 1,
+      collectionId: 2,
+    });
+    const antigo = lerComoApi(
+      buildCardPayload({ name: card.name, sql: 'SELECT 1', databaseId: 1, collectionId: 2 }),
+    );
+    expect(planCard(antigo, desired)).toBe('update');
+    expect(planCard(lerComoApi(desired), desired)).toBe('unchanged');
+    const renomeados = [{ id: 7, name: card.title }];
+    expect(findByName(renomeados, card.title)?.id).toBe(7);
   });
 });
